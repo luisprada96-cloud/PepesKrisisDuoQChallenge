@@ -1,0 +1,4 @@
+# Requerimientos del proyecto
+# Este proyecto no depende de librerías externas de Python.
+# Solo utiliza la biblioteca estándar de Python.
+# Si más adelante necesitas paquetes externos, agrégalos aquí.

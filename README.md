@@ -37,13 +37,19 @@ Permite seguir en tiempo real la clasificación de varios dúos en Ranked Solo/D
    cd PepesKrisisDuoQChallenge
    ```
 
-2. **Ejecutar el Servidor**:
+2. **Instalar dependencias**:
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
+   ```
+
+3. **Ejecutar el Servidor**:
    ```bash
    python server.py
    # O python3 server.py
    ```
 
-3. **Abrir en el Navegador**:
+4. **Abrir en el Navegador**:
    Navega a `http://localhost:8085`.
 
 ---
