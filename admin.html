@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel de Administración | Pepes Krisis Duo Q Challenge</title>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navigation Header -->
+  <header>
+    <nav class="navbar">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo">
+          <i class="fa-solid fa-trophy brand-icon"></i>
+          <span class="brand-text text-gradient-pink">Admin Duo Q</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-arrow-left"></i> Volver a la Clasificación</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container" style="padding: 2.5rem 1.5rem 4rem 1.5rem;">
+    
+    <div style="margin-bottom: 2rem;">
+      <h1 class="hero-title text-gradient-pink" style="text-align: left; font-size: 2.2rem;">
+        Panel de Administración
+      </h1>
+      <p style="color: var(--text-muted);">
+        Gestiona las parejas participantes dinámicamente, actualiza Riot IDs y configura el tiempo del desafío.
+      </p>
+    </div>
+
+    <!-- Section 1: Add New Duo -->
+    <section class="admin-card">
+      <h2 class="admin-card-title">
+        <i class="fa-solid fa-user-plus"></i> Registrar Nueva Pareja / Dúo
+      </h2>
+      
+      <form id="add-duo-form">
+        <div class="form-grid">
+          
+          <div class="form-group">
+            <label for="new-team-name">Nombre de la Pareja / Equipo</label>
+            <input type="text" id="new-team-name" class="form-control" placeholder="Ej: Krisis Hunters" required>
+          </div>
+
+          <div class="form-group">
+            <label for="new-p1">Invocador 1 (Riot ID #TAG)</label>
+            <input type="text" id="new-p1" class="form-control" placeholder="Ej: PepesTop#EUW" required>
+          </div>
+
+          <div class="form-group">
+            <label for="new-p2">Invocador 2 (Riot ID #TAG)</label>
+            <input type="text" id="new-p2" class="form-control" placeholder="Ej: KrisisJg#EUW" required>
+          </div>
+
+          <div class="form-group">
+            <label for="new-tier">Liga / Rango de Inicio</label>
+            <select id="new-tier" class="form-control">
+              <option value="Unranked" selected>Unranked (Sin clasificar - Cuentas Nuevas)</option>
+              <option value="Iron">Hierro (Iron)</option>
+              <option value="Bronze">Bronce (Bronze)</option>
+              <option value="Silver">Plata (Silver)</option>
+              <option value="Gold">Oro (Gold)</option>
+              <option value="Platinum">Platino (Platinum)</option>
+              <option value="Emerald">Esmeralda (Emerald)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="new-password">Contraseña de Acceso (Mi Panel)</label>
+            <input type="text" id="new-password" class="form-control" placeholder="Ej: pingu123 (Por defecto: 1234)">
+          </div>
+
+        </div>
+
+        <div style="margin-top: 1.5rem; text-align: right;">
+          <button type="submit" class="btn-primary">
+            <i class="fa-solid fa-plus-circle"></i> Añadir Dúo a la Competición
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Section 2: List of Duos -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.8rem;">
+        <h2 class="admin-card-title" style="margin-bottom: 0;">
+          <i class="fa-solid fa-users"></i> Dúos Registrados en la Competición
+        </h2>
+        <div style="display: flex; gap: 0.8rem; flex-wrap: wrap;">
+          <button id="btn-calc-shells" class="btn-refresh" style="background: rgba(0, 240, 255, 0.15); border-color: var(--cyan-primary); color: #fff;" title="Analiza las victorias consecutivas no procesadas y otorga caparazones">
+            <i class="fa-solid fa-calculator"></i> Calcular Caparazones por Rachas
+          </button>
+          <button id="btn-sync-matches-admin" class="btn-refresh btn-neon-gold" title="Recuperar las últimas 5 partidas clasificatorias de cada equipo mediante la API de Riot Games">
+            <i class="fa-solid fa-gamepad"></i> Recuperar 5 Partidas (Riot API)
+          </button>
+        </div>
+      </div>
+      <div id="admin-duos-list">
+        <!-- Dynamically rendered by admin.js -->
+      </div>
+    </section>
+
+    <!-- Section 3: Global Config & Backup -->
+    <section class="admin-card">
+      <h2 class="admin-card-title">
+        <i class="fa-solid fa-sliders"></i> Ajustes de la Competición y Copia de Seguridad
+      </h2>
+      
+      <form id="config-form">
+        <div class="form-grid">
+          
+          <div class="form-group">
+            <label for="cfg-title">Título del Desafío</label>
+            <input type="text" id="cfg-title" class="form-control" required>
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-prize">Bote / Premio</label>
+            <input type="text" id="cfg-prize" class="form-control" required>
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-start">Fecha de Inicio</label>
+            <input type="datetime-local" id="cfg-start" class="form-control">
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-end">Fecha de Cierre</label>
+            <input type="datetime-local" id="cfg-end" class="form-control">
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-pin">PIN de Acceso Administrador</label>
+            <input type="text" id="cfg-pin" class="form-control" required>
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <label for="cfg-riot-key">Clave de la API de Riot Games (X-Riot-Token)</label>
+            <input type="password" id="cfg-riot-key" class="form-control" placeholder="RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
+              Obtén tu clave gratuita en <a href="https://developer.riotgames.com" target="_blank" style="color: var(--cyan-primary);">developer.riotgames.com</a>. Las claves de desarrollo expiran cada 24 horas.
+            </span>
+          </div>
+
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; gap: 0.8rem;">
+            <button type="button" id="btn-export-data" class="btn-refresh" style="color: var(--gold-hextech); border-color: var(--gold-hextech);">
+              <i class="fa-solid fa-download"></i> Exportar JSON
+            </button>
+            <button type="button" id="btn-reset-data" class="btn-danger">
+              <i class="fa-solid fa-rotate-left"></i> Restablecer Datos Iniciales
+            </button>
+          </div>
+          
+          <button type="submit" class="btn-primary">
+            <i class="fa-solid fa-save"></i> Guardar Configuración
+          </button>
+        </div>
+      </form>
+    </section>
+
+  </main>
+
+  <!-- Admin PIN Modal Overlay -->
+  <div id="admin-pin-overlay" class="modal-overlay active" style="z-index: 10000; background: rgba(5, 7, 13, 0.92); backdrop-filter: blur(12px);">
+    <div class="modal-card" style="max-width: 420px; text-align: center; border: 1px solid var(--pink-accent); box-shadow: 0 0 30px rgba(255, 0, 85, 0.3);">
+      <div style="font-size: 2.5rem; color: var(--pink-accent); margin-bottom: 1rem;">
+        <i class="fa-solid fa-lock"></i>
+      </div>
+      <h2 class="font-heading text-gradient-pink" style="font-size: 1.5rem; margin-bottom: 0.5rem;">Acceso Restringido</h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+        Introduce el PIN de Administrador para acceder al panel de gestión.
+      </p>
+
+      <form id="admin-pin-form">
+        <div style="margin-bottom: 1.25rem;">
+          <input type="password" id="admin-pin-input" placeholder="PIN (por defecto: 1234)" style="width: 100%; text-align: center; letter-spacing: 4px; font-size: 1.2rem; font-weight: 700; padding: 0.85rem; background: rgba(7, 10, 18, 0.9); border: 1px solid var(--pink-accent); border-radius: 8px; color: #fff; outline: none;" required autofocus>
+        </div>
+        <div id="pin-error-msg" style="color: #ff4d4d; font-size: 0.85rem; font-weight: 700; display: none; margin-bottom: 1rem;">
+          <i class="fa-solid fa-circle-exclamation"></i> PIN incorrecto. Inténtalo de nuevo.
+        </div>
+        <button type="submit" class="btn-submit-duo" style="width: 100%; background: var(--pink-accent); border-color: var(--pink-accent); color: #fff;">
+          <i class="fa-solid fa-key"></i> Acceder al Panel
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Duo Confirmation HTML Modal -->
+  <div id="delete-confirm-overlay" class="modal-overlay" style="z-index: 10001; background: rgba(5, 7, 13, 0.92); backdrop-filter: blur(10px);">
+    <div class="modal-card" style="max-width: 450px; text-align: center; border: 1px solid var(--loss-red); box-shadow: 0 0 35px rgba(255, 70, 85, 0.4);">
+      <div style="font-size: 2.5rem; color: var(--loss-red); margin-bottom: 0.8rem;">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <h2 class="font-heading" style="color: #fff; font-size: 1.5rem; margin-bottom: 0.5rem;">
+        ¿Eliminar Pareja?
+      </h2>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;" id="delete-confirm-msg">
+        ¿Estás seguro de eliminar este dúo de la competición? Esta acción borrará de forma permanente todos sus datos de la base de datos.
+      </p>
+
+      <div style="display: flex; gap: 1rem; justify-content: center;">
+        <button id="btn-cancel-delete" class="btn-primary" style="background: rgba(255,255,255,0.1); border-color: var(--text-muted); color: var(--text-main);">
+          Cancelar
+        </button>
+        <button id="btn-confirm-delete" class="btn-danger" style="padding: 0.6rem 1.4rem;">
+          <i class="fa-solid fa-trash"></i> Eliminar Definitivamente
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- External JavaScript Files -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

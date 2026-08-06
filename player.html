@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Panel del Jugador | Pepes Krisis Duo Q Challenge</title>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Navigation Header -->
+  <header>
+    <nav class="navbar">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo">
+          <i class="fa-solid fa-trophy brand-icon"></i>
+          <span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
+          <li><a href="index.html#rules" class="nav-link"><i class="fa-solid fa-scroll"></i> Reglas</a></li>
+          <li><a href="player.html" class="btn-player-panel active"><i class="fa-solid fa-gamepad"></i> Mi Panel</a></li>
+          <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel Admin</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container" style="padding: 2.5rem 1.5rem 4rem 1.5rem;">
+    
+    <!-- Player Login Container (Shown if not logged in) -->
+    <div id="player-login-section" class="admin-card" style="max-width: 500px; margin: 2rem auto; text-align: center; border: 1px solid var(--cyan-primary); box-shadow: 0 0 30px var(--cyan-glow);">
+      <div style="font-size: 2.5rem; color: var(--cyan-primary); margin-bottom: 1rem;">
+        <i class="fa-solid fa-id-card"></i>
+      </div>
+      <h1 class="hero-title text-gradient-cyan" style="font-size: 1.8rem; margin-bottom: 0.5rem;">
+        Acceso a Mi Panel
+      </h1>
+      <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
+        Selecciona tu pareja/equipo e introduce la contraseña facilitada por la organización.
+      </p>
+
+      <form id="player-login-form">
+        <div style="margin-bottom: 1.25rem; text-align: left;">
+          <label style="display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem;">
+            Selecciona tu Equipo / Pareja
+          </label>
+          <select id="login-team-select" class="form-control" required style="width: 100%;">
+            <option value="">Cargando equipos...</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom: 1.5rem; text-align: left;">
+          <label style="display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem;">
+            Contraseña del Dúo
+          </label>
+          <input type="password" id="login-password-input" class="form-control" placeholder="Introduce tu contraseña (por defecto: 1234)" required>
+        </div>
+
+        <div id="login-error-msg" style="color: #ff4d4d; font-size: 0.85rem; font-weight: 700; display: none; margin-bottom: 1rem;">
+          <i class="fa-solid fa-circle-exclamation"></i> <span id="login-error-text">Contraseña incorrecta.</span>
+        </div>
+
+        <button type="submit" class="btn-primary" style="width: 100%;">
+          <i class="fa-solid fa-right-to-bracket"></i> Entrar a Mi Panel
+        </button>
+      </form>
+    </div>
+
+    <!-- Player Dashboard Content (Shown when logged in) -->
+    <div id="player-dashboard-section" style="display: none;">
+      
+      <!-- Top Profile Banner -->
+      <div class="admin-card" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 2rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.3rem;">
+            <h1 class="hero-title text-gradient-cyan" id="dash-team-name" style="font-size: 2rem; margin: 0;">
+              Nombre del Equipo
+            </h1>
+            <span class="tier-pill" id="dash-tier-badge" style="font-size: 0.85rem; padding: 0.3rem 0.8rem;">
+              Gold IV
+            </span>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.95rem;" id="dash-players-text">
+            Invocador 1 & Invocador 2
+          </p>
+        </div>
+
+        <button id="btn-logout" class="btn-danger" style="padding: 0.6rem 1.2rem;">
+          <i class="fa-solid fa-power-off"></i> Cerrar Sesión
+        </button>
+      </div>
+
+      <!-- Gamification Grid -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+        
+        <!-- Inventory Card: Blue Shells -->
+        <div class="admin-card" style="border-color: rgba(0, 240, 255, 0.4); box-shadow: 0 0 25px rgba(0, 240, 255, 0.15);">
+          <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+            <div style="font-size: 2.8rem; filter: drop-shadow(0 0 10px #00f0ff);">
+              🐢🔵
+            </div>
+            <div>
+              <h2 class="font-heading text-gradient-cyan" style="font-size: 1.3rem;">Inventario de Caparazones</h2>
+              <div style="font-size: 0.85rem; color: var(--text-muted);">Mecánica de Ataque y Recompensa por Racha</div>
+            </div>
+          </div>
+
+          <div style="background: rgba(7, 10, 18, 0.7); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 1.25rem; text-align: center; margin-bottom: 1rem;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading);">
+              Caparazones Azules Disponibles
+            </div>
+            <div style="font-size: 3rem; font-family: var(--font-heading); font-weight: 900; color: var(--cyan-primary); text-shadow: 0 0 15px var(--cyan-glow);" id="dash-shells-count">
+              0
+            </div>
+            <div style="font-size: 0.8rem; color: var(--gold-hextech);">
+              <i class="fa-solid fa-gift"></i> Ganas +1 Caparazón Azul por cada Racha de 3 Victorias Seguidas
+            </div>
+          </div>
+
+          <!-- Streak Progress Bar -->
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.4rem;">
+              <span>Progreso de Racha Actual:</span>
+              <span id="dash-streak-text" style="color: var(--win-green);">0W / 3W</span>
+            </div>
+            <div class="winrate-bar-bg" style="height: 10px;">
+              <div id="dash-streak-bar" class="winrate-bar-fill" style="width: 0%; background: linear-gradient(90deg, var(--cyan-primary), var(--win-green));"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Card: Launch Blue Shell -->
+        <div class="admin-card" style="border-color: rgba(245, 197, 66, 0.4); box-shadow: 0 0 25px rgba(245, 197, 66, 0.15);">
+          <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+            <div style="font-size: 2.8rem; filter: drop-shadow(0 0 10px #f5c542);">
+              💥
+            </div>
+            <div>
+              <h2 class="font-heading text-gradient-gold" style="font-size: 1.3rem;">Lanzar Caparazón Azul</h2>
+              <div style="font-size: 0.85rem; color: var(--text-muted);">Ataca a un Dúo Rival en la Clasificación</div>
+            </div>
+          </div>
+
+          <form id="launch-shell-form">
+            <div style="margin-bottom: 1.25rem;">
+              <label style="display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem;">
+                Selecciona el Equipo Objetivo (Rival)
+              </label>
+              <select id="target-team-select" class="form-control" required style="width: 100%;">
+                <option value="">Selecciona objetivo...</option>
+              </select>
+            </div>
+
+            <button type="submit" id="btn-launch-shell" class="btn-refresh btn-neon-gold" style="width: 100%; justify-content: center; padding: 0.85rem; font-size: 1rem;">
+              🐢⚡ ¡Lanzar Caparazón Azul!
+            </button>
+
+            <!-- Inline Roulette Box (under button) -->
+            <div id="inline-roulette-container" style="display: none; margin-top: 1.25rem; background: rgba(7, 10, 18, 0.95); border: 2px solid var(--gold-hextech); border-radius: 12px; padding: 1.25rem; text-align: center; box-shadow: 0 0 20px rgba(245, 197, 66, 0.3);">
+              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading); margin-bottom: 0.5rem;" id="inline-target-name">
+                Lanzando ataque...
+              </div>
+              <div id="inline-roulette-box" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; font-family: var(--font-heading); font-size: 1.2rem; font-weight: 800; color: #fff; padding: 0.75rem; background: rgba(0,0,0,0.6); border-radius: 8px; border: 1px solid var(--cyan-primary);">
+                <span id="inline-roulette-icon" style="font-size: 1.8rem;">⚡</span>
+                <span id="inline-roulette-name">GIRANDO...</span>
+              </div>
+              <div id="inline-roulette-desc" style="display: none; margin-top: 0.8rem; font-size: 0.85rem; font-weight: 700; color: var(--gold-hextech); background: rgba(245, 197, 66, 0.1); padding: 0.6rem; border-radius: 6px; border: 1px dashed var(--gold-hextech);">
+              </div>
+            </div>
+          </form>
+        </div>
+
+      </div>
+
+      <!-- Active Debuffs (Castigos Recibidos) Section -->
+      <section class="admin-card" style="border-color: rgba(255, 77, 77, 0.4); background: rgba(255, 77, 77, 0.05); margin-top: 2rem;">
+        <h2 class="admin-card-title" style="color: #ff4d4d; margin-bottom: 1rem;">
+          <i class="fa-solid fa-triangle-exclamation"></i> Castigos Recibidos (Equipo Receptor)
+        </h2>
+        <div id="active-debuffs-list">
+          <!-- Dynamically populated by player.js -->
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- External JavaScript Files -->
+  <script src="data.js"></script>
+  <script src="player.js"></script>
+</body>
+</html>

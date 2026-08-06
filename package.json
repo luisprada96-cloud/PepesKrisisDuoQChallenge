@@ -1,0 +1,9 @@
+{
+  "name": "pepes-krisis-duoq-challenge",
+  "version": "0.1.0",
+  "description": "Pepes Krisis Duo Q Challenge v0.1 - League of Legends ELO Tracking & Blue Shell Gamification Engine",
+  "main": "server.py",
+  "scripts": {
+    "start": "python server.py"
+  }
+}

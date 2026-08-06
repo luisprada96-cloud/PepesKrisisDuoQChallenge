@@ -1,0 +1,17 @@
+# Environment & OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# Gemini / Agent artifacts
+.gemini/
+
+# Temporary files
+*.tmp
+*.bak

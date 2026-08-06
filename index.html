@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pepes Krisis Duo Q Challenge | League of Legends Leaderboard EUW</title>
+  <meta name="description"
+    content="Competición en directo de ascenso de ELO en League of Legends entre parejas. Clasificación en tiempo real, estadísticas de dúos y persecución de rango en EUW.">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <!-- Navigation Header -->
+  <header>
+    <nav class="navbar">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo">
+          <i class="fa-solid fa-trophy brand-icon"></i>
+          <span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="#leaderboard" class="nav-link active"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
+          <li><a href="#rules" class="nav-link"><i class="fa-solid fa-scroll"></i> Reglas</a></li>
+          <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad"></i> Mi
+              Panel</a></li>
+          <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel
+              Admin</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span class="pulse-dot"></span> EUW Duo Queue League • En Vivo
+      </div>
+
+      <h1 class="hero-title text-gradient-cyan" id="challenge-title">
+        Pepes Krisis Duo Q Challenge
+      </h1>
+
+      <p class="hero-subtitle">
+        Competición de ascenso de ELO en tiempo semi-real. 12 Dúos luchan por escalar desde <strong
+          style="color: var(--cyan-primary);">Unranked</strong> hasta la cima de League of Legends.
+      </p>
+
+      <!-- Countdown Timer Box -->
+      <div style="margin-bottom: 2rem;">
+        <div
+          style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading); margin-bottom: 0.5rem;">
+          <i class="fa-solid fa-clock"></i> Tiempo Restante del Desafío
+        </div>
+        <div id="countdown-timer" class="countdown-box">
+          <!-- Dynamically populated by app.js -->
+        </div>
+        <div id="prize-pool-text"
+          style="color: var(--gold-hextech); font-weight: 700; font-size: 0.95rem; margin-top: 0.6rem;">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Stats Overview Cards -->
+      <div class="hero-stats">
+        <div class="stat-card">
+          <div class="stat-label">Dúos Participantes</div>
+          <div class="stat-value text-gradient-cyan" id="stat-total-duos">12</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Partidas Jugadas</div>
+          <div class="stat-value text-gradient-pink" id="stat-total-games">0</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Dúo Líder (#1)</div>
+          <div class="stat-value text-gradient-gold" id="stat-top-duo" style="font-size: 1.3rem;">-</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-label">Dúos Jugando Ahora</div>
+          <div class="stat-value" style="color: var(--win-green);" id="stat-live-count">0</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Controls Section (Search & Filter) -->
+  <section class="controls-section">
+    <div class="container">
+      <div class="controls-card">
+
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="search-input" placeholder="Buscar por nombre de equipo o jugador..."
+            aria-label="Buscar dúo o jugador">
+        </div>
+
+        <div class="filter-group">
+          <select id="tier-filter" class="filter-select" aria-label="Filtrar por rango de liga">
+            <option value="ALL">Todos los Rangos</option>
+            <option value="EMERALD">Esmeralda</option>
+            <option value="PLATINUM">Platino</option>
+            <option value="GOLD">Oro</option>
+            <option value="SILVER">Plata</option>
+            <option value="BRONZE">Bronce</option>
+            <option value="IRON">Hierro</option>
+          </select>
+
+          <select id="sort-by" class="filter-select" aria-label="Ordenar tabla por">
+            <option value="RANK">Ordenar por Rango / LP</option>
+            <option value="WINRATE">Ordenar por Winrate %</option>
+            <option value="GAMES">Ordenar por Partidas Jugadas</option>
+            <option value="NAME">Ordenar por Nombre</option>
+          </select>
+
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Leaderboard Section -->
+  <main class="leaderboard-section" id="leaderboard">
+    <div class="container">
+      <div class="leaderboard-container">
+        <table class="leaderboard-table">
+          <thead>
+            <tr>
+              <th style="width: 70px;">Pos</th>
+              <th>Nombre Dúo</th>
+              <th>Jugadores</th>
+              <th>Liga / Rango</th>
+              <th>Winrate %</th>
+              <th>Racha</th>
+              <th style="width: 120px;">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-tbody">
+            <!-- Dynamically populated by app.js -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Recent Attacks & Blue Shells Log Section -->
+  <section class="container" id="attacks-log-section" style="margin-bottom: 3rem;">
+    <div class="admin-card" style="border-color: rgba(0, 240, 255, 0.3); background: rgba(10, 15, 29, 0.7); backdrop-filter: blur(10px);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h2 class="admin-card-title" style="margin-bottom: 0; font-size: 1.3rem;">
+          <i class="fa-solid fa-shield-halved" style="color: var(--cyan-primary);"></i> Historial de Ataques Recientes (Caparazones Azules)
+        </h2>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">
+          <i class="fa-solid fa-clock-rotate-left"></i> Últimos 10 lanzamientos
+        </span>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="leaderboard-table" style="margin-top: 0;">
+          <thead>
+            <tr>
+              <th style="width: 140px;">Fecha / Hora</th>
+              <th>Equipo Atacante</th>
+              <th>Equipo Objetivo</th>
+              <th>Castigo Asignado</th>
+            </tr>
+          </thead>
+          <tbody id="recent-attacks-tbody">
+            <!-- Dynamically populated by app.js -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Rules Modal / Section -->
+  <section class="container" id="rules" style="padding-bottom: 4rem;">
+    <div class="admin-card" style="border-color: var(--border-glow);">
+      <h2 class="admin-card-title">
+        <i class="fa-solid fa-gavel"></i> Reglas y Formato de la Competición
+      </h2>
+      <ul style="color: var(--text-muted); padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
+        <li>Todas las cuentas deben ser <strong>nuevas e iniciar desde Unranked</strong> en el servidor EUW.</li>
+        <li>El ranking se calcula ordenando por el <strong>LP Neto acumulado</strong> durante el periodo de la
+          competición.</li>
+        <li>La pareja debe jugar siempre junta en la cola de <strong>Ranked Solo/Duo</strong>.</li>
+        <li>En caso de empate en LP, ganará el dúo con mayor porcentaje de victoria (Winrate %).</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Modal Overlay for Duo Details -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="font-heading" style="color: var(--cyan-primary); font-size: 0.9rem;">
+          <i class="fa-solid fa-id-card"></i> Ficha Oficial de Dúo
+        </span>
+        <button class="modal-close" id="modal-close" aria-label="Cerrar modal">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-content">
+        <!-- Dynamically filled by app.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p style="margin-bottom: 0.5rem;">
+        <strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026. Diseñado para la comunidad competitiva de LoL EUW.
+      </p>
+      <p style="font-size: 0.8rem; color: var(--text-dark);">
+        League of Legends y Riot Games son marcas registradas de Riot Games, Inc.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
