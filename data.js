@@ -2,7 +2,7 @@
    Pepes Krisis Duo Q Challenge - Data & API Services Layer
    ========================================================================== */
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = window.PEPES_API_URL || '/api';
 
 const DEFAULT_CONFIG = {
   challengeTitle: "Pepes Krisis Duo Q Challenge",
@@ -22,7 +22,16 @@ const DataStore = {
         return await res.json();
       }
     } catch (e) {
-      console.warn("API REST inaccesible, usando respaldo local:", e);
+      console.warn("API REST inaccesible, intentando db.json de respaldo:", e);
+    }
+    try {
+      const resDb = await fetch('db.json');
+      if (resDb.ok) {
+        const data = await resDb.json();
+        if (data && data.duos) return data.duos;
+      }
+    } catch (e) {
+      console.warn("Respaldo db.json inaccesible:", e);
     }
     const local = localStorage.getItem('pepes_duoq_teams_v1');
     return local ? JSON.parse(local) : [];
@@ -63,7 +72,16 @@ const DataStore = {
         return await res.json();
       }
     } catch (e) {
-      console.warn("API config inaccesible:", e);
+      console.warn("API config inaccesible, intentando db.json de respaldo:", e);
+    }
+    try {
+      const resDb = await fetch('db.json');
+      if (resDb.ok) {
+        const data = await resDb.json();
+        if (data && data.config) return data.config;
+      }
+    } catch (e) {
+      console.warn("Respaldo config en db.json inaccesible:", e);
     }
     const local = localStorage.getItem('pepes_duoq_config_v1');
     return local ? JSON.parse(local) : DEFAULT_CONFIG;
@@ -140,8 +158,15 @@ const DataStore = {
       const res = await fetch(`${API_BASE_URL}/events`);
       if (res.ok) return await res.json();
     } catch (e) {
-      console.warn("Error obteniendo eventos:", e);
+      console.warn("API de eventos inaccesible, intentando db.json de respaldo:", e);
     }
+    try {
+      const resDb = await fetch('db.json');
+      if (resDb.ok) {
+        const data = await resDb.json();
+        if (data && data.events) return data.events;
+      }
+    } catch (e) {}
     return [];
   },
 
