@@ -15,3 +15,5 @@ env/
 # Temporary files
 *.tmp
 *.bak
+secrets.json
+*-verificado.png

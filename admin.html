@@ -59,8 +59,32 @@
           </div>
 
           <div class="form-group">
+            <label for="new-p1-role">Rol principal del jugador 1</label>
+            <select id="new-p1-role" class="form-control" required>
+              <option value="" selected disabled>Selecciona un rol</option>
+              <option value="TOP">Top</option>
+              <option value="JUNGLE">Jungla</option>
+              <option value="MIDDLE">Mid</option>
+              <option value="BOTTOM">ADC</option>
+              <option value="UTILITY">Support</option>
+            </select>
+          </div>
+
+          <div class="form-group">
             <label for="new-p2">Invocador 2 (Riot ID #TAG)</label>
             <input type="text" id="new-p2" class="form-control" placeholder="Ej: KrisisJg#EUW" required>
+          </div>
+
+          <div class="form-group">
+            <label for="new-p2-role">Rol principal del jugador 2</label>
+            <select id="new-p2-role" class="form-control" required>
+              <option value="" selected disabled>Selecciona un rol</option>
+              <option value="TOP">Top</option>
+              <option value="JUNGLE">Jungla</option>
+              <option value="MIDDLE">Mid</option>
+              <option value="BOTTOM">ADC</option>
+              <option value="UTILITY">Support</option>
+            </select>
           </div>
 
           <div class="form-group">
@@ -79,6 +103,11 @@
           <div class="form-group">
             <label for="new-password">Contraseña de Acceso (Mi Panel)</label>
             <input type="text" id="new-password" class="form-control" placeholder="Ej: pingu123 (Por defecto: 1234)">
+          </div>
+
+          <div class="form-group">
+            <label for="new-twitch-url">Canal de Twitch (opcional)</label>
+            <input type="url" id="new-twitch-url" class="form-control" placeholder="https://www.twitch.tv/nombre_del_canal">
           </div>
 
         </div>
@@ -108,6 +137,25 @@
       <div id="admin-duos-list">
         <!-- Dynamically rendered by admin.js -->
       </div>
+    </section>
+
+    <section class="admin-card">
+      <h2 class="admin-card-title"><i class="fa-solid fa-dharmachakra"></i> Configuración de la Ruleta</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Define la probabilidad de cada resultado. Las variantes AMBOS deberían ser menos frecuentes.</p>
+      <div id="penalty-weights-grid" class="penalty-weights-grid"></div>
+      <div class="roulette-total-row">
+        <span>Total configurado</span>
+        <strong id="penalty-weight-total">0%</strong>
+      </div>
+      <button type="button" id="btn-save-penalty-weights" class="btn-primary" disabled>
+        <i class="fa-solid fa-save"></i> Guardar porcentajes de la ruleta
+      </button>
+    </section>
+
+    <section class="admin-card">
+      <h2 class="admin-card-title"><i class="fa-solid fa-shield-halved"></i> Corrección manual de castigos</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Solo administración puede completar o reabrir un castigo. Cada cambio queda registrado con su motivo.</p>
+      <div id="admin-penalties-list"></div>
     </section>
 
     <!-- Section 3: Global Config & Backup -->
@@ -141,14 +189,30 @@
 
           <div class="form-group">
             <label for="cfg-pin">PIN de Acceso Administrador</label>
-            <input type="text" id="cfg-pin" class="form-control" required>
+            <input type="password" id="cfg-pin" class="form-control" autocomplete="new-password" placeholder="Déjalo vacío para conservar el PIN actual">
           </div>
 
           <div class="form-group" style="grid-column: 1 / -1;">
             <label for="cfg-riot-key">Clave de la API de Riot Games (X-Riot-Token)</label>
             <input type="password" id="cfg-riot-key" class="form-control" placeholder="RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
             <span style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;">
-              Obtén tu clave gratuita en <a href="https://developer.riotgames.com" target="_blank" style="color: var(--cyan-primary);">developer.riotgames.com</a>. Las claves de desarrollo expiran cada 24 horas.
+              Obtén tu clave gratuita en <a href="https://developer.riotgames.com" target="_blank" style="color: var(--cyan-primary);">developer.riotgames.com</a>. Se guarda fuera de db.json; déjala vacía para conservar la actual.
+            </span>
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-twitch-client-id">Twitch Client ID</label>
+            <input type="text" id="cfg-twitch-client-id" class="form-control" autocomplete="off" placeholder="Client ID de tu aplicación de Twitch">
+          </div>
+
+          <div class="form-group">
+            <label for="cfg-twitch-client-secret">Twitch Client Secret</label>
+            <input type="password" id="cfg-twitch-client-secret" class="form-control" autocomplete="new-password" placeholder="Introduce el Client Secret">
+          </div>
+
+          <div class="form-group" style="grid-column: 1 / -1;">
+            <span style="font-size: 0.75rem; color: var(--text-muted);">
+              Registra la aplicación en la <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener noreferrer" style="color: #bf94ff;">consola de Twitch Developers</a>. El secreto se guarda solo en el servidor y los canales se comprueban automáticamente cada 5 minutos.
             </span>
           </div>
 
@@ -156,6 +220,9 @@
 
         <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
           <div style="display: flex; gap: 0.8rem;">
+            <button type="button" id="btn-sync-twitch-admin" class="btn-refresh" style="color: #bf94ff; border-color: #9146ff;">
+              <i class="fa-brands fa-twitch"></i> Comprobar Twitch ahora
+            </button>
             <button type="button" id="btn-export-data" class="btn-refresh" style="color: var(--gold-hextech); border-color: var(--gold-hextech);">
               <i class="fa-solid fa-download"></i> Exportar JSON
             </button>

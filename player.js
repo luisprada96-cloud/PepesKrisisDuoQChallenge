@@ -4,6 +4,7 @@
 
 let activeDuo = null;
 let allDuos = [];
+let playerSessionToken = sessionStorage.getItem('pepes_player_token') || '';
 
 document.addEventListener('DOMContentLoaded', () => {
   initPlayerApp();
@@ -15,15 +16,17 @@ async function initPlayerApp() {
 
   // Check existing session
   const savedSession = sessionStorage.getItem('pepes_player_session');
-  if (savedSession) {
+  if (savedSession && playerSessionToken) {
     try {
-      activeDuo = JSON.parse(savedSession);
-      // Refresh duo data from server
-      const match = allDuos.find(d => d.id === activeDuo.id);
-      if (match) activeDuo = match;
+      const state = await DataStore.getPlayerState(playerSessionToken);
+      if (!state.success || !state.duo) throw new Error('Sesión caducada');
+      activeDuo = state.duo;
+      sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
       showDashboardView();
     } catch (e) {
       sessionStorage.removeItem('pepes_player_session');
+      sessionStorage.removeItem('pepes_player_token');
+      playerSessionToken = '';
       showLoginView();
     }
   } else {
@@ -37,11 +40,9 @@ async function initPlayerApp() {
     try {
       allDuos = await DataStore.getDuos();
       if (activeDuo) {
-        const match = allDuos.find(d => d.id === activeDuo.id);
-        if (match) {
-          activeDuo = match;
-          renderPlayerDashboard();
-        }
+        const state = await DataStore.getPlayerState(playerSessionToken);
+        if (state.success && state.duo) activeDuo = state.duo;
+        renderDashboardData();
       }
     } catch (e) {
       console.warn("Error en auto-refresco del panel del jugador:", e);
@@ -103,13 +104,13 @@ function renderDashboardData() {
   const shells = activeDuo.blueShells || 0;
   if (shellsCountEl) shellsCountEl.textContent = shells;
 
-  // Streak calculations (1 shell per 2 consecutive wins)
+  // Streak calculations (1 shell per 3 consecutive wins)
   const streak = activeDuo.streak || 0;
-  const progressInCycle = streak % 2;
-  const progressPercent = Math.min(100, Math.round((progressInCycle / 2) * 100));
+  const progressInCycle = streak % 3;
+  const progressPercent = Math.min(100, Math.round((progressInCycle / 3) * 100));
 
   if (streakTextEl) {
-    const remaining = 2 - progressInCycle;
+    const remaining = 3 - progressInCycle;
     streakTextEl.textContent = `${streak}W racha activa • ${remaining} victoria${remaining !== 1 ? 's' : ''} más para +1 Caparazón`;
   }
   if (streakBarEl) {
@@ -125,7 +126,39 @@ function renderDashboardData() {
   }
 
   // Render received penalties table
+  renderPendingShells();
+  renderOutgoingShells();
   renderActiveDebuffs();
+}
+
+function renderOutgoingShells() {
+  const container = document.getElementById('outgoing-shells-list');
+  if (!container || !activeDuo) return;
+  const attacks = activeDuo.outgoingShellAttacks || [];
+  if (!attacks.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = `<div class="outgoing-shell-title">Últimos lanzamientos</div>` + attacks.slice(0, 3).map(attack => {
+    const result = attack.result;
+    const status = attack.status === 'PENDING_SPIN' ? 'Esperando que el rival gire' :
+      attack.status === 'RETURNED' ? 'Caparazón devuelto' : (result ? result.name : attack.status);
+    return `<div class="outgoing-shell-row"><span>→ ${escapeHtml(attack.targetName || 'Rival')}</span><strong>${escapeHtml(status)}</strong></div>`;
+  }).join('');
+}
+
+function renderPendingShells() {
+  const section = document.getElementById('pending-shells-section');
+  const container = document.getElementById('pending-shells-list');
+  if (!section || !container || !activeDuo) return;
+  const attacks = activeDuo.pendingShellAttacks || [];
+  section.style.display = attacks.length ? 'block' : 'none';
+  container.innerHTML = attacks.map(attack => `
+    <div class="pending-shell-card">
+      <div><strong>🐢 Caparazón de #${escapeHtml(attack.attackerName || 'Rival')}</strong><span>Recibido ${escapeHtml(formatIsoDate(attack.launchedAt))}</span></div>
+      <button type="button" class="btn-refresh btn-neon-gold" onclick="window.spinShellHandler('${escapeHtml(attack.id)}')">🎰 Girar ruleta</button>
+    </div>
+  `).join('');
 }
 
 function renderActiveDebuffs() {
@@ -133,9 +166,9 @@ function renderActiveDebuffs() {
   if (!container || !activeDuo) return;
 
   const rawDebuffs = activeDuo.activeDebuffs || [];
-  const activeDebuffs = rawDebuffs.filter(d => !d.resolved);
+  const visibleDebuffs = rawDebuffs.slice(0, 20);
 
-  if (activeDebuffs.length === 0) {
+  if (visibleDebuffs.length === 0) {
     container.innerHTML = `
       <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
         <i class="fa-solid fa-shield-halved" style="color: #28a745; font-size: 1.2rem; margin-bottom: 0.3rem; display: block;"></i>
@@ -153,14 +186,15 @@ function renderActiveDebuffs() {
             <th style="padding: 0.6rem;">Castigo</th>
             <th style="padding: 0.6rem;">Atacante</th>
             <th style="padding: 0.6rem;">Fecha</th>
-            <th style="padding: 0.6rem; text-align: right;">Acción</th>
+            <th style="padding: 0.6rem; text-align: right;">Estado</th>
           </tr>
         </thead>
         <tbody>
   `;
 
-  activeDebuffs.forEach((d) => {
+  visibleDebuffs.forEach((d) => {
     const pen = d.penalty || { name: 'Castigo', icon: '⚡', desc: '' };
+    const completed = d.status === 'COMPLETED' || d.resolved;
     html += `
       <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem;">
         <td style="padding: 0.75rem 0.6rem;">
@@ -179,14 +213,7 @@ function renderActiveDebuffs() {
           ${escapeHtml(d.timestamp || '')}
         </td>
         <td style="padding: 0.75rem 0.6rem; text-align: right;">
-          <button 
-            type="button"
-            class="btn-refresh" 
-            style="background: #28a745; border-color: #28a745; color: #fff; font-size: 0.75rem; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer;"
-            onclick="window.resolveDebuffHandler('${escapeHtml(d.timestamp || '')}', '${escapeHtml(pen.id || '')}')"
-          >
-            <i class="fa-solid fa-check"></i> Resolver
-          </button>
+          <span class="${completed ? 'penalty-status-completed' : 'penalty-status-active'}"><i class="fa-solid ${completed ? 'fa-circle-check' : 'fa-clock'}"></i> ${completed ? 'Cumplido' : 'Pendiente'}</span>
         </td>
       </tr>
     `;
@@ -201,24 +228,21 @@ function renderActiveDebuffs() {
   container.innerHTML = html;
 }
 
-window.resolveDebuffHandler = async function(timestamp, penaltyId) {
-  if (!activeDuo) return;
-
-  try {
-    const res = await DataStore.resolveDebuff(activeDuo.id, timestamp, penaltyId);
-    if (res && res.success && res.duo) {
-      activeDuo = res.duo;
-      sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
-      
-      allDuos = await DataStore.getDuos();
-      renderDashboardData();
-      showPlayerToast("¡Castigo resuelto correctamente!");
-    } else {
-      showPlayerToast(res?.error || "No se pudo resolver el castigo", true);
-    }
-  } catch (err) {
-    showPlayerToast("Error de conexión al resolver el castigo", true);
+window.spinShellHandler = async function(attackId) {
+  const button = document.querySelector(`[onclick*="${attackId}"]`);
+  if (button) button.disabled = true;
+  const res = await DataStore.spinShell(attackId, playerSessionToken);
+  if (!res.success) {
+    if (button) button.disabled = false;
+    showPlayerToast(res.error || 'No se pudo girar la ruleta.', true);
+    return;
   }
+  showRouletteInline(res.penalty, async () => {
+    activeDuo = res.duo;
+    sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
+    allDuos = await DataStore.getDuos();
+    renderDashboardData();
+  });
 };
 
 function setupPlayerListeners() {
@@ -237,7 +261,9 @@ function setupPlayerListeners() {
       const res = await DataStore.loginPlayer(teamId, pwd);
       if (res.success && res.duo) {
         activeDuo = res.duo;
+        playerSessionToken = res.sessionToken || '';
         sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
+        sessionStorage.setItem('pepes_player_token', playerSessionToken);
         if (errorMsg) errorMsg.style.display = 'none';
         showDashboardView();
       } else {
@@ -273,19 +299,14 @@ function setupPlayerListeners() {
       }
 
       try {
-        const res = await DataStore.launchShell(activeDuo.id, targetId);
+        const res = await DataStore.launchShell(targetId, playerSessionToken);
         if (res && res.success) {
-          showRouletteInline(targetName, res.penalty, async () => {
-            allDuos = await DataStore.getDuos();
-            const match = allDuos.find(d => d.id === (res.attacker ? res.attacker.id : activeDuo.id));
-            activeDuo = match ? match : res.attacker;
-            sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
-            renderDashboardData();
-            if (btnSubmit) {
-              btnSubmit.disabled = false;
-              btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Caparazón Azul!`;
-            }
-          });
+          activeDuo = res.attacker;
+          sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
+          allDuos = await DataStore.getDuos();
+          renderDashboardData();
+          showPlayerToast(`Caparazón enviado a ${targetName}. Ellos girarán la ruleta.`);
+          if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Caparazón Azul!`; }
         } else {
           showPlayerToast(res?.error || "Error al lanzar el Caparazón Azul.", true);
           if (btnSubmit) {
@@ -307,12 +328,14 @@ function setupPlayerListeners() {
     btnLogout.addEventListener('click', () => {
       activeDuo = null;
       sessionStorage.removeItem('pepes_player_session');
+      sessionStorage.removeItem('pepes_player_token');
+      playerSessionToken = '';
       showLoginView();
     });
   }
 }
 
-function showRouletteInline(targetName, finalPenalty, onCloseCallback) {
+function showRouletteInline(finalPenalty, onCloseCallback) {
   const container = document.getElementById('inline-roulette-container');
   const targetText = document.getElementById('inline-target-name');
   const rouletteIcon = document.getElementById('inline-roulette-icon');
@@ -325,12 +348,12 @@ function showRouletteInline(targetName, finalPenalty, onCloseCallback) {
   }
 
   const options = [
-    { name: "SIN FLASH", icon: "⚡", desc: "¡Prohibido usar el Hechizo de Invocador Flash en la siguiente partida!" },
-    { name: "AUTOFILL / ROL SECUNDARIO", icon: "🎲", desc: "¡Debéis jugar la siguiente partida en rol autofill / secundario!" },
-    { name: "SIN BOTAS", icon: "👢", desc: "¡Prohibido comprar o usar botas durante toda la siguiente partida!" }
+    { name: "POLIVALENTE", icon: "🎲" }, { name: "SIN CAMPEÓN FAVORITO", icon: "🚫" },
+    { name: "CAMPEÓN ALEATORIO", icon: "🎯" }, { name: "SIN FLASH", icon: "⚡" },
+    { name: "BOTAS BÁSICAS HASTA 15", icon: "👢" }, { name: "DEVUELVE EL CAPARAZÓN", icon: "↩️" }
   ];
 
-  if (targetText) targetText.textContent = `Lanzando Caparazón Azul contra ${targetName}...`;
+  if (targetText) targetText.textContent = `Tu equipo está girando el Caparazón Azul...`;
   container.style.display = 'block';
   if (resultDesc) resultDesc.style.display = 'none';
 
@@ -358,18 +381,24 @@ function showRouletteInline(targetName, finalPenalty, onCloseCallback) {
       }
 
       if (resultDesc) {
-        resultDesc.innerHTML = `<i class="fa-solid fa-bullhorn"></i> <strong>Castigo asignado a ${escapeHtml(targetName)}:</strong> ${escapeHtml(finalPenalty.desc || '')}`;
+        resultDesc.innerHTML = `<i class="fa-solid fa-bullhorn"></i> <strong>${escapeHtml(finalPenalty.name || 'Resultado')}:</strong> ${escapeHtml(finalPenalty.desc || '')}`;
         resultDesc.style.display = 'block';
       }
 
       setTimeout(() => {
         container.style.display = 'none';
         if (onCloseCallback) onCloseCallback();
-      }, 3500);
+      }, 8500);
     }
   }
 
   cycle();
+}
+
+function formatIsoDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('es-ES');
 }
 
 function showPlayerToast(msg, isError = false) {

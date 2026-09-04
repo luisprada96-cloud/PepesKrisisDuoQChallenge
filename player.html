@@ -161,22 +161,26 @@
               🐢⚡ ¡Lanzar Caparazón Azul!
             </button>
 
-            <!-- Inline Roulette Box (under button) -->
-            <div id="inline-roulette-container" style="display: none; margin-top: 1.25rem; background: rgba(7, 10, 18, 0.95); border: 2px solid var(--gold-hextech); border-radius: 12px; padding: 1.25rem; text-align: center; box-shadow: 0 0 20px rgba(245, 197, 66, 0.3);">
-              <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading); margin-bottom: 0.5rem;" id="inline-target-name">
-                Lanzando ataque...
-              </div>
-              <div id="inline-roulette-box" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; font-family: var(--font-heading); font-size: 1.2rem; font-weight: 800; color: #fff; padding: 0.75rem; background: rgba(0,0,0,0.6); border-radius: 8px; border: 1px solid var(--cyan-primary);">
-                <span id="inline-roulette-icon" style="font-size: 1.8rem;">⚡</span>
-                <span id="inline-roulette-name">GIRANDO...</span>
-              </div>
-              <div id="inline-roulette-desc" style="display: none; margin-top: 0.8rem; font-size: 0.85rem; font-weight: 700; color: var(--gold-hextech); background: rgba(245, 197, 66, 0.1); padding: 0.6rem; border-radius: 6px; border: 1px dashed var(--gold-hextech);">
-              </div>
-            </div>
           </form>
+          <div id="outgoing-shells-list" style="margin-top: 1rem;"></div>
         </div>
 
       </div>
+
+      <section class="admin-card" id="pending-shells-section" style="display: none; border-color: rgba(0, 240, 255, 0.55); background: rgba(0, 240, 255, 0.06); margin-top: 2rem;">
+        <h2 class="admin-card-title" style="color: var(--cyan-primary); margin-bottom: 1rem;">
+          <i class="fa-solid fa-gift"></i> Caparazones pendientes de girar
+        </h2>
+        <div id="pending-shells-list"></div>
+        <div id="inline-roulette-container" style="display: none; margin-top: 1.25rem; background: rgba(7, 10, 18, 0.95); border: 2px solid var(--gold-hextech); border-radius: 12px; padding: 1.25rem; text-align: center; box-shadow: 0 0 20px rgba(245, 197, 66, 0.3);">
+          <div id="inline-target-name" style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading); margin-bottom: 0.5rem;">Girando ruleta...</div>
+          <div id="inline-roulette-box" style="display: flex; align-items: center; justify-content: center; gap: 0.75rem; font-family: var(--font-heading); font-size: 1.2rem; font-weight: 800; color: #fff; padding: 0.75rem; background: rgba(0,0,0,0.6); border-radius: 8px; border: 1px solid var(--cyan-primary);">
+            <span id="inline-roulette-icon" style="font-size: 1.8rem;">🎰</span>
+            <span id="inline-roulette-name">GIRANDO...</span>
+          </div>
+          <div id="inline-roulette-desc" style="display: none; margin-top: 0.8rem; font-size: 0.85rem; font-weight: 700; color: var(--gold-hextech); background: rgba(245, 197, 66, 0.1); padding: 0.6rem; border-radius: 6px; border: 1px dashed var(--gold-hextech);"></div>
+        </div>
+      </section>
 
       <!-- Active Debuffs (Castigos Recibidos) Section -->
       <section class="admin-card" style="border-color: rgba(255, 77, 77, 0.4); background: rgba(255, 77, 77, 0.05); margin-top: 2rem;">

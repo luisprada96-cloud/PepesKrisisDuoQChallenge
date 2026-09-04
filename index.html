@@ -86,7 +86,7 @@
         </div>
 
         <div class="stat-card">
-          <div class="stat-label">Dúos Jugando Ahora</div>
+          <div class="stat-label">Dúos en Directo</div>
           <div class="stat-value" style="color: var(--win-green);" id="stat-live-count">0</div>
         </div>
       </div>
@@ -132,15 +132,15 @@
   <main class="leaderboard-section" id="leaderboard">
     <div class="container">
       <div class="leaderboard-container">
-        <table class="leaderboard-table">
+        <table class="leaderboard-table main-leaderboard-table">
           <thead>
             <tr>
               <th style="width: 70px;">Pos</th>
               <th>Nombre Dúo</th>
-              <th>Jugadores</th>
               <th>Liga / Rango</th>
               <th>Winrate %</th>
               <th>Racha</th>
+              <th>Caparazones</th>
               <th style="width: 120px;">Acción</th>
             </tr>
           </thead>
@@ -151,6 +151,49 @@
       </div>
     </div>
   </main>
+
+  <!-- Individual Statistics Leaders -->
+  <section class="container fun-stats-section" aria-labelledby="fun-stats-title">
+    <div class="fun-stats-card">
+      <div class="fun-stats-heading">
+        <div>
+          <span class="section-eyebrow">Salón de la fama y la vergüenza</span>
+          <h2 id="fun-stats-title"><i class="fa-solid fa-chart-simple"></i> Estadísticas</h2>
+        </div>
+        <span>Totales individuales desde el inicio del reto</span>
+      </div>
+      <div id="fun-stats-grid" class="fun-stats-grid"></div>
+    </div>
+  </section>
+
+  <!-- Best Combined KDA Matches -->
+  <section class="container best-matches-section" aria-labelledby="best-matches-title">
+    <div class="best-matches-card">
+      <div class="best-matches-heading">
+        <div>
+          <span class="section-eyebrow">Rendimiento destacado</span>
+          <h2 id="best-matches-title"><i class="fa-solid fa-star"></i> Mejor partida de cada dúo</h2>
+        </div>
+        <span class="kda-formula">KDA combinado = (K + A) ÷ muertes</span>
+      </div>
+      <div class="best-matches-table-wrap">
+        <table class="leaderboard-table best-matches-table">
+          <thead>
+            <tr>
+              <th>Pos</th>
+              <th>Dúo</th>
+              <th>Campeones</th>
+              <th>Líneas</th>
+              <th>KDA combinado</th>
+              <th>Marcador</th>
+              <th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody id="best-matches-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
   <!-- Recent Attacks & Blue Shells Log Section -->
   <section class="container" id="attacks-log-section" style="margin-bottom: 3rem;">

@@ -10,11 +10,12 @@ Permite seguir en tiempo real la clasificación de varios dúos en Ranked Solo/D
 
 - **🎮 Sincronización en Tiempo Real con Riot API**: Seguimiento automático de Elo, Tier, División, LP, Victorias, Derrotas y Racha activa cada 5 minutos.
 - **🐢 Sistema de Caparazones Azules**:
-  - Ganar 2 partidas consecutivas o lograr una **Pentakill** otorga 1 Caparazón Azul.
+  - Ganar 3 partidas consecutivas o lograr una **Pentakill** otorga 1 Caparazón Azul.
   - Los equipos pueden lanzar caparazones contra sus rivales para imponer castigos aleatorios (*Sin Botas*, *Sin Flash*, *Autofill*, etc.).
 - **📊 Historial de Partidas Ordenado Cronológicamente**: Muestra los campeones jugados, KDA, duración y ganancia/pérdida de LP de cada partida.
 - **🔐 Panel de Jugador & Panel de Administración**: Interfaz protegida para que los jugadores gestionen su inventario de caparazones y los administradores configuren el torneo.
 - **🖼️ Avatares de Invocador Dinámicos**: Carga de iconos oficiales de LoL mediante Data Dragon CDN (v15.3.1).
+- **🟣 Estado de Twitch**: Enlace por equipo y detección automática de emisiones en directo cada 5 minutos.
 
 ---
 
@@ -25,7 +26,7 @@ Permite seguir en tiempo real la clasificación de varios dúos en Ranked Solo/D
 - `admin.html` / `admin.js` — Panel de administración protegidos por PIN.
 - `server.py` — Servidor HTTP en Python con daemon en segundo plano para sincronizar con la Riot Games API.
 - `db.json` — Base de datos JSON ligera y persistente.
-- `index.css` — Sistema de estilos moderno y fluido (dark mode con estética Hextech).
+- `styles.css` — Sistema de estilos moderno y fluido (dark mode con estética Hextech).
 
 ---
 
@@ -45,6 +46,27 @@ Permite seguir en tiempo real la clasificación de varios dúos en Ranked Solo/D
 
 3. **Abrir en el Navegador**:
    Navega a `http://localhost:8085`.
+
+## 🟣 Configurar Twitch
+
+1. Registra una aplicación en [Twitch Developers](https://dev.twitch.tv/console/apps).
+2. Copia el **Client ID** y genera un **Client Secret** desde la pantalla de administración de la aplicación.
+3. Entra en `http://localhost:8085/admin.html`, introduce ambas credenciales y guarda la configuración.
+4. Usa **Comprobar Twitch ahora** para probarlas sin esperar al siguiente ciclo automático.
+
+El Client Secret se almacena localmente en `secrets.json`, un archivo ignorado por Git. En despliegues se recomienda configurar las variables de entorno `TWITCH_CLIENT_ID` y `TWITCH_CLIENT_SECRET`.
+
+## 🔐 Credenciales de producción
+
+El PIN de administración y las contraseñas de los equipos se almacenan como hashes PBKDF2. Las claves de API no se guardan en `db.json`.
+
+En Render configura estas variables de entorno:
+
+- `RIOT_API_KEY`
+- `TWITCH_CLIENT_ID`
+- `TWITCH_CLIENT_SECRET`
+
+En local, las claves introducidas desde el panel de administración se guardan en `secrets.json`, que está excluido de Git.
 
 ---
 

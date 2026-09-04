@@ -8,6 +8,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentDuos = [];
 let currentConfig = {};
+const expandedDuoIds = new Set();
+
+const POSITION_LABELS = {
+  TOP: 'Top',
+  JUNGLE: 'Jungla',
+  MIDDLE: 'Mid',
+  BOTTOM: 'ADC',
+  UTILITY: 'Support',
+  UNKNOWN: 'Sin datos'
+};
 
 async function initApp() {
   currentDuos = await DataStore.getDuos();
@@ -17,6 +27,8 @@ async function initApp() {
   startCountdownTimer();
   renderStatsOverview();
   renderLeaderboardTable();
+  renderFunStatistics();
+  renderBestMatchesTable();
   await renderRecentAttacksTable();
   setupEventListeners();
 
@@ -26,6 +38,8 @@ async function initApp() {
       currentDuos = await DataStore.getDuos();
       renderStatsOverview();
       renderLeaderboardTable();
+      renderFunStatistics();
+      renderBestMatchesTable();
       await renderRecentAttacksTable();
     } catch (e) {
       console.warn("Error en auto-refresco del panel:", e);
@@ -85,11 +99,11 @@ function renderStatsOverview() {
   let liveCount = 0;
   currentDuos.forEach(d => {
     totalGames += (d.wins + d.losses);
-    if (d.isLive) liveCount++;
+    if (d.twitchIsLive === true) liveCount++;
   });
 
   if (totalGamesEl) totalGamesEl.textContent = totalGames;
-  if (liveCountEl) liveCountEl.textContent = `${liveCount} Jugadores`;
+  if (liveCountEl) liveCountEl.textContent = `${liveCount} ${liveCount === 1 ? 'Dúo' : 'Dúos'}`;
 
   const sorted = [...currentDuos].sort((a, b) => b.netLp - a.netLp);
   if (topDuoEl && sorted.length > 0) {
@@ -98,6 +112,54 @@ function renderStatsOverview() {
 }
 
 /* Leaderboard Rendering */
+function toggleDuoAccordion(duoId) {
+  const wasExpanded = expandedDuoIds.has(duoId);
+  expandedDuoIds.clear();
+  if (!wasExpanded) expandedDuoIds.add(duoId);
+  renderLeaderboardTable();
+}
+
+function renderPlayerInsightCard(player, insight) {
+  const champion = insight && insight.topChampion;
+  const position = insight && insight.mostPlayedPosition;
+  const playerName = player && player.name ? player.name : 'Jugador';
+  const mainRoleLabel = POSITION_LABELS[player && player.mainRole] || 'Sin configurar';
+
+  if (!champion) {
+    return `
+      <article class="player-insight-card is-empty">
+        <img class="insight-player-avatar" src="${escapeHtml(player && player.avatar ? player.avatar : '')}" alt="${escapeHtml(playerName)}" onerror="this.style.display='none';">
+        <div>
+          <h3>${escapeHtml(playerName)}</h3>
+          <p>Estadísticas pendientes de recuperar desde Riot.</p>
+          <div class="insight-role-summary"><span>Rol principal</span><strong>${mainRoleLabel}</strong></div>
+        </div>
+      </article>
+    `;
+  }
+
+  const championName = escapeHtml(champion.name || 'Unknown');
+  const positionLabel = POSITION_LABELS[position && position.position] || 'Sin datos';
+  return `
+    <article class="player-insight-card">
+      <img class="insight-champion-icon" src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${championName}.png" alt="${championName}" onerror="this.onerror=null; this.src='${escapeHtml(player && player.avatar ? player.avatar : '')}';">
+      <div class="insight-content">
+        <div class="insight-heading">
+          <h3>${escapeHtml(playerName)}</h3>
+          <span>${championName}</span>
+        </div>
+        <div class="insight-metrics">
+          <div><span>Partidas</span><strong>${Number(champion.games) || 0}</strong></div>
+          <div><span>KDA</span><strong>${Number(champion.kda || 0).toFixed(2)}</strong></div>
+          <div><span>Winrate</span><strong>${Number(champion.winrate) || 0}%</strong></div>
+          <div><span>Rol principal</span><strong>${mainRoleLabel}</strong></div>
+          <div><span>Más jugada</span><strong>${positionLabel}</strong></div>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function renderLeaderboardTable() {
   const tbody = document.getElementById('leaderboard-tbody');
   if (!tbody) return;
@@ -160,47 +222,54 @@ function renderLeaderboardTable() {
     else if (rankPos === 2) posClass += ' rank-2';
     else if (rankPos === 3) posClass += ' rank-3';
 
+    const currentStreakCount = Number(duo.currentStreakCount) || 0;
+    const currentStreakType = duo.currentStreakType;
     let streakBadge = '';
-    if (duo.streak > 0) {
-      streakBadge = `<span class="streak-pill streak-win"><i class="fa-solid fa-fire"></i> ${duo.streak}W</span>`;
-    } else if (duo.streak < 0) {
-      streakBadge = `<span class="streak-pill streak-loss"><i class="fa-solid fa-snowflake"></i> ${Math.abs(duo.streak)}L</span>`;
+    if (currentStreakCount >= 3 && currentStreakType === 'WIN') {
+      streakBadge = `<span class="streak-pill streak-win" title="${currentStreakCount} victorias consecutivas"><span class="streak-icon" aria-hidden="true">📈</span><span>${currentStreakCount}W</span></span>`;
+    } else if (currentStreakCount >= 3 && currentStreakType === 'LOSS') {
+      streakBadge = `<span class="streak-pill streak-loss" title="${currentStreakCount} derrotas consecutivas"><span class="streak-icon" aria-hidden="true">📉</span><span>${currentStreakCount}L</span></span>`;
     } else {
-      streakBadge = `<span class="streak-pill" style="background: rgba(255,255,255,0.1);">-</span>`;
+      streakBadge = `<span class="streak-pill streak-neutral" title="Sin racha activa de 3 o más partidas">-</span>`;
     }
 
     const hasP2 = duo.player2 && duo.player2.name;
+    const twitchUrl = normalizeTwitchUrl(duo.twitchUrl);
+    const isTwitchLive = Boolean(twitchUrl && duo.twitchIsLive === true);
+    const isExpanded = expandedDuoIds.has(duo.id);
+    const accordionId = `duo-insights-${duo.id}`;
 
     const tr = document.createElement('tr');
-    tr.className = 'duo-row';
+    tr.className = `duo-row${isExpanded ? ' is-expanded' : ''}`;
     tr.setAttribute('data-id', duo.id);
-    tr.onclick = () => openDuoModal(duo.id);
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('tabindex', '0');
+    tr.setAttribute('aria-expanded', String(isExpanded));
+    tr.setAttribute('aria-controls', accordionId);
+    tr.onclick = () => toggleDuoAccordion(duo.id);
+    tr.onkeydown = event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        toggleDuoAccordion(duo.id);
+      }
+    };
 
     tr.innerHTML = `
       <td>
         <div class="${posClass}">${rankPos}</div>
       </td>
       <td>
-        <div style="font-weight: 800; font-size: 1.05rem; color: var(--gold-hextech); display: flex; align-items: center; gap: 0.5rem;">
-          <i class="fa-solid fa-users text-cyan" style="font-size: 0.9rem;"></i>
-          <span>${escapeHtml(duo.teamName)}</span>
-        </div>
-      </td>
-      <td>
-        <div class="duo-team-cell">
-          <div class="players-avatars">
-            <img class="player-avatar" src="${duo.player1.avatar}" alt="${duo.player1.name}" title="${duo.player1.name}#${duo.player1.tag}" onerror="this.onerror=null; this.src='https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/29.png';">
-            ${hasP2 ? `<img class="player-avatar" src="${duo.player2.avatar}" alt="${duo.player2.name}" title="${duo.player2.name}#${duo.player2.tag}" onerror="this.onerror=null; this.src='https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/1.png';">` : ''}
+        <div class="team-name-cell">
+          <div class="team-name-heading">
+            <i class="fa-solid fa-users text-cyan" aria-hidden="true"></i>
+            <span>${escapeHtml(duo.teamName)}</span>
           </div>
-          <div class="duo-names">
-            <div class="duo-team-name">
-              ${escapeHtml(duo.player1.name)}#${escapeHtml(duo.player1.tag)}
-              ${duo.isLive ? '<span class="badge-live">EN PARTIDA</span>' : ''}
-            </div>
-            <div class="player-tags">
-              ${hasP2 ? `${escapeHtml(duo.player1.name)} & ${escapeHtml(duo.player2.name)}` : `Jugador Individual`}
-            </div>
-          </div>
+          ${twitchUrl ? `
+            <a class="twitch-link${isTwitchLive ? ' is-live' : ''}" href="${escapeHtml(twitchUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" aria-label="Ver a ${escapeHtml(duo.teamName)} en Twitch${isTwitchLive ? ' — en directo' : ''}">
+              <i class="fa-brands fa-twitch" aria-hidden="true"></i>
+              ${isTwitchLive ? '<span class="live-dot" aria-hidden="true"></span> EN DIRECTO' : 'Ver en Twitch'}
+            </a>
+          ` : ''}
         </div>
       </td>
       <td>
@@ -224,13 +293,191 @@ function renderLeaderboardTable() {
         ${streakBadge}
       </td>
       <td>
-        <button class="btn-refresh" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;">
+        <div class="shells-summary-cell" aria-label="${Number(duo.shellsLaunched) || 0} caparazones lanzados y ${Number(duo.shellsReceived) || 0} recibidos">
+          <span class="shell-count shell-count-launched" title="Caparazones lanzados">
+            <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+            <strong>${Number(duo.shellsLaunched) || 0}</strong>
+            <small>Lanzados</small>
+          </span>
+          <span class="shell-count-divider" aria-hidden="true"></span>
+          <span class="shell-count shell-count-received" title="Caparazones recibidos">
+            <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+            <strong>${Number(duo.shellsReceived) || 0}</strong>
+            <small>Recibidos</small>
+          </span>
+        </div>
+      </td>
+      <td>
+        <div class="leaderboard-actions">
+        <button type="button" class="btn-refresh" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" onclick="event.stopPropagation(); openDuoModal('${escapeHtml(duo.id)}')">
           Ver Partidas <i class="fa-solid fa-chevron-right"></i>
         </button>
+        <i class="fa-solid fa-chevron-down accordion-chevron" aria-hidden="true"></i>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
+
+    const detailsRow = document.createElement('tr');
+    detailsRow.id = accordionId;
+    detailsRow.className = 'duo-insights-row';
+    detailsRow.hidden = !isExpanded;
+    const insights = duo.playerInsights || {};
+    const backfill = duo.statsBackfill || {};
+    const pendingText = Number(backfill.remaining) > 0
+      ? `<span class="insights-backfill"><i class="fa-solid fa-rotate"></i> Recuperando ${Number(backfill.remaining)} partidas pendientes</span>`
+      : '';
+    detailsRow.innerHTML = `
+      <td colspan="7">
+        <section class="duo-insights-panel" aria-label="Estadísticas individuales de ${escapeHtml(duo.teamName)}">
+          <div class="insights-panel-heading">
+            <span>Estadísticas individuales · Solo/Duo desde el inicio del reto</span>
+            ${pendingText}
+          </div>
+          <div class="player-insights-grid">
+            ${renderPlayerInsightCard(duo.player1, insights.player1)}
+            ${hasP2 ? renderPlayerInsightCard(duo.player2, insights.player2) : ''}
+          </div>
+        </section>
+      </td>
+    `;
+    tbody.appendChild(detailsRow);
   });
+}
+
+function renderBestMatchesTable() {
+  const tbody = document.getElementById('best-matches-tbody');
+  if (!tbody) return;
+
+  const ranked = [...currentDuos].sort((a, b) => {
+      const matchA = a.bestCombinedKdaMatch;
+      const matchB = b.bestCombinedKdaMatch;
+      if (!matchA && !matchB) return a.teamName.localeCompare(b.teamName);
+      if (!matchA) return 1;
+      if (!matchB) return -1;
+      return (matchB.combinedKda - matchA.combinedKda) ||
+        ((matchB.kills + matchB.assists) - (matchA.kills + matchA.assists)) ||
+        (matchA.deaths - matchB.deaths);
+    });
+
+  if (ranked.length === 0) {
+    const pending = currentDuos.reduce((total, duo) => total + Number(duo.statsBackfill && duo.statsBackfill.remaining || 0), 0);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="best-matches-empty">
+          <i class="fa-solid fa-rotate"></i>
+          ${pending > 0 ? `Esperando las estadísticas de ${pending} partidas de Riot.` : 'Todavía no hay partidas completas para comparar.'}
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = ranked.map((duo, index) => {
+    const match = duo.bestCombinedKdaMatch;
+    if (!match) {
+      return `
+        <tr class="best-match-unavailable">
+          <td><span class="best-match-position">—</span></td>
+          <td><strong class="best-match-team">${escapeHtml(duo.teamName)}</strong></td>
+          <td colspan="5">
+            <span class="best-match-no-data"><i class="fa-solid fa-users-slash"></i> Sin partidas registradas con ambos integrantes</span>
+          </td>
+        </tr>
+      `;
+    }
+    const p1 = match.player1;
+    const p2 = match.player2;
+    const p1Champion = escapeHtml(p1.championName || 'Unknown');
+    const p2Champion = escapeHtml(p2.championName || 'Unknown');
+    const p1Position = POSITION_LABELS[p1.position] || 'Sin datos';
+    const p2Position = POSITION_LABELS[p2.position] || 'Sin datos';
+    const resultClass = match.result === 'WIN' ? 'best-result-win' : 'best-result-loss';
+    const resultLabel = match.result === 'WIN' ? 'Victoria' : 'Derrota';
+
+    return `
+      <tr>
+        <td><span class="best-match-position">${index + 1}</span></td>
+        <td><strong class="best-match-team">${escapeHtml(duo.teamName)}</strong><span class="best-match-date">${escapeHtml(match.date || '')}</span></td>
+        <td>
+          <div class="best-champions">
+            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p1Champion}.png" alt="${p1Champion}"> ${p1Champion}</span>
+            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p2Champion}.png" alt="${p2Champion}"> ${p2Champion}</span>
+          </div>
+        </td>
+        <td><span class="best-lines">${p1Position} <i class="fa-solid fa-plus"></i> ${p2Position}</span></td>
+        <td><strong class="combined-kda">${Number(match.combinedKda).toFixed(2)}</strong></td>
+        <td><strong>${match.kills}/${match.deaths}/${match.assists}</strong><span class="best-match-date">${escapeHtml(p1.kda)} · ${escapeHtml(p2.kda)}</span></td>
+        <td><span class="best-result ${resultClass}">${resultLabel}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderFunStatistics() {
+  const container = document.getElementById('fun-stats-grid');
+  if (!container) return;
+
+  const players = currentDuos.flatMap(duo => ['player1', 'player2'].map(playerKey => {
+    const player = duo[playerKey];
+    const insight = duo.playerInsights && duo.playerInsights[playerKey];
+    if (!player || !player.name || !insight || !insight.totals || !Number(insight.gamesAnalyzed)) return null;
+    return {
+      name: player.name,
+      tag: player.tag || '',
+      avatar: player.avatar || '',
+      teamName: duo.teamName,
+      games: Number(insight.gamesAnalyzed) || 0,
+      kills: Number(insight.totals.kills) || 0,
+      deaths: Number(insight.totals.deaths) || 0,
+      assists: Number(insight.totals.assists) || 0
+    };
+  })).filter(Boolean);
+
+  const metrics = [
+    {key: 'kills', title: 'Kills', subtitle: 'Más asesinatos', icon: 'fa-crosshairs', accent: 'kills'},
+    {key: 'deaths', title: 'Muertes', subtitle: 'Más veces eliminado', icon: 'fa-skull', accent: 'deaths'},
+    {key: 'assists', title: 'Asistencias', subtitle: 'Más asistencias', icon: 'fa-handshake-angle', accent: 'assists'}
+  ];
+
+  if (!players.length) {
+    container.innerHTML = '<p class="fun-stats-empty"><i class="fa-solid fa-hourglass-half"></i> Recuperando estadísticas individuales desde Riot.</p>';
+    return;
+  }
+
+  container.innerHTML = metrics.map(metric => {
+    const leaders = [...players]
+      .sort((a, b) => b[metric.key] - a[metric.key] || b.games - a.games || a.name.localeCompare(b.name))
+      .slice(0, 5);
+    const winner = leaders[0];
+    const rest = leaders.slice(1);
+    return `
+      <article class="fun-stat-column fun-stat-${metric.accent}">
+        <header>
+          <i class="fa-solid ${metric.icon}" aria-hidden="true"></i>
+          <div><h3>${metric.title}</h3><span>${metric.subtitle}</span></div>
+        </header>
+        <div class="fun-stat-winner">
+          <span class="fun-stat-rank">1</span>
+          <img src="${escapeHtml(winner.avatar)}" alt="${escapeHtml(winner.name)}" onerror="this.style.visibility='hidden';">
+          <div class="fun-stat-player">
+            <strong>${escapeHtml(winner.name)}${winner.tag ? `#${escapeHtml(winner.tag)}` : ''}</strong>
+            <span>${escapeHtml(winner.teamName)} · ${winner.games} partidas</span>
+          </div>
+          <b>${winner[metric.key]}</b>
+        </div>
+        <ol class="fun-stat-list">
+          ${rest.map((player, index) => `
+            <li>
+              <span class="fun-stat-rank">${index + 2}</span>
+              <img src="${escapeHtml(player.avatar)}" alt="" onerror="this.style.visibility='hidden';">
+              <span class="fun-stat-player"><strong>${escapeHtml(player.name)}</strong><small>${escapeHtml(player.teamName)} · ${player.games} partidas</small></span>
+              <b>${player[metric.key]}</b>
+            </li>
+          `).join('')}
+        </ol>
+      </article>`;
+  }).join('');
 }
 
 async function renderRecentAttacksTable() {
@@ -330,6 +577,7 @@ async function triggerManualSync() {
 
     renderStatsOverview();
     renderLeaderboardTable();
+    renderBestMatchesTable();
 
     if (icon) icon.classList.remove('spinning');
     btnSync.disabled = false;
@@ -348,6 +596,7 @@ async function triggerFetchMatches() {
 
     renderStatsOverview();
     renderLeaderboardTable();
+    renderBestMatchesTable();
 
     if (icon) icon.classList.remove('spinning');
     btn.disabled = false;

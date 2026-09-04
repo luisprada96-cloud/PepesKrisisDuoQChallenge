@@ -8,11 +8,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let adminDuos = [];
 let adminConfig = {};
+let adminSessionPin = '';
+let penaltyCatalog = [];
+let adminPenaltyPage = 1;
+const ADMIN_PENALTIES_PAGE_SIZE = 10;
+const ADMIN_ROLE_LABELS = {
+  TOP: 'Top',
+  JUNGLE: 'Jungla',
+  MIDDLE: 'Mid',
+  BOTTOM: 'ADC',
+  UTILITY: 'Support'
+};
+
+function renderRoleOptions(selectedRole) {
+  return `<option value="">Selecciona un rol</option>` + Object.entries(ADMIN_ROLE_LABELS)
+    .map(([value, label]) => `<option value="${value}"${selectedRole === value ? ' selected' : ''}>${label}</option>`)
+    .join('');
+}
 
 async function initAdmin() {
-  adminConfig = await DataStore.getConfig();
-
-  // Check authentication
+  setupAdminListeners();
   checkAdminAuth();
 }
 
@@ -30,31 +45,174 @@ function checkAdminAuth() {
   // Focus input automatically
   setTimeout(() => pinInput && pinInput.focus(), 100);
 
-  pinForm.onsubmit = (e) => {
+  pinForm.onsubmit = async (e) => {
     e.preventDefault();
     const enteredPin = pinInput.value.trim();
-    const validPin = adminConfig.adminPin || "1234";
+    const submitButton = pinForm.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
 
-    if (enteredPin === validPin || enteredPin === "1234") {
+    const result = await DataStore.getAdminConfig(enteredPin);
+
+    if (result.success && result.config) {
+      adminSessionPin = enteredPin;
+      adminConfig = result.config;
+      penaltyCatalog = result.penaltyCatalog || [];
+      if (result.duos) adminDuos = result.duos;
+      await loadAdminData();
       pinOverlay.classList.remove('active');
       pinOverlay.style.display = 'none';
-      loadAdminData();
     } else {
       if (errorMsg) errorMsg.style.display = 'block';
       pinInput.value = '';
       pinInput.focus();
     }
+
+    if (submitButton) submitButton.disabled = false;
   };
 }
 
 async function loadAdminData() {
-  adminDuos = await DataStore.getDuos();
-  adminConfig = await DataStore.getConfig();
+  await refreshAdminData();
 
   renderAdminDuosList();
+  renderPenaltyWeights();
+  renderAdminPenalties();
   fillConfigForm();
-  setupAdminListeners();
 }
+
+async function refreshAdminData() {
+  if (adminSessionPin) {
+    const result = await DataStore.getAdminConfig(adminSessionPin);
+    if (result.success) {
+      adminDuos = result.duos || [];
+      adminConfig = result.config || adminConfig;
+      penaltyCatalog = result.penaltyCatalog || penaltyCatalog;
+      return;
+    }
+  }
+  adminDuos = await DataStore.getDuos();
+}
+
+function renderPenaltyWeights() {
+  const container = document.getElementById('penalty-weights-grid');
+  if (!container) return;
+  const weights = adminConfig.penaltyWeights || {};
+  container.innerHTML = penaltyCatalog.map(item => `
+    <label class="penalty-weight-card">
+      <span class="penalty-weight-icon">${item.icon}</span>
+      <span class="penalty-weight-copy"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.desc)}</small></span>
+      <span class="penalty-weight-input"><input type="number" min="0" max="100" step="1" value="${Number(weights[item.id] ?? item.defaultWeight ?? 0)}" data-penalty-weight="${item.id}" class="form-control"><b>%</b></span>
+    </label>
+  `).join('');
+  container.querySelectorAll('[data-penalty-weight]').forEach(input => input.addEventListener('input', updatePenaltyWeightTotal));
+  updatePenaltyWeightTotal();
+}
+
+function updatePenaltyWeightTotal() {
+  const inputs = [...document.querySelectorAll('[data-penalty-weight]')];
+  const total = inputs.reduce((sum, input) => sum + Math.max(0, Number(input.value) || 0), 0);
+  const totalEl = document.getElementById('penalty-weight-total');
+  const saveButton = document.getElementById('btn-save-penalty-weights');
+  if (totalEl) {
+    totalEl.textContent = `${total}%`;
+    totalEl.classList.toggle('is-valid', total === 100);
+    totalEl.classList.toggle('is-invalid', total !== 100);
+  }
+  if (saveButton) saveButton.disabled = total !== 100;
+}
+
+async function savePenaltyWeights() {
+  const weights = {};
+  document.querySelectorAll('[data-penalty-weight]').forEach(input => { weights[input.dataset.penaltyWeight] = Number(input.value) || 0; });
+  const result = await DataStore.saveConfig({...adminConfig, penaltyWeights: weights}, adminSessionPin);
+  if (!result.success) return alert(result.error || 'No se pudieron guardar los porcentajes.');
+  adminConfig = result.config;
+  renderPenaltyWeights();
+  alert('Porcentajes de la ruleta guardados correctamente.');
+}
+
+function renderAdminPenalties() {
+  const container = document.getElementById('admin-penalties-list');
+  if (!container) return;
+  const rows = adminDuos
+    .flatMap(duo => (duo.activeDebuffs || []).map(debuff => ({duo, debuff})))
+    .sort((a, b) => getPenaltyTimestamp(b.debuff) - getPenaltyTimestamp(a.debuff));
+  if (!rows.length) {
+    container.innerHTML = '<p class="admin-empty-state">Todavía no hay castigos asignados.</p>';
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / ADMIN_PENALTIES_PAGE_SIZE));
+  adminPenaltyPage = Math.min(Math.max(1, adminPenaltyPage), totalPages);
+  const pageRows = rows.slice(
+    (adminPenaltyPage - 1) * ADMIN_PENALTIES_PAGE_SIZE,
+    adminPenaltyPage * ADMIN_PENALTIES_PAGE_SIZE
+  );
+
+  const tableRows = pageRows.map(({duo, debuff}) => {
+    const pen = debuff.penalty || {};
+    const completed = debuff.status === 'COMPLETED' || debuff.resolved;
+    const scope = debuff.scope || pen.scope;
+    return `<tr>
+      <td><time>${escapeHtml(formatPenaltyTimestamp(debuff.assignedAt || debuff.timestamp))}</time></td>
+      <td><strong>${escapeHtml(duo.teamName || 'Equipo')}</strong></td>
+      <td><span class="admin-penalty-name">${pen.icon || '⚡'} ${escapeHtml(pen.name || 'Castigo')}</span></td>
+      <td>${escapeHtml(scope === 'BOTH' ? 'Ambos' : scope === 'SPECIAL' ? 'Especial' : 'Uno')}</td>
+      <td><span class="admin-penalty-status ${completed ? 'is-completed' : 'is-active'}">${completed ? 'Cumplido' : 'Activo'}</span></td>
+      <td>${completed ? `<time>${escapeHtml(formatPenaltyTimestamp(debuff.resolvedAt))}</time>` : '<span class="admin-penalty-empty">—</span>'}</td>
+      <td>${debuff.id ? `<button type="button" class="btn-refresh admin-penalty-action" onclick="window.adminPenaltyAction('${escapeHtml(debuff.id)}','${completed ? 'REOPEN' : 'COMPLETE'}')">${completed ? 'Reabrir' : 'Marcar cumplido'}</button>` : '<span class="legacy-penalty-label">Antiguo</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="admin-penalties-table-wrap">
+      <table class="admin-penalties-table">
+        <thead><tr><th>Recibido</th><th>Equipo</th><th>Castigo</th><th>Alcance</th><th>Estado</th><th>Resuelto</th><th>Acción</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <div class="admin-penalties-pagination">
+      <span>Página ${adminPenaltyPage} de ${totalPages} · ${rows.length} castigo${rows.length === 1 ? '' : 's'}</span>
+      <div>
+        <button type="button" class="btn-refresh" onclick="window.changeAdminPenaltyPage(-1)" ${adminPenaltyPage === 1 ? 'disabled' : ''}>Anterior</button>
+        <button type="button" class="btn-refresh" onclick="window.changeAdminPenaltyPage(1)" ${adminPenaltyPage === totalPages ? 'disabled' : ''}>Siguiente</button>
+      </div>
+    </div>`;
+}
+
+function getPenaltyTimestamp(debuff) {
+  const epoch = Number(debuff.assignedAtEpochMs);
+  if (Number.isFinite(epoch) && epoch > 0) return epoch;
+  const raw = debuff.assignedAt || debuff.timestamp || '';
+  const legacy = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (legacy) return new Date(+legacy[3], +legacy[2] - 1, +legacy[1], +(legacy[4] || 0), +(legacy[5] || 0)).getTime();
+  const parsed = Date.parse(raw);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatPenaltyTimestamp(value) {
+  if (!value) return 'Sin fecha';
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(value)) return value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString('es-ES', {dateStyle: 'short', timeStyle: 'short'});
+}
+
+window.changeAdminPenaltyPage = function(delta) {
+  adminPenaltyPage += delta;
+  renderAdminPenalties();
+};
+
+window.adminPenaltyAction = async function(instanceId, action) {
+  const defaultNote = action === 'COMPLETE' ? 'Comprobación manual del administrador' : 'Corrección: el castigo debe continuar activo';
+  const note = prompt('Motivo de la corrección administrativa:', defaultNote);
+  if (note === null) return;
+  const result = await DataStore.adminResolvePenalty(instanceId, action, note, adminSessionPin);
+  if (!result.success) return alert(result.error || 'No se pudo corregir el castigo.');
+  adminDuos = result.duos || await DataStore.getDuos();
+  renderAdminPenalties();
+};
 
 function fillConfigForm() {
   const titleInput = document.getElementById('cfg-title');
@@ -63,13 +221,30 @@ function fillConfigForm() {
   const endInput = document.getElementById('cfg-end');
   const pinInput = document.getElementById('cfg-pin');
   const keyInput = document.getElementById('cfg-riot-key');
+  const twitchClientIdInput = document.getElementById('cfg-twitch-client-id');
+  const twitchClientSecretInput = document.getElementById('cfg-twitch-client-secret');
 
   if (titleInput) titleInput.value = adminConfig.challengeTitle || '';
   if (prizeInput) prizeInput.value = adminConfig.prizePool || '';
   if (startInput) startInput.value = adminConfig.startDate || '';
   if (endInput) endInput.value = adminConfig.endDate || '';
-  if (pinInput) pinInput.value = adminConfig.adminPin || '1234';
-  if (keyInput) keyInput.value = adminConfig.riotApiKey || '';
+  if (pinInput) {
+    pinInput.value = '';
+    pinInput.placeholder = adminConfig.adminPinConfigured ? 'PIN guardado — déjalo vacío para conservarlo' : 'Nuevo PIN';
+  }
+  if (keyInput) {
+    keyInput.value = '';
+    keyInput.placeholder = adminConfig.riotApiKeyConfigured
+      ? 'Clave Riot guardada — déjala vacía para conservarla'
+      : 'RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+  }
+  if (twitchClientIdInput) twitchClientIdInput.value = adminConfig.twitchClientId || '';
+  if (twitchClientSecretInput) {
+    twitchClientSecretInput.value = '';
+    twitchClientSecretInput.placeholder = adminConfig.twitchClientSecretConfigured
+      ? 'Client Secret guardado — déjalo vacío para conservarlo'
+      : 'Introduce el Client Secret';
+  }
 }
 
 function renderAdminDuosList() {
@@ -87,26 +262,61 @@ function renderAdminDuosList() {
     const card = document.createElement('div');
     card.className = 'stat-card';
     card.style.display = 'flex';
-    card.style.justify = 'space-between';
-    card.style.alignItems = 'center';
+    card.style.flexDirection = 'column';
+    card.style.justifyContent = 'space-between';
+    card.style.alignItems = 'stretch';
+    card.style.gap = '1rem';
     card.style.marginBottom = '0.75rem';
 
     card.innerHTML = `
-      <div>
-        <div style="font-family: var(--font-heading); font-weight: 700; color: #fff; font-size: 1.05rem;">
-          #${idx + 1} ${escapeHtml(duo.teamName)}
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <div>
+          <div style="font-family: var(--font-heading); font-weight: 700; color: #fff; font-size: 1.05rem;">
+            #${idx + 1} ${escapeHtml(duo.teamName)}
+          </div>
+          <div style="font-size: 0.85rem; color: var(--text-muted);">
+            Jugador 1: <strong>${escapeHtml(duo.player1.name)}#${escapeHtml(duo.player1.tag)}</strong> |
+            Jugador 2: <strong>${escapeHtml(duo.player2.name)}#${escapeHtml(duo.player2.tag)}</strong>
+          </div>
+          ${!duo.player1.mainRole || !duo.player2.mainRole ? `
+            <div style="font-size: 0.8rem; color: var(--gold-hextech); margin-top: 0.35rem;">
+              <i class="fa-solid fa-triangle-exclamation"></i> Asigna los dos roles principales para activar la comprobación de Polivalente.
+            </div>
+          ` : ''}
+          <div style="font-size: 0.8rem; color: var(--cyan-primary); margin-top: 0.2rem;">
+            Rango: ${duo.tier} ${duo.division} (${duo.lp} LP) | Net LP: +${duo.netLp} LP | ${duo.wins}W / ${duo.losses}L
+          </div>
         </div>
-        <div style="font-size: 0.85rem; color: var(--text-muted);">
-          Jugador 1: <strong>${escapeHtml(duo.player1.name)}#${duo.player1.tag}</strong> | 
-          Jugador 2: <strong>${escapeHtml(duo.player2.name)}#${duo.player2.tag}</strong>
-        </div>
-        <div style="font-size: 0.8rem; color: var(--cyan-primary); margin-top: 0.2rem;">
-          Rango: ${duo.tier} ${duo.division} (${duo.lp} LP) | Net LP: +${duo.netLp} LP | ${duo.wins}W / ${duo.losses}L
+        <div>
+          <button class="btn-danger" onclick="handleDeleteDuo('${duo.id}')">
+            <i class="fa-solid fa-trash"></i> Eliminar
+          </button>
         </div>
       </div>
-      <div style="display: flex; gap: 0.5rem;">
-        <button class="btn-danger" onclick="handleDeleteDuo('${duo.id}')">
-          <i class="fa-solid fa-trash"></i> Eliminar
+      <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap;">
+        <div class="form-group" style="flex: 1 1 220px; margin: 0;">
+          <label for="p1-role-${duo.id}">Rol principal · ${escapeHtml(duo.player1.name)}</label>
+          <select id="p1-role-${duo.id}" class="form-control" required>
+            ${renderRoleOptions(duo.player1.mainRole)}
+          </select>
+        </div>
+        <div class="form-group" style="flex: 1 1 220px; margin: 0;">
+          <label for="p2-role-${duo.id}">Rol principal · ${escapeHtml(duo.player2.name)}</label>
+          <select id="p2-role-${duo.id}" class="form-control" required>
+            ${renderRoleOptions(duo.player2.mainRole)}
+          </select>
+        </div>
+        <button class="btn-refresh" onclick="handleSaveRoles('${duo.id}')" style="height: fit-content;">
+          <i class="fa-solid fa-user-tag"></i> Guardar roles
+        </button>
+      </div>
+      <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap;">
+        <div class="form-group" style="flex: 1 1 320px; margin: 0;">
+          <label for="twitch-url-${duo.id}">Canal de Twitch</label>
+          <input type="url" id="twitch-url-${duo.id}" class="form-control" value="${escapeHtml(duo.twitchUrl || '')}" placeholder="https://www.twitch.tv/nombre_del_canal">
+        </div>
+        <button class="btn-refresh" onclick="handleSaveTwitch('${duo.id}')" style="height: fit-content;">
+          <i class="fa-brands fa-twitch"></i> Guardar Twitch
         </button>
       </div>
     `;
@@ -115,10 +325,15 @@ function renderAdminDuosList() {
 }
 
 function setupAdminListeners() {
+  if (document.body.dataset.adminListenersReady === 'true') return;
+  document.body.dataset.adminListenersReady = 'true';
+
   const addForm = document.getElementById('add-duo-form');
   const cfgForm = document.getElementById('config-form');
   const btnReset = document.getElementById('btn-reset-data');
   const btnExport = document.getElementById('btn-export-data');
+  const btnSyncTwitch = document.getElementById('btn-sync-twitch-admin');
+  const btnSavePenaltyWeights = document.getElementById('btn-save-penalty-weights');
 
   if (addForm) {
     addForm.addEventListener('submit', async (e) => {
@@ -154,6 +369,29 @@ function setupAdminListeners() {
       a.click();
     });
   }
+
+  if (btnSyncTwitch) {
+    btnSyncTwitch.addEventListener('click', async () => {
+      const icon = btnSyncTwitch.querySelector('i');
+      if (icon) icon.classList.add('spinning');
+      btnSyncTwitch.disabled = true;
+
+      const result = await DataStore.triggerTwitchSync(adminSessionPin);
+      if (result.success) {
+        adminDuos = result.duos || await DataStore.getDuos();
+        renderAdminDuosList();
+        const message = `Twitch comprobado: ${result.checked || 0} canal(es), ${result.live || 0} en directo.`;
+        window.showToast ? showToast(message, 'success') : alert(message);
+      } else {
+        alert(result.error || 'No se pudo comprobar el estado de Twitch.');
+      }
+
+      if (icon) icon.classList.remove('spinning');
+      btnSyncTwitch.disabled = false;
+    });
+  }
+
+  if (btnSavePenaltyWeights) btnSavePenaltyWeights.addEventListener('click', savePenaltyWeights);
 
   const btnCalcShells = document.getElementById('btn-calc-shells');
   if (btnCalcShells) {
@@ -236,8 +474,8 @@ function setupAdminListeners() {
   if (btnConfirmDel) {
     btnConfirmDel.onclick = async () => {
       if (pendingDeleteId) {
-        await DataStore.deleteDuo(pendingDeleteId);
-        adminDuos = await DataStore.getDuos();
+        await DataStore.deleteDuo(pendingDeleteId, adminSessionPin);
+        await refreshAdminData();
         renderAdminDuosList();
         pendingDeleteId = null;
       }
@@ -251,11 +489,22 @@ async function addNewDuo() {
   const p1NameTag = document.getElementById('new-p1').value.trim();
   const p2NameTag = document.getElementById('new-p2').value.trim();
   const tier = document.getElementById('new-tier').value;
+  const p1Role = document.getElementById('new-p1-role').value;
+  const p2Role = document.getElementById('new-p2-role').value;
   const pwdInput = document.getElementById('new-password');
   const password = (pwdInput && pwdInput.value.trim()) ? pwdInput.value.trim() : "1234";
+  const twitchInput = document.getElementById('new-twitch-url');
+  const rawTwitchUrl = twitchInput ? twitchInput.value.trim() : '';
+  const twitchUrl = normalizeTwitchUrl(rawTwitchUrl);
 
-  if (!teamName || !p1NameTag || !p2NameTag) {
+  if (!teamName || !p1NameTag || !p2NameTag || !p1Role || !p2Role) {
     alert("Por favor rellena todos los campos del nuevo dúo.");
+    return;
+  }
+
+  if (rawTwitchUrl && !twitchUrl) {
+    alert("Introduce una URL válida de canal de Twitch, por ejemplo: https://www.twitch.tv/nombre_del_canal");
+    twitchInput.focus();
     return;
   }
 
@@ -265,17 +514,20 @@ async function addNewDuo() {
   const newDuo = {
     id: `duo-${Date.now()}`,
     teamName: teamName,
+    twitchUrl: twitchUrl,
     password: password,
     blueShells: 0,
     player1: {
       name: p1Name,
       tag: p1Tag,
+      mainRole: p1Role,
       avatar: `https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/29.png`,
       champ: "LeeSin"
     },
     player2: {
       name: p2Name,
       tag: p2Tag,
+      mainRole: p2Role,
       avatar: `https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/1.png`,
       champ: "Ahri"
     },
@@ -291,12 +543,66 @@ async function addNewDuo() {
     history: []
   };
 
-  await DataStore.saveDuo(newDuo);
-  adminDuos = await DataStore.getDuos();
+  const result = await DataStore.saveDuo(newDuo, adminSessionPin);
+  if (!result || result.success === false) {
+    alert((result && result.error) || 'No se pudo añadir el dúo.');
+    return;
+  }
+  await refreshAdminData();
   renderAdminDuosList();
 
   document.getElementById('add-duo-form').reset();
   alert(`¡Dúo "${teamName}" añadido correctamente!`);
+}
+
+async function handleSaveRoles(id) {
+  const duo = adminDuos.find(d => d.id === id);
+  const p1Input = document.getElementById(`p1-role-${id}`);
+  const p2Input = document.getElementById(`p2-role-${id}`);
+  if (!duo || !p1Input || !p2Input) return;
+
+  if (!p1Input.value || !p2Input.value) {
+    alert('Debes seleccionar el rol principal de ambos integrantes.');
+    (!p1Input.value ? p1Input : p2Input).focus();
+    return;
+  }
+
+  duo.player1.mainRole = p1Input.value;
+  duo.player2.mainRole = p2Input.value;
+  const result = await DataStore.saveDuo(duo, adminSessionPin);
+  if (!result || result.success === false) {
+    alert((result && result.error) || 'No se pudieron guardar los roles.');
+    return;
+  }
+
+  await refreshAdminData();
+  renderAdminDuosList();
+  alert(`Roles principales guardados para "${duo.teamName}".`);
+}
+
+async function handleSaveTwitch(id) {
+  const duo = adminDuos.find(d => d.id === id);
+  const input = document.getElementById(`twitch-url-${id}`);
+  if (!duo || !input) return;
+
+  const rawTwitchUrl = input.value.trim();
+  const twitchUrl = normalizeTwitchUrl(rawTwitchUrl);
+
+  if (rawTwitchUrl && !twitchUrl) {
+    alert("Introduce una URL válida de canal de Twitch, por ejemplo: https://www.twitch.tv/nombre_del_canal");
+    input.focus();
+    return;
+  }
+
+  duo.twitchUrl = twitchUrl;
+  const result = await DataStore.saveDuo(duo, adminSessionPin);
+  if (!result || result.success === false) {
+    alert((result && result.error) || 'No se pudo guardar el canal de Twitch.');
+    return;
+  }
+  await refreshAdminData();
+  renderAdminDuosList();
+  alert(twitchUrl ? `Canal de Twitch guardado para "${duo.teamName}".` : `Canal de Twitch eliminado de "${duo.teamName}".`);
 }
 
 let pendingDeleteId = null;
@@ -316,15 +622,36 @@ function handleDeleteDuo(id) {
 }
 
 async function saveConfigForm() {
-  adminConfig.challengeTitle = document.getElementById('cfg-title').value.trim();
-  adminConfig.prizePool = document.getElementById('cfg-prize').value.trim();
-  adminConfig.startDate = document.getElementById('cfg-start').value;
-  adminConfig.endDate = document.getElementById('cfg-end').value;
-  adminConfig.adminPin = document.getElementById('cfg-pin').value.trim();
-  adminConfig.riotApiKey = document.getElementById('cfg-riot-key').value.trim();
+  const nextConfig = {
+    ...adminConfig,
+    challengeTitle: document.getElementById('cfg-title').value.trim(),
+    prizePool: document.getElementById('cfg-prize').value.trim(),
+    startDate: document.getElementById('cfg-start').value,
+    endDate: document.getElementById('cfg-end').value,
+    twitchClientId: document.getElementById('cfg-twitch-client-id').value.trim()
+  };
+  const nextAdminPin = document.getElementById('cfg-pin').value.trim();
+  const riotApiKey = document.getElementById('cfg-riot-key').value.trim();
+  const twitchSecretInput = document.getElementById('cfg-twitch-client-secret');
+  const twitchClientSecret = twitchSecretInput.value.trim();
 
-  await DataStore.saveConfig(adminConfig);
-  alert("¡Configuración del desafío y clave de Riot API actualizadas correctamente!");
+  delete nextConfig.twitchClientSecretConfigured;
+  delete nextConfig.adminPinConfigured;
+  delete nextConfig.riotApiKeyConfigured;
+  if (nextAdminPin) nextConfig.adminPin = nextAdminPin;
+  if (riotApiKey) nextConfig.riotApiKey = riotApiKey;
+  if (twitchClientSecret) nextConfig.twitchClientSecret = twitchClientSecret;
+
+  const result = await DataStore.saveConfig(nextConfig, adminSessionPin);
+  if (!result || !result.success) {
+    alert((result && result.error) || "No se pudo guardar la configuración.");
+    return;
+  }
+
+  if (nextAdminPin) adminSessionPin = nextAdminPin;
+  adminConfig = result.config;
+  fillConfigForm();
+  alert("Configuración actualizada. Twitch comprobará los canales cada 5 minutos.");
 }
 
 function escapeHtml(str) {

@@ -4,6 +4,28 @@
 
 const API_BASE_URL = window.PEPES_API_URL || '/api';
 
+function normalizeTwitchUrl(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return '';
+
+  try {
+    const url = new URL(rawValue);
+    const hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    const pathParts = url.pathname.split('/').filter(Boolean);
+
+    if (url.protocol !== 'https:' || hostname !== 'twitch.tv' || pathParts.length !== 1) {
+      return '';
+    }
+
+    const channel = pathParts[0];
+    if (!/^[a-zA-Z0-9_]{4,25}$/.test(channel)) return '';
+
+    return `https://www.twitch.tv/${channel}`;
+  } catch (error) {
+    return '';
+  }
+}
+
 const DEFAULT_CONFIG = {
   challengeTitle: "Pepes Krisis Duo Q Challenge",
   startDate: "2026-08-01T00:00:00",
@@ -11,7 +33,8 @@ const DEFAULT_CONFIG = {
   prizePool: "Bote: 500€ + Cena de Ganadores 🏆",
   server: "EUW",
   adminPin: "1234",
-  riotApiKey: ""
+  riotApiKey: "",
+  twitchClientId: ""
 };
 
 const DataStore = {
@@ -37,14 +60,16 @@ const DataStore = {
     return local ? JSON.parse(local) : [];
   },
 
-  async saveDuo(duo) {
+  async saveDuo(duo, authPin) {
     try {
       const res = await fetch(`${API_BASE_URL}/duos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(duo)
+        body: JSON.stringify({ duo, authPin })
       });
-      if (res.ok) return await res.json();
+      const result = await res.json();
+      if (res.ok) return result;
+      return { success: false, error: result.error || 'No se pudo guardar el equipo.' };
     } catch (e) {
       console.warn("Error guardando en API REST:", e);
     }
@@ -53,9 +78,11 @@ const DataStore = {
     localStorage.setItem('pepes_duoq_teams_v1', JSON.stringify(duos));
   },
 
-  async deleteDuo(id) {
+  async deleteDuo(id, authPin) {
     try {
-      const res = await fetch(`${API_BASE_URL}/duos/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/duos/${id}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authPin })
+      });
       if (res.ok) return await res.json();
     } catch (e) {
       console.warn("Error eliminando en API REST:", e);
@@ -78,7 +105,10 @@ const DataStore = {
       const resDb = await fetch('db.json');
       if (resDb.ok) {
         const data = await resDb.json();
-        if (data && data.config) return data.config;
+        if (data && data.config) {
+          const { adminPin, riotApiKey, twitchClientSecret, ...safeConfig } = data.config;
+          return safeConfig;
+        }
       }
     } catch (e) {
       console.warn("Respaldo config en db.json inaccesible:", e);
@@ -87,18 +117,34 @@ const DataStore = {
     return local ? JSON.parse(local) : DEFAULT_CONFIG;
   },
 
-  async saveConfig(config) {
+  async getAdminConfig(pin) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin })
+      });
+      const data = await res.json();
+      return { ok: res.ok, ...data };
+    } catch (e) {
+      return { ok: false, success: false, error: "No se pudo conectar con el servidor" };
+    }
+  },
+
+  async saveConfig(config, authPin) {
     try {
       const res = await fetch(`${API_BASE_URL}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        body: JSON.stringify({ config, authPin })
       });
-      if (res.ok) return await res.json();
+      const data = await res.json();
+      if (res.ok) return data;
+      return { success: false, error: data.error || "No se pudo guardar la configuración" };
     } catch (e) {
       console.warn("Error guardando config:", e);
     }
-    localStorage.setItem('pepes_duoq_config_v1', JSON.stringify(config));
+    return { success: false, error: "No se pudo conectar con el servidor" };
   },
 
   async triggerRiotSync() {
@@ -114,6 +160,20 @@ const DataStore = {
     return await this.getDuos();
   },
 
+  async triggerTwitchSync(authPin) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/twitch/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ authPin })
+      });
+      const data = await res.json();
+      return { ok: res.ok, ...data };
+    } catch (e) {
+      return { ok: false, success: false, error: "No se pudo conectar con Twitch" };
+    }
+  },
+
   async loginPlayer(teamId, password) {
     try {
       const res = await fetch(`${API_BASE_URL}/player/login`, {
@@ -127,12 +187,24 @@ const DataStore = {
     }
   },
 
-  async launchShell(attackerId, targetId) {
+  async getPlayerState(sessionToken) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/player/state`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionToken })
+      });
+      return await res.json();
+    } catch (e) {
+      return { success: false, error: "Error al actualizar el panel" };
+    }
+  },
+
+  async launchShell(targetId, sessionToken) {
     try {
       const res = await fetch(`${API_BASE_URL}/player/launch-shell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attackerId, targetId })
+        body: JSON.stringify({ targetId, sessionToken })
       });
       return await res.json();
     } catch (e) {
@@ -140,16 +212,28 @@ const DataStore = {
     }
   },
 
-  async resolveDebuff(teamId, timestamp, penaltyId) {
+  async spinShell(attackId, sessionToken) {
     try {
-      const res = await fetch(`${API_BASE_URL}/player/resolve-debuff`, {
+      const res = await fetch(`${API_BASE_URL}/player/spin-shell`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, timestamp, penaltyId })
+        body: JSON.stringify({ attackId, sessionToken })
       });
       return await res.json();
     } catch (e) {
-      return { success: false, error: "Error de conexión al resolver castigo" };
+      return { success: false, error: "Error de conexión al girar la ruleta" };
+    }
+  },
+
+  async adminResolvePenalty(penaltyInstanceId, action, note, authPin) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/admin/resolve-penalty`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ penaltyInstanceId, action, note, authPin })
+      });
+      return await res.json();
+    } catch (e) {
+      return { success: false, error: "Error al corregir el castigo" };
     }
   },
 
