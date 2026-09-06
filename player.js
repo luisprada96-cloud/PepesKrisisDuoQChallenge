@@ -3,6 +3,8 @@
    ========================================================================== */
 
 let activeDuo = null;
+let rouletteBusy = false;
+const ROULETTE_RESULT_HOLD_MS = 13500;
 let allDuos = [];
 let playerSessionToken = sessionStorage.getItem('pepes_player_token') || '';
 
@@ -46,8 +48,9 @@ async function initPlayerApp() {
     try {
       if (!document.hidden) {
         allDuos = await DataStore.getDuos();
-        if (activeDuo) {
+        if (activeDuo && !rouletteBusy) {
           const state = await DataStore.getPlayerState(playerSessionToken);
+          if (rouletteBusy) return;
           if (state.success && state.duo) {
             const next = JSON.stringify([state.duo, allDuos]);
             activeDuo = state.duo;
@@ -96,6 +99,7 @@ function showDashboardView() {
 }
 
 function renderDashboardData() {
+  if (rouletteBusy) return;
   if (!activeDuo) return;
 
   const teamNameEl = document.getElementById('dash-team-name');
@@ -250,15 +254,21 @@ function renderActiveDebuffs() {
 }
 
 window.spinShellHandler = async function(attackId) {
+  if (rouletteBusy) return;
+  rouletteBusy = true;
+  const spinToken = playerSessionToken;
   const button = Array.from(document.querySelectorAll("[data-spin-id]")).find(el => el.dataset.spinId === attackId);
   if (button) button.disabled = true;
   const res = await DataStore.spinShell(attackId, playerSessionToken);
   if (!res.success) {
+    rouletteBusy = false;
     if (button) button.disabled = false;
     showPlayerToast(res.error || 'No se pudo girar la ruleta.', true);
     return;
   }
   showRouletteInline(res.penalty, async () => {
+    rouletteBusy = false;
+    if (playerSessionToken !== spinToken) return;
     activeDuo = res.duo;
     sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
     allDuos = await DataStore.getDuos();
@@ -413,7 +423,7 @@ function showRouletteInline(finalPenalty, onCloseCallback) {
       setTimeout(() => {
         container.style.display = 'none';
         if (onCloseCallback) onCloseCallback();
-      }, 8500);
+      }, ROULETTE_RESULT_HOLD_MS);
     }
   }
 
