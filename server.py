@@ -397,7 +397,10 @@ twitch_token_cache = {"client_id": "", "access_token": "", "expires_at": 0}
 def load_db():
     with db_lock:
         if not os.path.exists(DB_FILE):
-            data = {"config": copy.deepcopy(DEFAULT_CONFIG), "duos": [], "events": []}
+            seed_file = os.path.join(BASE_DIR, "seed-db.json")
+            data = read_json(seed_file) if os.path.exists(seed_file) else {"config": copy.deepcopy(DEFAULT_CONFIG), "duos": [], "events": []}
+            # Bootstrap a fresh container only. Existing data always wins.
+            write_json(DB_FILE, data)
         else:
             data = read_json(DB_FILE)
         if not isinstance(data.get("config"), dict) or not isinstance(data.get("duos"), list):
