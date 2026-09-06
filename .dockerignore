@@ -19,3 +19,6 @@
 !elo_history.py
 
 !db.json
+
+!postgres_storage.py
+!requirements.txt

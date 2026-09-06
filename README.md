@@ -142,3 +142,7 @@ El panel público `torneo.html`, accesible como «Torneo y premios» desde la na
 El desplegable de cada dúo muestra `eloHistory`: último rango observado por día (fecha local del servidor), LP, victorias y derrotas. Se inicia con el rango guardado al activar la función y se actualiza tras lecturas confirmadas de Riot. No se reconstruyen LP anteriores a partir de victorias o derrotas. Cambiar la cuenta principal inicia un registro nuevo. La gráfica muestra detalles al pasar, enfocar o tocar cada punto.
 
 Docker incluye una copia inicial de `db.json` como `/app/seed-db.json`, inaccesible desde HTTP. Solo se usa si no existe la base de datos en `PEPES_DATA_DIR`; nunca sustituye datos existentes. Un disco persistente sigue siendo necesario para conservar modificaciones entre despliegues.
+
+### Neon (PostgreSQL)
+
+Producción puede usar `PEPES_STORAGE=neon` y `DATABASE_URL` como variable privada de Render. El estado JSON se guarda en `tournament_state` con control de revisión y copia anterior; un conflicto nunca sobrescribe otra operación. No hay restauración automática de seed-db.json cuando Neon falla. El modo local continúa usando db.json. Consulta `NEON_SETUP.md` para importar una copia validada y cambiar el servicio sin perder avances.

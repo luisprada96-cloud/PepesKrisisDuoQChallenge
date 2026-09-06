@@ -19,3 +19,8 @@ secrets.json
 *-verificado.png
 
 backups/
+
+drive-setup/
+client_secret*.json
+
+neon-setup/

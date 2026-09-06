@@ -20,6 +20,7 @@ import hmac
 import copy
 from functools import wraps
 from storage import read_json, write_json, StorageError
+from postgres_storage import from_environment
 from elo_history import record_elo
 from trophies import build_trophies, deadline_timestamp
 from sync_jobs import SyncJobs
@@ -198,7 +199,7 @@ def public_duo_summaries():
     with db_lock:
         stat = os.stat(DB_FILE) if os.path.exists(DB_FILE) else None
         key = (DB_FILE, stat.st_mtime_ns, stat.st_size) if stat else None
-        if key is not None and summary_cache["key"] == key:
+        if remote_backend is None and key is not None and summary_cache["key"] == key:
             return copy.deepcopy(summary_cache["value"])
         db = load_db()
         duos = db.get("duos", [])
@@ -394,9 +395,15 @@ secrets_lock = threading.Lock()
 twitch_token_lock = threading.Lock()
 twitch_token_cache = {"client_id": "", "access_token": "", "expires_at": 0}
 
+remote_backend = from_environment()
+
+
 def load_db():
     with db_lock:
-        if not os.path.exists(DB_FILE):
+        if remote_backend is not None:
+            remote_backend.reconcile()
+            data = remote_backend.load()
+        elif not os.path.exists(DB_FILE):
             seed_file = os.path.join(BASE_DIR, "seed-db.json")
             data = read_json(seed_file) if os.path.exists(seed_file) else {"config": copy.deepcopy(DEFAULT_CONFIG), "duos": [], "events": []}
             # Bootstrap a fresh container only. Existing data always wins.
@@ -427,7 +434,16 @@ def load_db():
 
 def save_db(data):
     with db_lock:
-        write_json(DB_FILE, data)
+        if remote_backend is not None:
+            summary_cache["key"] = None
+            remote_backend.save(data)
+            # Neon is authoritative; local writes are only a disposable cache.
+            try:
+                write_json(DB_FILE, data)
+            except StorageError:
+                safe_print("[Neon] Guardado confirmado; no se pudo actualizar la copia local.")
+        else:
+            write_json(DB_FILE, data)
 
 
 def load_secrets():
