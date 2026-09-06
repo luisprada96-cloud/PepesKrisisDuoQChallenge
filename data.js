@@ -32,235 +32,124 @@ const DEFAULT_CONFIG = {
   endDate: "2026-08-31T23:59:59",
   prizePool: "Bote: 500€ + Cena de Ganadores 🏆",
   server: "EUW",
-  adminPin: "1234",
-  riotApiKey: "",
   twitchClientId: ""
 };
 
+// Only confirmed server reads are retained, in memory, for this page session.
+const readCache = new Map();
+const unavailableReads = new Set();
+let lastReadAt = null;
+let latestSyncStatus = {};
+
+function renderConnectionStatus() {
+  const element = document.getElementById('connection-status');
+  if (!element) return;
+  const messages = [];
+  if (unavailableReads.size) {
+    messages.push('Conexión interrumpida. Mostrando los últimos datos disponibles' + (lastReadAt ? ` (${new Date(lastReadAt).toLocaleTimeString()})` : '') + '.');
+  }
+  const visibleJobs = document.body.dataset.panel === 'admin' ? ['riot', 'twitch'] : ['riot'];
+  for (const name of visibleJobs) {
+    const state = latestSyncStatus[name];
+    if (!state) continue;
+    const label = name === 'riot' ? 'Riot' : 'Twitch';
+    if (state.running) messages.push(`${label}: sincronizando…`);
+    else if (state.error) messages.push(`${label}: ${state.error}`);
+    if (state.lastSuccessAt) messages.push(`${label}: última sincronización correcta ${new Date(state.lastSuccessAt).toLocaleString()}.`);
+    if (state.pending) messages.push(`${state.pending} partidas pendientes de completar.`);
+  }
+  element.textContent = messages.join(' ');
+  element.hidden = messages.length === 0;
+  element.classList.toggle('connection-warning', unavailableReads.size > 0 || visibleJobs.some(name => latestSyncStatus[name]?.error));
+}
+
+async function apiRequest(path, payload, method = 'POST') {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method, signal: controller.signal,
+      ...(method === 'GET' ? {} : {headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload || {})})
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const error = new Error(result.error || 'No se pudo completar la solicitud.');
+      error.status = response.status;
+      throw error;
+    }
+    return result;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function cachedRead(path, fallback) {
+  try {
+    const result = await apiRequest(path, null, 'GET');
+    readCache.set(path, result);
+    unavailableReads.delete(path);
+    lastReadAt = Date.now();
+    renderConnectionStatus();
+    return result;
+  } catch (error) {
+    unavailableReads.add(path);
+    renderConnectionStatus();
+    return readCache.has(path) ? readCache.get(path) : fallback;
+  }
+}
+
+async function mutation(path, payload, method) {
+  try {
+    const result = await apiRequest(path, payload, method);
+    unavailableReads.delete(path);
+    renderConnectionStatus();
+    return {ok: true, ...result};
+  } catch (error) {
+    if (!error.status || error.status >= 500) { unavailableReads.add(path); renderConnectionStatus(); }
+    return {ok: false, success: false, status: error.status, error: error.message || 'No se pudo conectar con el servidor.'};
+  }
+}
+
 const DataStore = {
-  async getDuos() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/duos`);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (e) {
-      console.warn("API REST inaccesible, intentando db.json de respaldo:", e);
+  getTrophies: () => cachedRead('/trophies', {cards: []}),
+  getDuos: () => cachedRead('/duos', []),
+  getConfig: () => cachedRead('/config', DEFAULT_CONFIG),
+  getEvents: () => cachedRead('/events?type=SHELL_SPUN&limit=10', []),
+  getHistory: (id, offset = 0) => apiRequest(`/duos/${encodeURIComponent(id)}/history?offset=${offset}&limit=30`, null, 'GET'),
+  getAdminConfig: pin => mutation('/admin/login', {pin}),
+  saveDuo: (duo, authPin) => mutation('/duos', {duo, authPin}),
+  deleteDuo: (id, authPin) => mutation(`/duos/${encodeURIComponent(id)}`, {authPin}, 'DELETE'),
+  saveConfig: (config, authPin) => mutation('/config', {config, authPin}),
+  triggerRiotSync: authPin => mutation('/sync', {authPin}),
+  triggerTwitchSync: authPin => mutation('/twitch/sync', {authPin}),
+  calculateShells: authPin => mutation('/calculate-shells', {authPin}),
+  loginPlayer: (teamId, password) => mutation('/player/login', {teamId, password}),
+  logoutPlayer: sessionToken => mutation('/player/logout', {sessionToken}),
+  getPlayerState: sessionToken => mutation('/player/state', {sessionToken}),
+  launchShell: (targetId, sessionToken) => mutation('/player/launch-shell', {targetId, sessionToken}),
+  spinShell: (attackId, sessionToken) => mutation('/player/spin-shell', {attackId, sessionToken}),
+  adminResolvePenalty: (penaltyInstanceId, action, note, authPin) => mutation('/admin/resolve-penalty', {penaltyInstanceId, action, note, authPin}),
+  async refreshSyncStatus() {
+    const previous = latestSyncStatus;
+    latestSyncStatus = await cachedRead('/sync/status', latestSyncStatus);
+    renderConnectionStatus();
+    if (Object.keys(latestSyncStatus).some(name => latestSyncStatus[name].finishedAt && latestSyncStatus[name].finishedAt !== previous[name]?.finishedAt)) {
+      document.dispatchEvent(new CustomEvent('sync-finished'));
     }
-    try {
-      const resDb = await fetch('db.json');
-      if (resDb.ok) {
-        const data = await resDb.json();
-        if (data && data.duos) return data.duos;
-      }
-    } catch (e) {
-      console.warn("Respaldo db.json inaccesible:", e);
-    }
-    const local = localStorage.getItem('pepes_duoq_teams_v1');
-    return local ? JSON.parse(local) : [];
-  },
-
-  async saveDuo(duo, authPin) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/duos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ duo, authPin })
-      });
-      const result = await res.json();
-      if (res.ok) return result;
-      return { success: false, error: result.error || 'No se pudo guardar el equipo.' };
-    } catch (e) {
-      console.warn("Error guardando en API REST:", e);
-    }
-    const duos = await this.getDuos();
-    duos.unshift(duo);
-    localStorage.setItem('pepes_duoq_teams_v1', JSON.stringify(duos));
-  },
-
-  async deleteDuo(id, authPin) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/duos/${id}`, {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authPin })
-      });
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn("Error eliminando en API REST:", e);
-    }
-    let duos = await this.getDuos();
-    duos = duos.filter(d => d.id !== id);
-    localStorage.setItem('pepes_duoq_teams_v1', JSON.stringify(duos));
-  },
-
-  async getConfig() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/config`);
-      if (res.ok) {
-        return await res.json();
-      }
-    } catch (e) {
-      console.warn("API config inaccesible, intentando db.json de respaldo:", e);
-    }
-    try {
-      const resDb = await fetch('db.json');
-      if (resDb.ok) {
-        const data = await resDb.json();
-        if (data && data.config) {
-          const { adminPin, riotApiKey, twitchClientSecret, ...safeConfig } = data.config;
-          return safeConfig;
-        }
-      }
-    } catch (e) {
-      console.warn("Respaldo config en db.json inaccesible:", e);
-    }
-    const local = localStorage.getItem('pepes_duoq_config_v1');
-    return local ? JSON.parse(local) : DEFAULT_CONFIG;
-  },
-
-  async getAdminConfig(pin) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/admin/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin })
-      });
-      const data = await res.json();
-      return { ok: res.ok, ...data };
-    } catch (e) {
-      return { ok: false, success: false, error: "No se pudo conectar con el servidor" };
-    }
-  },
-
-  async saveConfig(config, authPin) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, authPin })
-      });
-      const data = await res.json();
-      if (res.ok) return data;
-      return { success: false, error: data.error || "No se pudo guardar la configuración" };
-    } catch (e) {
-      console.warn("Error guardando config:", e);
-    }
-    return { success: false, error: "No se pudo conectar con el servidor" };
-  },
-
-  async triggerRiotSync() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/sync`, { method: 'POST' });
-      if (res.ok) {
-        const data = await res.json();
-        return data.duos || [];
-      }
-    } catch (e) {
-      console.error("Error en sincronización con Riot:", e);
-    }
-    return await this.getDuos();
-  },
-
-  async triggerTwitchSync(authPin) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/twitch/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ authPin })
-      });
-      const data = await res.json();
-      return { ok: res.ok, ...data };
-    } catch (e) {
-      return { ok: false, success: false, error: "No se pudo conectar con Twitch" };
-    }
-  },
-
-  async loginPlayer(teamId, password) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/player/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teamId, password })
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: "Error de red al conectar al servidor" };
-    }
-  },
-
-  async getPlayerState(sessionToken) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/player/state`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionToken })
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: "Error al actualizar el panel" };
-    }
-  },
-
-  async launchShell(targetId, sessionToken) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/player/launch-shell`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetId, sessionToken })
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: "Error de conexión al enviar el Caparazón Azul" };
-    }
-  },
-
-  async spinShell(attackId, sessionToken) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/player/spin-shell`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ attackId, sessionToken })
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: "Error de conexión al girar la ruleta" };
-    }
-  },
-
-  async adminResolvePenalty(penaltyInstanceId, action, note, authPin) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/admin/resolve-penalty`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ penaltyInstanceId, action, note, authPin })
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: "Error al corregir el castigo" };
-    }
-  },
-
-  async getEvents() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/events`);
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn("API de eventos inaccesible, intentando db.json de respaldo:", e);
-    }
-    try {
-      const resDb = await fetch('db.json');
-      if (resDb.ok) {
-        const data = await resDb.json();
-        if (data && data.events) return data.events;
-      }
-    } catch (e) {}
-    return [];
-  },
-
-  async calculateShells() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/calculate-shells`, { method: 'POST' });
-      if (res.ok) return await res.json();
-    } catch (e) {
-      console.warn("Error calculando caparazones:", e);
-    }
-    return { success: false, newShells: 0, duos: await this.getDuos() };
   }
 };
+
+document.addEventListener('DOMContentLoaded', () => {
+  const status = document.createElement('p');
+  status.id = 'connection-status';
+  status.hidden = true;
+  status.className = 'container connection-status';
+  status.setAttribute('role', 'status');
+  const header = document.querySelector('header');
+  if (header) header.after(status); else document.body.prepend(status);
+  async function poll() {
+    try { if (!document.hidden) await DataStore.refreshSyncStatus(); }
+    finally { setTimeout(poll, 15000); }
+  }
+  poll();
+});

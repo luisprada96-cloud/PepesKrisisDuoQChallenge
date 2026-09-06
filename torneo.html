@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Torneo y premios | Pepes Krisis Duo Q Challenge</title>
+  <meta name="description"
+    content="Competición en directo de ascenso de ELO en League of Legends entre parejas. Clasificación en tiempo real, estadísticas de dúos y persecución de rango en EUW.">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <!-- Navigation Header -->
+  <header>
+    <nav class="navbar">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo">
+          <i class="fa-solid fa-trophy brand-icon"></i>
+          <span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-book-open"></i> Torneo y premios</a></li>
+          <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad"></i> Mi
+              Panel</a></li>
+          <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel
+              Admin</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main class="tournament-panel">
+    <div class="container tournament-heading">
+      <h1 class="text-gradient-cyan">Torneo y premios</h1>
+      <p>Consulta las reglas, descubre la ruleta y sigue la clasificación de los trofeos.</p>
+      <nav class="tournament-tabs" aria-label="Secciones del torneo">
+        <a class="nav-link" href="#rules">Reglas</a>
+        <a class="nav-link" href="#roulette-rules">Castigos y probabilidades</a>
+        <a class="nav-link" href="#shell-rewards">Conseguir caparazones</a>
+        <a class="nav-link" href="#trophies">Trofeos</a>
+      </nav>
+    </div>
+  <section class="container" id="rules" style="padding-bottom: 4rem;">
+    <div class="admin-card" style="border-color: var(--border-glow);">
+      <h2 class="admin-card-title">
+        <i class="fa-solid fa-gavel"></i> Reglas y Formato de la Competición
+      </h2>
+      <ul style="color: var(--text-muted); padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
+        <li>Todas las cuentas deben ser <strong>nuevas e iniciar desde Unranked</strong> en el servidor EUW.</li>
+        <li>El ranking se ordena por <strong>rango, división y LP actuales</strong>. Ganará el dúo que termine más arriba en la clasificación.</li>
+        <li>La pareja debe jugar siempre junta en la cola de <strong>Ranked Solo/Duo</strong>.</li>
+        <li>En caso de empate en rango, división y LP, ganará el dúo con mayor porcentaje de victoria (Winrate %).</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="container roulette-rules-section" id="roulette-rules" aria-labelledby="roulette-rules-title">
+    <div class="admin-card" style="border-color: var(--border-glow);">
+      <h2 class="admin-card-title" id="roulette-rules-title">
+        <i class="fa-solid fa-dice" aria-hidden="true"></i> Castigos y probabilidades de la ruleta
+      </h2>
+      <p class="roulette-rules-intro">Estos son los resultados que pueden salir al abrir un caparazón y los porcentajes actuales configurados por la administración.</p>
+      <div id="roulette-rules-list" class="roulette-rules-grid">
+        <p class="roulette-rules-empty">Cargando los castigos y sus probabilidades…</p>
+      </div>
+      <p class="roulette-rules-note">Los resultados con 0% están desactivados. Cada caparazón conserva los porcentajes que había cuando se lanzó, aunque después cambie la configuración.</p>
+    </div>
+  </section>
+
+  <section class="container roulette-rules-section" id="shell-rewards" aria-labelledby="shell-rewards-title">
+    <div class="admin-card" style="border-color: var(--border-glow);">
+      <h2 class="admin-card-title" id="shell-rewards-title">🐢 Cómo conseguir caparazones</h2>
+      <p class="roulette-rules-intro">Los logros individuales cuentan para cualquiera de los integrantes, sin sumar sus estadísticas. Cada criterio se premia una sola vez por equipo y partida. No hace falta ganar para los logros individuales.</p>
+      <div style="overflow-x: auto;">
+        <table class="leaderboard-table" style="margin-top: 0;">
+          <thead><tr><th>Logro</th><th>Requisito</th><th>Premio</th></tr></thead>
+          <tbody id="shell-rewards-body"><tr><td colspan="3">Cargando requisitos…</td></tr></tbody>
+        </table>
+      </div>
+      <p class="roulette-rules-note" id="shell-rewards-limits"></p>
+      <p class="roulette-rules-note">Los nuevos logros de kills, asistencias y KDA cuentan desde las partidas incorporadas tras esta actualización.</p>
+    </div>
+  </section>
+
+  <section class="container fun-stats-section" id="trophies" aria-labelledby="trophies-title">
+    <div class="fun-stats-card">
+      <div class="fun-stats-heading">
+        <div><span class="section-eyebrow">Premios del torneo</span><h2 id="trophies-title">🏆 Trofeos</h2></div>
+        <span id="trophies-status" aria-live="polite">Cargando clasificación…</span>
+      </div>
+      <p class="trophies-note" id="trophies-note"></p>
+      <div id="trophies-grid" class="trophies-grid"></div>
+    </div>
+  </section>
+  </main>
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <p style="margin-bottom: 0.5rem;">
+        <strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026. Diseñado para la comunidad competitiva de LoL EUW.
+      </p>
+      <p style="font-size: 0.8rem; color: var(--text-dark);">
+        League of Legends y Riot Games son marcas registradas de Riot Games, Inc.
+      </p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="data.js"></script>
+  <script src="alerts.js"></script>
+  <script src="torneo.js"></script>
+</body>
+
+</html>

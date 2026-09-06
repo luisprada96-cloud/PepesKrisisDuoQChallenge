@@ -3,7 +3,7 @@
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
-  initApp();
+  if (document.getElementById("leaderboard-tbody")) initApp();
 });
 
 let currentDuos = [];
@@ -32,19 +32,25 @@ async function initApp() {
   await renderRecentAttacksTable();
   setupEventListeners();
 
-  // Auto-refresco silencioso desde db.json cada 15 segundos (sin llamadas a Riot API)
-  setInterval(async () => {
+  let signature = JSON.stringify(currentDuos);
+  async function refresh() {
     try {
-      currentDuos = await DataStore.getDuos();
-      renderStatsOverview();
-      renderLeaderboardTable();
-      renderFunStatistics();
-      renderBestMatchesTable();
-      await renderRecentAttacksTable();
-    } catch (e) {
-      console.warn("Error en auto-refresco del panel:", e);
-    }
-  }, 15000);
+      if (!document.hidden) {
+        const next = await DataStore.getDuos();
+        const nextSignature = JSON.stringify(next);
+        if (nextSignature !== signature) {
+          currentDuos = next;
+          signature = nextSignature;
+          renderStatsOverview();
+          renderLeaderboardTable();
+          renderFunStatistics();
+          renderBestMatchesTable();
+        }
+        await renderRecentAttacksTable();
+      }
+    } finally { setTimeout(refresh, 15000); }
+  }
+  setTimeout(refresh, 15000);
 }
 
 /* Header & Timer */
@@ -105,7 +111,7 @@ function renderStatsOverview() {
   if (totalGamesEl) totalGamesEl.textContent = totalGames;
   if (liveCountEl) liveCountEl.textContent = `${liveCount} ${liveCount === 1 ? 'Dúo' : 'Dúos'}`;
 
-  const sorted = [...currentDuos].sort((a, b) => b.netLp - a.netLp);
+  const sorted = [...currentDuos].sort(compareCompetitionRank);
   if (topDuoEl && sorted.length > 0) {
     topDuoEl.textContent = sorted[0].teamName;
   }
@@ -142,7 +148,7 @@ function renderPlayerInsightCard(player, insight) {
   const positionLabel = POSITION_LABELS[position && position.position] || 'Sin datos';
   return `
     <article class="player-insight-card">
-      <img class="insight-champion-icon" src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${championName}.png" alt="${championName}" onerror="this.onerror=null; this.src='${escapeHtml(player && player.avatar ? player.avatar : '')}';">
+      <img class="insight-champion-icon" src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${championName}.png" alt="${championName}" onerror="this.style.display='none';">
       <div class="insight-content">
         <div class="insight-heading">
           <h3>${escapeHtml(playerName)}</h3>
@@ -184,9 +190,7 @@ function renderLeaderboardTable() {
 
   filtered.sort((a, b) => {
     if (sortBy === 'RANK' || sortBy === 'NET_LP') {
-      const totalLpA = calcTotalLpHelper(a.tier, a.division, a.lp);
-      const totalLpB = calcTotalLpHelper(b.tier, b.division, b.lp);
-      return totalLpB - totalLpA;
+      return compareCompetitionRank(a, b);
     }
     if (sortBy === 'WINRATE') {
       const wrA = (a.wins + a.losses) > 0 ? (a.wins / (a.wins + a.losses)) : 0;
@@ -212,8 +216,9 @@ function renderLeaderboardTable() {
     return;
   }
 
-  filtered.forEach((duo, index) => {
-    const rankPos = index + 1;
+  const positions = new Map([...currentDuos].sort(compareCompetitionRank).map((duo, index) => [duo.id, index + 1]));
+  filtered.forEach(duo => {
+    const rankPos = positions.get(duo.id);
     const totalG = duo.wins + duo.losses;
     const winrate = totalG > 0 ? Math.round((duo.wins / totalG) * 100) : 0;
 
@@ -246,9 +251,9 @@ function renderLeaderboardTable() {
     tr.setAttribute('tabindex', '0');
     tr.setAttribute('aria-expanded', String(isExpanded));
     tr.setAttribute('aria-controls', accordionId);
-    tr.onclick = () => toggleDuoAccordion(duo.id);
+    tr.onclick = event => { if (!event.target.closest('button, a')) toggleDuoAccordion(duo.id); };
     tr.onkeydown = event => {
-      if (event.key === 'Enter' || event.key === ' ') {
+      if (event.target === tr && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault();
         toggleDuoAccordion(duo.id);
       }
@@ -274,15 +279,16 @@ function renderLeaderboardTable() {
       </td>
       <td>
         <div class="tier-pill">
-          <span style="color: ${getTierColor(duo.tier)};">${duo.tier} ${duo.division}</span>
-          <span style="color: var(--text-muted); font-size: 0.8rem;">(${duo.lp} LP)</span>
+          <span style="color: ${getTierColor(duo.tier)};">${escapeHtml(duo.tier)} ${escapeHtml(duo.division)}</span>
+          <span style="color: var(--text-muted); font-size: 0.8rem;">(${escapeHtml(duo.lp)} LP)</span>
+          <span class="net-lp-label">${Number(duo.netLp) || 0} LP netos</span>
         </div>
       </td>
       <td>
         <div class="winrate-wrapper">
           <div class="winrate-text">
             <span>${winrate}%</span>
-            <span style="color: var(--text-muted);">${duo.wins}W / ${duo.losses}L</span>
+            <span style="color: var(--text-muted);">${escapeHtml(duo.wins)}W / ${escapeHtml(duo.losses)}L</span>
           </div>
           <div class="winrate-bar-bg">
             <div class="winrate-bar-fill" style="width: ${winrate}%;"></div>
@@ -309,7 +315,7 @@ function renderLeaderboardTable() {
       </td>
       <td>
         <div class="leaderboard-actions">
-        <button type="button" class="btn-refresh" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" onclick="event.stopPropagation(); openDuoModal('${escapeHtml(duo.id)}')">
+        <button type="button" class="btn-refresh" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" data-history-id="${escapeHtml(duo.id)}">
           Ver Partidas <i class="fa-solid fa-chevron-right"></i>
         </button>
         <i class="fa-solid fa-chevron-down accordion-chevron" aria-hidden="true"></i>
@@ -334,6 +340,8 @@ function renderLeaderboardTable() {
             <span>Estadísticas individuales · Solo/Duo desde el inicio del reto</span>
             ${pendingText}
           </div>
+          ${renderCombinedDuoStats(duo)}
+          ${renderEloChart(duo)}
           <div class="player-insights-grid">
             ${renderPlayerInsightCard(duo.player1, insights.player1)}
             ${hasP2 ? renderPlayerInsightCard(duo.player2, insights.player2) : ''}
@@ -484,7 +492,7 @@ async function renderRecentAttacksTable() {
   const tbody = document.getElementById('recent-attacks-tbody');
   if (!tbody) return;
 
-  const events = await DataStore.getEvents();
+  const events = (await DataStore.getEvents()).filter(event => event.type === "SHELL_SPUN");
   tbody.innerHTML = '';
 
   if (!events || events.length === 0) {
@@ -492,14 +500,14 @@ async function renderRecentAttacksTable() {
       <tr>
         <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">
           <i class="fa-solid fa-shield-halved" style="font-size: 1.5rem; margin-bottom: 0.5rem; display: block; opacity: 0.5;"></i>
-          No hay ataques o caparazones lanzados recientemente.
+          Todavía no hay castigos abiertos por los receptores.
         </td>
       </tr>
     `;
     return;
   }
 
-  // Mostrar como máximo los últimos 10 eventos
+  // Mostrar las últimas 10 aperturas de caparazones
   const recentEvents = events.slice(0, 10);
 
   recentEvents.forEach(ev => {
@@ -565,44 +573,32 @@ function setupEventListeners() {
   }
 }
 
-/* Manual Sync */
+/* Public refresh only reads the last confirmed server state. */
 async function triggerManualSync() {
-  const btnSync = document.getElementById('btn-sync');
-  if (btnSync) {
-    const icon = btnSync.querySelector('i');
-    if (icon) icon.classList.add('spinning');
-    btnSync.disabled = true;
-
-    currentDuos = await DataStore.triggerRiotSync();
-
+  const buttons = ['btn-sync', 'btn-sync-matches'].map(id => document.getElementById(id)).filter(Boolean);
+  buttons.forEach(button => button.disabled = true);
+  try {
+    currentDuos = await DataStore.getDuos();
     renderStatsOverview();
     renderLeaderboardTable();
+    renderFunStatistics();
     renderBestMatchesTable();
-
-    if (icon) icon.classList.remove('spinning');
-    btnSync.disabled = false;
+    await renderRecentAttacksTable();
+    await DataStore.refreshSyncStatus();
+  } finally {
+    buttons.forEach(button => button.disabled = false);
   }
 }
 
-/* Fetch Last 5 Matches via Riot API */
-async function triggerFetchMatches() {
-  const btn = document.getElementById('btn-sync-matches');
-  if (btn) {
-    const icon = btn.querySelector('i');
-    if (icon) icon.classList.add('spinning');
-    btn.disabled = true;
+async function triggerFetchMatches() { await triggerManualSync(); }
 
-    currentDuos = await DataStore.triggerRiotSync();
-
-    renderStatsOverview();
-    renderLeaderboardTable();
-    renderBestMatchesTable();
-
-    if (icon) icon.classList.remove('spinning');
-    btn.disabled = false;
-
-    showToast('¡Últimas 20 partidas de cada equipo recuperadas con éxito desde la API de Riot Games!');
-  }
+function compareCompetitionRank(a, b) {
+  const rate = duo => Number(duo.wins) / ((Number(duo.wins) + Number(duo.losses)) || 1);
+  const tiers = ['UNRANKED', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+  const tier = duo => Math.max(0, tiers.indexOf(String(duo.tier || '').toUpperCase()));
+  const division = duo => tier(duo) >= 8 || tier(duo) === 0 ? 0 : ({IV: 0, III: 1, II: 2, I: 3}[String(duo.division || '').toUpperCase()] || 0);
+  const lp = duo => tier(duo) === 0 ? 0 : Number(duo.lp) || 0;
+  return tier(b) - tier(a) || division(b) - division(a) || lp(b) - lp(a) || rate(b) - rate(a) || String(a.id).localeCompare(String(b.id));
 }
 
 function showToast(msg) {
@@ -631,7 +627,7 @@ function showToast(msg) {
     `;
     document.body.appendChild(toast);
   }
-  toast.innerHTML = `<i class="fa-solid fa-check-circle"></i> ${msg}`;
+  toast.textContent = msg;
   toast.style.opacity = '1';
   toast.style.transform = 'translateY(0)';
 
@@ -642,13 +638,21 @@ function showToast(msg) {
 }
 
 /* Player/Duo Detail Modal */
-async function openDuoModal(id) {
+let modalRequest = 0;
+async function openDuoModal(id, offset = 0) {
+  const request = ++modalRequest;
   let duo = currentDuos.find(d => d.id === id);
   if (!duo) return;
 
   const modalOverlay = document.getElementById('modal-overlay');
   const modalContent = document.getElementById('modal-content');
   if (!modalOverlay || !modalContent) return;
+
+  let page;
+  try { page = await DataStore.getHistory(id, offset); }
+  catch (error) { showToast(error.message); return; }
+  if (request !== modalRequest) return;
+  duo = {...duo, history: page.matches};
 
   const totalGames = duo.wins + duo.losses;
   const winrate = totalGames > 0 ? Math.round((duo.wins / totalGames) * 100) : 0;
@@ -677,18 +681,18 @@ async function openDuoModal(id) {
       <div class="match-item ${m.result === 'WIN' ? '' : 'defeat'}">
         <div style="display: flex; align-items: center; gap: 1rem;">
           <span class="match-result-badge ${m.result === 'WIN' ? 'win' : 'loss'}">${m.result === 'WIN' ? 'VICTORIA' : 'DERROTA'}</span>
-          ${m.pentaKill ? `<span class="match-result-badge" style="background: linear-gradient(135deg, #ff0055, #ffaa00); color: #fff; font-weight: 800; box-shadow: 0 0 10px rgba(255, 0, 85, 0.6);"><i class="fa-solid fa-fire"></i> PENTAKILL (+1 🐢)</span>` : ''}
+          ${m.pentaKill ? `<span class="match-result-badge" style="background: linear-gradient(135deg, #ff0055, #ffaa00); color: #fff; font-weight: 800; box-shadow: 0 0 10px rgba(255, 0, 85, 0.6);"><i class="fa-solid fa-fire"></i> PENTAKILL</span>` : ''}
           <div style="display: flex; gap: 0.4rem;">
-            <img class="champ-icon" src="https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/${m.championP1}.png" title="${m.championP1}">
-            ${m.championP2 ? `<img class="champ-icon" src="https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/${m.championP2}.png" title="${m.championP2}">` : ''}
+            <img class="champ-icon" src="https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/${escapeHtml(m.championP1)}.png" title="${escapeHtml(m.championP1)}">
+            ${m.championP2 ? `<img class="champ-icon" src="https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/${escapeHtml(m.championP2)}.png" title="${escapeHtml(m.championP2)}">` : ''}
           </div>
           <div>
-            <div style="font-size: 0.9rem; font-weight: 700;">Campeón: ${m.championP1} | KDA: ${m.kda1}${m.kda2 ? ` | ${m.kda2}` : ''}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">Duración: ${m.duration} • Ranked Solo/Duo${m.date ? ` • <i class="fa-regular fa-calendar"></i> ${m.date}` : ''}</div>
+            <div style="font-size: 0.9rem; font-weight: 700;">Campeón: ${escapeHtml(m.championP1)} | KDA: ${escapeHtml(m.kda1)}${m.kda2 ? ` | ${escapeHtml(m.kda2)}` : ''}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">Duración: ${escapeHtml(m.duration)} • Ranked Solo/Duo${m.date ? ` • <i class="fa-regular fa-calendar"></i> ${escapeHtml(m.date)}` : ''}</div>
           </div>
         </div>
         <div class="lp-gain ${m.result === 'WIN' ? 'lp-positive' : 'lp-negative'}">
-          ${m.lpChange}
+          ${escapeHtml(m.lpChange)}
         </div>
       </div>
     `).join('');
@@ -705,8 +709,8 @@ async function openDuoModal(id) {
         <p style="color: var(--text-muted); font-size: 0.95rem;">Estadísticas Reales del Invocador en EUW</p>
       </div>
       <div class="tier-pill" style="padding: 0.6rem 1.2rem; font-size: 1rem;">
-        <span>${duo.tier} ${duo.division}</span>
-        <span style="color: var(--gold-hextech); font-weight: 800;">${duo.lp} LP</span>
+        <span>${escapeHtml(duo.tier)} ${escapeHtml(duo.division)}</span>
+        <span style="color: var(--gold-hextech); font-weight: 800;">${escapeHtml(duo.lp)} LP</span>
       </div>
     </div>
 
@@ -717,22 +721,34 @@ async function openDuoModal(id) {
       </div>
       <div class="stat-card">
         <div class="stat-label">Victorias / Derrotas</div>
-        <div class="stat-value" style="font-size: 1.3rem;">${duo.wins}W / ${duo.losses}L</div>
+        <div class="stat-value" style="font-size: 1.3rem;">${escapeHtml(duo.wins)}W / ${escapeHtml(duo.losses)}L</div>
       </div>
     </div>
 
     <h3 class="font-heading" style="font-size: 1.1rem; color: var(--cyan-primary); margin-bottom: 1rem;">
-      <i class="fa-solid fa-history"></i> Historial Reciente (Mostrando las ${Math.min(30, duo.history ? duo.history.length : 0)} más recientes de ${duo.history ? duo.history.length : 0} registradas)
+      <i class="fa-solid fa-history"></i> Historial Reciente (Mostrando las ${page.matches.length} partidas desde la ${page.total ? offset + 1 : 0}, de ${page.total} registradas)
     </h3>
     <div style="max-height: 450px; overflow-y: auto; padding-right: 0.5rem;">
       ${historyHtml}
     </div>
   `;
 
+  const navigation = document.createElement('div');
+  navigation.className = 'history-navigation';
+  for (const [label, next, disabled] of [['Anterior', Math.max(0, offset - 30), offset === 0], ['Siguiente', offset + 30, offset + page.matches.length >= page.total]]) {
+    const button = document.createElement('button');
+    button.className = 'btn-refresh';
+    button.textContent = label;
+    button.disabled = disabled;
+    button.addEventListener('click', () => openDuoModal(id, next));
+    navigation.append(button);
+  }
+  modalContent.append(navigation);
   modalOverlay.classList.add('active');
 }
 
 function closeDuoModal() {
+  modalRequest += 1;
   const modalOverlay = document.getElementById('modal-overlay');
   if (modalOverlay) modalOverlay.classList.remove('active');
 }
@@ -770,3 +786,62 @@ function calcTotalLpHelper(tier, division, lp) {
 }
 
 function str(val) { return String(val || ''); }
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-history-id]');
+  if (button) { event.stopPropagation(); openDuoModal(button.dataset.historyId); }
+});
+
+
+
+
+function renderEloChart(duo) {
+  const points = (duo.eloHistory || []).filter(p => Number.isFinite(Number(p.totalLp)) && /^\d{4}-\d{2}-\d{2}$/.test(p.date));
+  if (!points.length) return '<div class="elo-chart"><h3>Evolución de ELO</h3><p>La gráfica aparecerá cuando se registre el primer dato de ELO.</p></div>';
+  const width = 900, height = 230, left = 76, right = 18, top = 24, bottom = 36;
+  const values = points.map(p => Number(p.totalLp));
+  const min = Math.max(0, Math.min(...values) - 60), max = Math.max(...values) + 60;
+  const dates = points.map(p => Date.parse(p.date + 'T12:00:00Z'));
+  const x = i => points.length === 1 ? (width + left - right) / 2 : left + (dates[i] - dates[0]) / (dates.at(-1) - dates[0] || 1) * (width-left-right);
+  const y = value => top + (max-value)/(max-min || 1)*(height-top-bottom);
+  const label = p => {
+    const games = Number(p.wins) + Number(p.losses);
+    return `${new Date(p.date + 'T12:00:00').toLocaleDateString('es-ES', {day:'2-digit',month:'short'})} · ${p.tier} ${p.division || ''} · ${p.lp} LP · ${p.wins}W / ${p.losses}L${games ? ' · ' + Math.round(Number(p.wins)/games*100) + '%' : ''}${p.source === 'initial' ? ' · Punto inicial: rango guardado' : ''}`;
+  };
+  const rankLabel = value => {
+    const tiers = ['Iron','Bronze','Silver','Gold','Platinum','Emerald','Diamond'];
+    const n = Math.max(0,Math.round(value));
+    return n >= 2800 ? `Master+ ${n-2800} LP` : `${tiers[Math.floor(n/400)]} ${['IV','III','II','I'][Math.floor(n%400/100)]} ${n%100}`;
+  };
+  const line = points.map((p,i) => `${i ? 'L' : 'M'}${x(i).toFixed(2)},${y(p.totalLp).toFixed(2)}`).join(' ');
+  const ticks = [min,(min+max)/2,max].map(v => `<line x1="${left}" x2="${width-right}" y1="${y(v)}" y2="${y(v)}" class="elo-grid-line"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${escapeHtml(rankLabel(v))}</text>`).join('');
+  const step = Math.max(1, Math.ceil(points.length/7));
+  return `<div class="elo-chart"><h3>Evolución de ELO</h3><div class="elo-chart-scroll"><svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Evolución diaria del ELO de ${escapeHtml(duo.teamName)}">
+    ${ticks}<path d="${line}" class="elo-line"/>
+    ${points.map((p,i) => `<circle cx="${x(i)}" cy="${y(p.totalLp)}" r="5" class="elo-point" tabindex="0" role="button" aria-label="${escapeHtml(label(p))}" data-elo-detail="${escapeHtml(label(p))}"><title>${escapeHtml(label(p))}</title></circle>${i%step===0 || i===points.length-1 ? `<text x="${x(i)}" y="${height-10}" text-anchor="middle">${escapeHtml(new Date(p.date+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))}</text>` : ''}`).join('')}
+    </svg></div><p class="elo-chart-detail" aria-live="polite">${escapeHtml(label(points.at(-1)))}</p><p class="elo-chart-note">Último ELO registrado de cada día. ${points.length === 1 ? 'La curva aparecerá al registrar más días. ' : ''}Sin datos anteriores al inicio del registro. Pasa por un punto o tócalo para ver el detalle.</p></div>`;
+}
+
+for (const type of ['pointerover', 'focusin', 'click']) {
+  document.addEventListener(type, event => {
+    const point = event.target.closest('[data-elo-detail]');
+    if (point) point.closest('.elo-chart').querySelector('.elo-chart-detail').textContent = point.dataset.eloDetail;
+  });
+}
+
+
+function renderCombinedDuoStats(duo) {
+  const insights = duo.playerInsights || {};
+  const players = [insights.player1, duo.player2 ? insights.player2 : null].filter(p => p && Number(p.gamesAnalyzed) > 0 && p.totals);
+  const totals = players.reduce((sum, player) => {
+    for (const key of ['kills', 'deaths', 'assists']) sum[key] += Number(player.totals[key]) || 0;
+    return sum;
+  }, {kills: 0, deaths: 0, assists: 0});
+  const number = value => value.toLocaleString('es-ES');
+  const kda = players.length ? ((totals.kills + totals.assists) / Math.max(1, totals.deaths)).toFixed(2) : '—';
+  return `<div class="duo-combined-stats" role="group" aria-label="KDA y estadísticas combinadas del dúo">
+    <div class="duo-combined-kda"><strong>${kda}</strong><span>KDA combinado</span></div>
+    <div class="duo-combined-totals"><div aria-label="${totals.kills} asesinatos, ${totals.deaths} muertes, ${totals.assists} asistencias"><strong class="combined-kills">${number(totals.kills)}</strong><span> / </span><strong class="combined-deaths">${number(totals.deaths)}</strong><span> / </span><strong class="combined-assists">${number(totals.assists)}</strong></div><span>Asesinatos / Muertes / Asistencias</span></div>
+    <span class="duo-combined-note">${players.length ? 'Totales de ambos integrantes' : 'Pendiente de estadísticas'}<small>${players.length ? 'Según las estadísticas disponibles' : 'Se actualizará al sincronizar'}</small></span>
+  </div>`;
+}

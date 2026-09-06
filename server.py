@@ -17,7 +17,13 @@ import secrets
 import uuid
 import hashlib
 import hmac
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import copy
+from functools import wraps
+from storage import read_json, write_json, StorageError
+from elo_history import record_elo
+from trophies import build_trophies, deadline_timestamp
+from sync_jobs import SyncJobs
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
 # Ensure stdout handles UTF-8 on Windows
@@ -30,12 +36,33 @@ if sys.platform == 'win32':
 
 PORT = int(os.environ.get("PORT", 8085))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR, "db.json")
-SECRETS_FILE = os.path.join(BASE_DIR, "secrets.json")
+DATA_DIR = os.environ.get("PEPES_DATA_DIR", BASE_DIR)
+DB_FILE = os.path.join(DATA_DIR, "db.json")
+SECRETS_FILE = os.path.join(DATA_DIR, "secrets.json")
 TWITCH_SYNC_INTERVAL = 300
 RIOT_MATCH_DETAIL_BATCH_PER_DUO = 40
 VALID_MAIN_ROLES = {"TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"}
-MAX_SHELLS_INVENTORY = 3
+MAX_SHELLS_INVENTORY = 5
+MAX_SHELLS_PER_MATCH = 2
+SHELL_WIN_STREAK = 3
+SHELL_KILLS = 20
+SHELL_ASSISTS = 30
+SHELL_PERFECT_KDA = 20
+
+
+def shell_reward_rules():
+    return {
+        "inventoryLimit": MAX_SHELLS_INVENTORY,
+        "perMatchLimit": MAX_SHELLS_PER_MATCH,
+        "rules": [
+            {"id": "streak", "name": "Racha de victorias", "requirement": f"Ganar {SHELL_WIN_STREAK} partidas consecutivas. La racha se cuenta en bloques sin repetir victorias."},
+            {"id": "penta", "name": "Pentakill", "requirement": "Uno de los integrantes consigue una pentakill."},
+            {"id": "kills", "name": "Asesinatos", "requirement": f"Un integrante consigue al menos {SHELL_KILLS} kills en una partida."},
+            {"id": "assists", "name": "Asistencias", "requirement": f"Un integrante consigue al menos {SHELL_ASSISTS} asistencias en una partida."},
+            {"id": "perfect", "name": "KDA perfecto", "requirement": f"Un integrante termina con 0 muertes y más de {SHELL_PERFECT_KDA} kills + asistencias."},
+        ]
+    }
+
 SECRET_HASH_ITERATIONS = 260000
 SECRET_HASH_PREFIX = "pbkdf2_sha256"
 
@@ -54,6 +81,8 @@ PENALTY_CATALOG = [
 ]
 
 player_sessions = {}
+shell_notifications = threading.Condition()
+shell_notification_revision = 0
 ddragon_champion_cache = []
 
 def hash_secret(value):
@@ -156,11 +185,70 @@ def safe_duo_for_player(duo):
 def safe_duos(duos):
     return [safe_duo_for_player(duo) for duo in duos]
 
+def duo_summary(duo):
+    result = safe_duo_for_player(duo)
+    result["historyCount"] = len(result.pop("history", []))
+    return result
+
+
+summary_cache = {"key": None, "value": []}
+
+
+def public_duo_summaries():
+    with db_lock:
+        stat = os.stat(DB_FILE) if os.path.exists(DB_FILE) else None
+        key = (DB_FILE, stat.st_mtime_ns, stat.st_size) if stat else None
+        if key is not None and summary_cache["key"] == key:
+            return copy.deepcopy(summary_cache["value"])
+        db = load_db()
+        duos = db.get("duos", [])
+        attacks = db.get("shellAttacks", [])
+        for duo in duos:
+            update_duo_current_streak(duo)
+            calculate_player_insights(duo)
+            calculate_duo_best_match(duo)
+            update_stats_backfill_status(duo)
+            duo["shellsLaunched"] = sum(a.get("attackerTeamId") == duo.get("id") for a in attacks)
+            duo["shellsReceived"] = sum(a.get("targetTeamId") == duo.get("id") for a in attacks)
+        result = [duo_summary(duo) for duo in duos]
+        summary_cache.update(key=key, value=copy.deepcopy(result))
+        return result
+
+
+def page_args(parsed):
+    query = urllib.parse.parse_qs(parsed.query)
+    return max(0, int(query.get("offset", [0])[0])), min(100, max(1, int(query.get("limit", [30])[0])))
+
+
 def session_team(token):
     session = player_sessions.get(str(token or ""))
     if not session or session.get("expiresAt", 0) < time.time():
         return None
     return session.get("teamId")
+
+def notify_shell_receivers():
+    global shell_notification_revision
+    with shell_notifications:
+        shell_notification_revision += 1
+        shell_notifications.notify_all()
+
+
+def receiver_notification_state(token):
+    with db_lock:
+        team_id = session_team(token)
+        if not team_id:
+            return None
+        db = load_db()
+        duo = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
+        if not duo:
+            return None
+        return {
+            "team": {"id": team_id, "name": duo.get("teamName", "Equipo")},
+            "attacks": [{key: a.get(key) for key in ("id", "attackerName", "launchedAt")}
+                        for a in reversed(db.get("shellAttacks", []))
+                        if a.get("targetTeamId") == team_id and a.get("status") == "PENDING_SPIN"]
+        }
+
 
 def create_player_session(team_id):
     token = secrets.token_urlsafe(32)
@@ -298,7 +386,10 @@ def calc_total_lp(tier, division, lp):
     div_base = DIVISION_OFFSET.get(d, 0) if t not in ["MASTER", "GRANDMASTER", "CHALLENGER"] else 0
     return base + div_base + int(lp or 0)
 
-db_lock = threading.Lock()
+db_lock = threading.RLock()
+sync_jobs = SyncJobs()
+riot_sync_lock = threading.Lock()
+twitch_sync_lock = threading.Lock()
 secrets_lock = threading.Lock()
 twitch_token_lock = threading.Lock()
 twitch_token_cache = {"client_id": "", "access_token": "", "expires_at": 0}
@@ -306,45 +397,65 @@ twitch_token_cache = {"client_id": "", "access_token": "", "expires_at": 0}
 def load_db():
     with db_lock:
         if not os.path.exists(DB_FILE):
-            db = {"config": DEFAULT_CONFIG, "duos": DEFAULT_DUOS, "events": []}
-            with open(DB_FILE, 'w', encoding='utf-8') as f:
-                json.dump(db, f, ensure_ascii=False, indent=2)
-            return db
-        try:
-            with open(DB_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if "events" not in data:
-                    data["events"] = []
-                data = ensure_shell_schema(data)
-                if migrate_credentials(data):
-                    with open(DB_FILE, 'w', encoding='utf-8') as migrated_file:
-                        json.dump(data, migrated_file, ensure_ascii=False, indent=2)
-                return data
-        except Exception:
-            return {"config": DEFAULT_CONFIG, "duos": DEFAULT_DUOS, "events": []}
+            data = {"config": copy.deepcopy(DEFAULT_CONFIG), "duos": [], "events": []}
+        else:
+            data = read_json(DB_FILE)
+        if not isinstance(data.get("config"), dict) or not isinstance(data.get("duos"), list):
+            raise StorageError("La base de datos no tiene un formato válido; no se ha sobrescrito.")
+        rewards_migrated = data.get("shellRewardsVersion") != 1
+        if rewards_migrated:
+            # Existing games keep their old rewards; new criteria start on new imports.
+            for duo in data.get("duos", []):
+                for match in duo.get("history", []):
+                    match["legacyShellRewards"] = True
+            data["shellRewardsVersion"] = 1
+        elo_migrated = False
+        for duo in data.get("duos", []):
+            player = duo.get("player1") or {}
+            account = [str(player.get("name", "")).lower(), str(player.get("tag", "")).lower()]
+            if not duo.get("eloHistory") or duo.get("eloHistoryAccount") != account:
+                record_elo(duo, calc_total_lp(duo.get("tier"), duo.get("division"), duo.get("lp")), time.time(), "initial")
+                elo_migrated = True
+        data = ensure_shell_schema(data)
+        if migrate_credentials(data) or rewards_migrated or elo_migrated:
+            save_db(data)
+        return data
+
 
 def save_db(data):
     with db_lock:
-        try:
-            with open(DB_FILE, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"[Error Save DB] {e}")
+        write_json(DB_FILE, data)
+
 
 def load_secrets():
     with secrets_lock:
-        if not os.path.exists(SECRETS_FILE):
-            return {}
-        try:
-            with open(SECRETS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception:
-            return {}
+        return read_json(SECRETS_FILE) if os.path.exists(SECRETS_FILE) else {}
+
 
 def save_secrets(data):
     with secrets_lock:
-        with open(SECRETS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        write_json(SECRETS_FILE, data)
+
+
+def serialized_mutation(method):
+    @wraps(method)
+    def wrapped(self):
+        with db_lock:
+            return method(self)
+    return wrapped
+
+
+def http_errors(method):
+    @wraps(method)
+    def wrapped(self):
+        try:
+            return method(self)
+        except StorageError as error:
+            self._send_json({"success": False, "error": str(error)}, 503)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            self._send_json({"success": False, "error": "Solicitud inválida."}, 400)
+    return wrapped
+
 
 def public_config(config):
     hidden_keys = {"adminPin", "adminPinHash", "riotApiKey", "twitchClientSecret"}
@@ -424,6 +535,21 @@ def get_twitch_app_token(client_id, client_secret):
         }
         return access_token
 
+def single_sync(lock):
+    def decorate(callback):
+        @wraps(callback)
+        def run(*args, **kwargs):
+            if not lock.acquire(blocking=False):
+                return {"success": False, "error": "Ya hay una sincronización en curso."}
+            try:
+                return callback(*args, **kwargs)
+            finally:
+                lock.release()
+        return run
+    return decorate
+
+
+@single_sync(twitch_sync_lock)
 def sync_twitch_live_status():
     db = load_db()
     duos = db.get("duos", [])
@@ -463,23 +589,24 @@ def sync_twitch_live_status():
             if stream.get("type") == "live"
         }
 
-        changed = False
-        for channel, channel_duos in channel_to_duos.items():
-            is_live = channel in live_channels
-            for duo in channel_duos:
-                if duo.get("twitchIsLive") is not is_live:
-                    duo["twitchIsLive"] = is_live
-                    changed = True
-
-        if changed:
-            save_db(db)
+        with db_lock:
+            current = load_db()
+            changed = False
+            for duo in current.get("duos", []):
+                channel = twitch_channel_from_url(duo.get("twitchUrl"))
+                if channel in channel_to_duos:
+                    is_live = channel in live_channels
+                    if duo.get("twitchIsLive") is not is_live:
+                        duo["twitchIsLive"] = is_live
+                        changed = True
+            if changed:
+                save_db(current)
 
         safe_print(f"[Twitch Sync] {len(channel_to_duos)} canal(es) comprobados; {len(live_channels)} en directo.")
         return {
             "success": True,
             "checked": len(channel_to_duos),
             "live": len(live_channels),
-            "duos": safe_duos(duos)
         }
     except urllib.error.HTTPError as error:
         if error.code == 401:
@@ -495,6 +622,8 @@ def sort_history_chronologically(history):
     def sort_key(m):
         if not isinstance(m, dict):
             return (0, 0)
+        if m.get("gameEndTimestamp"):
+            return (int(m["gameEndTimestamp"]) / 1000, 0)
         date_str = m.get("date", "")
         ts = 0
         try:
@@ -590,6 +719,10 @@ def enrich_match_record(match, info, puuid1, puuid2):
 UPGRADED_BOOT_IDS = {3006, 3009, 3020, 3047, 3111, 3117, 3158, 3172, 3173, 3174, 3175, 3176, 3177, 3178, 3179}
 
 def boots_compliance_from_timeline(timeline_info, match):
+    if not isinstance(timeline_info, dict) or not timeline_info.get("frames"):
+        return {}
+    if any(not (match.get(f"{key}Stats") or {}).get("participantId") for key in ("player1", "player2")):
+        return {}
     purchased_before_15 = {"player1": False, "player2": False}
     participant_keys = {
         (match.get("player1Stats") or {}).get("participantId"): "player1",
@@ -607,13 +740,15 @@ def boots_compliance_from_timeline(timeline_info, match):
 def evaluate_active_penalties(duo, match, timeline_info=None):
     if not match.get("player1Stats") or not match.get("player2Stats"):
         return 0
-    game_end_ms = int(match.get("gameEndTimestamp", 0) or 0)
+    game_start_ms = int(match.get("gameStartTimestamp", 0) or 0)
     completed = 0
     for debuff in duo.get("activeDebuffs", []):
+        if match.get("matchId") in debuff.get("excludedMatchIds", []):
+            continue
         if debuff.get("status") != "ACTIVE" or debuff.get("resolved"):
             continue
         assigned_ms = int(debuff.get("assignedAtEpochMs", 0) or 0)
-        if assigned_ms and game_end_ms and game_end_ms <= assigned_ms:
+        if assigned_ms and (not game_start_ms or game_start_ms < assigned_ms):
             continue
         penalty = debuff.get("penalty", {})
         base_id = penalty.get("baseId") or penalty.get("id")
@@ -627,16 +762,17 @@ def evaluate_active_penalties(duo, match, timeline_info=None):
                 results[player_key] = actual in VALID_MAIN_ROLES and primary in VALID_MAIN_ROLES and actual != primary
             elif base_id == "no_main_champion":
                 forbidden = req.get("favoriteChampions", {}).get(player_key, [])
-                results[player_key] = bool(forbidden) and stats.get("championName") not in forbidden
+                results[player_key] = bool(forbidden) and bool(stats.get("championName")) and stats.get("championName") not in forbidden
             elif base_id == "random_champion":
                 assigned = req.get("randomChampions", {}).get(player_key)
                 results[player_key] = bool(assigned) and stats.get("championName") == assigned
             elif base_id == "no_flash":
-                results[player_key] = 4 not in stats.get("summonerSpellIds", [])
-            elif base_id == "basic_boots_15" and timeline_info is not None:
-                results = boots_compliance_from_timeline(timeline_info, match)
+                spells = stats.get("summonerSpellIds") or []
+                results[player_key] = len(spells) == 2 and all(spells) and 4 not in spells
+            elif base_id == "basic_boots_15":
+                results = boots_compliance_from_timeline(timeline_info, match) if timeline_info is not None else match.get("bootsCompliance", {})
                 break
-        relevant = list(results.values())
+        relevant = [results.get("player1") is True, results.get("player2") is True]
         if base_id == "random_champion" and scope == "ONE":
             assigned_player = req.get("assignedPlayer")
             passed = bool(assigned_player and results.get(assigned_player))
@@ -786,63 +922,163 @@ def update_stats_backfill_status(duo, include_timestamp=False):
     return status
 
 def update_duo_shells(duo):
-    """Check win streak and Pentakills to award Blue Shells (capping inventory at 3)."""
-    # Ensure history is sorted chronologically (newest first)
+    """Award distinct team achievements once, including across syncs and backfills."""
     history = sort_history_chronologically(duo.get("history", []))
     duo["history"] = history
-    
-    # 1. Calculate current active win streak (from newest match at index 0)
     streak = 0
-    for m in history:
-        if isinstance(m, dict) and m.get("result") == "WIN":
-            streak += 1
-        else:
+    for match in history:
+        if match.get("result") != "WIN":
             break
+        streak += 1
     duo["streak"] = streak
-
-    # 2. Process 3 consecutive unprocessed wins chronologically (oldest to newest)
-    reversed_history = list(reversed(history))
-    consecutive_unprocessed_wins = []
-    
-    for m in reversed_history:
-        if not isinstance(m, dict):
-            continue
-            
-        if m.get("result") == "WIN" and not m.get("processedForShell"):
-            consecutive_unprocessed_wins.append(m)
-            if len(consecutive_unprocessed_wins) == 3:
-                # Mark these 3 consecutive wins as processed
-                for win_match in consecutive_unprocessed_wins:
-                    win_match["processedForShell"] = True
-                
-                duo["shellsEarnedTotal"] = duo.get("shellsEarnedTotal", 0) + 1
-                
-                # Award shell to inventory up to maximum 3
-                current_shells = duo.get("blueShells", 0)
-                if current_shells < MAX_SHELLS_INVENTORY:
-                    duo["blueShells"] = current_shells + 1
-                
-                consecutive_unprocessed_wins = []
+    pending_wins = []
+    legacy_wins = 0
+    for match in reversed(history):
+        # Seed the ledger from the former flags without awarding them again.
+        if "shellRewardIds" not in match:
+            previous = []
+            if match.get("processedForPenta"):
+                previous.append("penta")
+            if match.get("result") == "WIN" and match.get("processedForShell"):
+                legacy_wins += 1
+                if legacy_wins % SHELL_WIN_STREAK == 0:
+                    previous.append("streak")
+            else:
+                legacy_wins = 0
+            match["shellRewardIds"] = previous
         else:
-            consecutive_unprocessed_wins = []
-
-    # 3. Process Pentakills (max 1 shell per match with Pentakill)
-    for m in reversed_history:
-        if not isinstance(m, dict):
-            continue
-        if m.get("pentaKill") and not m.get("processedForPenta"):
-            m["processedForPenta"] = True
+            legacy_wins = 0
+        rewards = match["shellRewardIds"]
+        evaluated = match.setdefault("shellRewardsEvaluated", list(rewards))
+        candidates = []
+        if match.get("result") == "WIN" and not match.get("processedForShell"):
+            pending_wins.append(match)
+            if len(pending_wins) == SHELL_WIN_STREAK:
+                for win in pending_wins:
+                    win["processedForShell"] = True
+                pending_wins = []
+                candidates.append("streak")
+        else:
+            pending_wins = []
+        if match.get("pentaKill"):
+            candidates.append("penta")
+            match["processedForPenta"] = True
+        if not match.get("legacyShellRewards"):
+            players = [match.get(key) for key in ("player1Stats", "player2Stats")]
+            players = [p for p in players if isinstance(p, dict)]
+            if any(p.get("kills", 0) >= SHELL_KILLS for p in players):
+                candidates.append("kills")
+            if any(p.get("assists", 0) >= SHELL_ASSISTS for p in players):
+                candidates.append("assists")
+            if any(p.get("deaths") == 0 and p.get("kills", 0) + p.get("assists", 0) > SHELL_PERFECT_KDA for p in players):
+                candidates.append("perfect")
+        for rule in candidates:
+            if rule in evaluated:
+                continue
+            evaluated.append(rule)
+            if len(rewards) >= MAX_SHELLS_PER_MATCH:
+                continue
+            rewards.append(rule)
             duo["shellsEarnedTotal"] = duo.get("shellsEarnedTotal", 0) + 1
-            current_shells = duo.get("blueShells", 0)
-            if current_shells < MAX_SHELLS_INVENTORY:
-                duo["blueShells"] = current_shells + 1
+            if duo.get("blueShells", 0) < MAX_SHELLS_INVENTORY:
+                duo["blueShells"] = duo.get("blueShells", 0) + 1
 
+
+def needs_boots_timeline(duo, match):
+    if match.get("isTest") or match.get("bootsCompliance"):
+        return False
+    if not match.get("player1Stats") or not match.get("player2Stats"):
+        return False
+    start = int(match.get("gameStartTimestamp", 0) or 0)
+    return any(
+        d.get("status") == "ACTIVE" and not d.get("resolved")
+        and d.get("penalty", {}).get("baseId") == "basic_boots_15"
+        and start >= int(d.get("assignedAtEpochMs", 0) or 0)
+        for d in duo.get("activeDebuffs", [])
+    )
+
+
+def merge_riot_result(original, scanned):
+    """Merge only Riot-owned fields; inventory and penalties use the latest state."""
+    with db_lock:
+        current = load_db()
+        originals = {d["id"]: d for d in original.get("duos", [])}
+        scanned_by_id = {d["id"]: d for d in scanned.get("duos", [])}
+        for duo in current.get("duos", []):
+            old, incoming = originals.get(duo["id"]), scanned_by_id.get(duo["id"])
+            if not old or not incoming:
+                continue
+            # An account edited during a network request invalidates that result.
+            if any((duo.get(k) or {}).get(f) != (old.get(k) or {}).get(f)
+                   for k in ("player1", "player2") for f in ("name", "tag")):
+                continue
+            for field in ("tier", "division", "lp", "wins", "losses"):
+                if field in incoming and duo.get(field) == old.get(field):
+                    duo[field] = incoming[field]
+            if "tier" in duo:
+                duo["netLp"] = calc_total_lp(duo.get("tier"), duo.get("division"), duo.get("lp")) - duo.get("initialTotalLp", 0)
+            if incoming.get("rankObservedAt", 0) > duo.get("rankObservedAt", 0) and all(duo.get(f) == incoming.get(f) for f in ("tier", "division", "lp", "wins", "losses")):
+                duo["rankObservedAt"] = incoming["rankObservedAt"]
+                record_elo(duo, calc_total_lp(duo.get("tier"), duo.get("division"), duo.get("lp")), incoming["rankObservedAt"])
+            for key in ("player1", "player2"):
+                if not duo.get(key):
+                    continue
+                for field in ("puuid", "avatar"):
+                    if field in (incoming.get(key) or {}) and duo[key].get(field) == (old.get(key) or {}).get(field):
+                        duo[key][field] = incoming[key][field]
+            matches = {m["matchId"]: m for m in duo.get("history", []) if m.get("matchId")}
+            unkeyed = [m for m in duo.get("history", []) if not m.get("matchId")]
+            for match in incoming.get("history", []):
+                mid = match.get("matchId")
+                if not mid:
+                    continue
+                existing = matches.get(mid, {})
+                merged = {**existing, **copy.deepcopy(match)}
+                for flag in ("processedForShell", "processedForPenta", "shellRewardIds", "shellRewardsEvaluated", "legacyShellRewards"):
+                    if flag in existing:
+                        merged[flag] = existing[flag]
+                matches[mid] = merged
+            duo["history"] = sort_history_chronologically(list(matches.values()) + unkeyed)
+            # Oldest first makes the first qualifying match the recorded evidence.
+            for match in reversed(duo["history"]):
+                evaluate_active_penalties(duo, match)
+            update_duo_shells(duo)
+            update_duo_current_streak(duo)
+            calculate_player_insights(duo)
+            calculate_duo_best_match(duo)
+            update_stats_backfill_status(duo, include_timestamp=True)
+        save_db(current)
+        return sum(needs_boots_timeline(d, m) or int(m.get("statsVersion", 0) or 0) < 2
+                   for d in current.get("duos", []) for m in d.get("history", []) if not m.get("isTest"))
+
+
+def riot_open(request, timeout=8):
+    """Retry short transient failures; long rate limits are left for the next job."""
+    for attempt in range(3):
+        try:
+            return urllib.request.urlopen(request, timeout=timeout)
+        except urllib.error.HTTPError as error:
+            if attempt == 2 or error.code not in (429, 500, 502, 503, 504):
+                raise
+            try:
+                delay = float(error.headers.get("Retry-After", 1 + attempt))
+            except (ValueError, TypeError, AttributeError):
+                delay = 1 + attempt
+            if delay > 30:
+                raise
+            time.sleep(max(0.2, delay))
+
+
+@single_sync(riot_sync_lock)
 def sync_riot_data():
     db = load_db()
+    original = copy.deepcopy(db)
+    failures = 0
+    pending_imports = 0
     api_key = get_riot_api_key()
     if not api_key:
         safe_print("[Riot Sync] No API key provided.")
-        return
+        return {"success": False, "error": "Clave de Riot no configurada."}
 
     headers = {
         "X-Riot-Token": api_key,
@@ -863,13 +1099,14 @@ def sync_riot_data():
                 try:
                     url_acc1 = f"https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{urllib.parse.quote(p1_name)}/{urllib.parse.quote(p1_tag)}"
                     req1 = urllib.request.Request(url_acc1, headers=headers)
-                    with urllib.request.urlopen(req1, timeout=8) as resp1:
+                    with riot_open(req1, timeout=8) as resp1:
                         acc_data1 = json.loads(resp1.read().decode('utf-8'))
                         puuid1 = acc_data1.get("puuid")
                         if puuid1:
                             duo["player1"]["puuid"] = puuid1
                             updated = True
                 except Exception as ex_p1:
+                    failures += 1
                     safe_print(f"[Riot Sync PUUID P1 Error] {p1_name}: {ex_p1}")
 
             if duo.get("player2") and duo["player2"].get("name"):
@@ -878,13 +1115,14 @@ def sync_riot_data():
                     p2_tag = duo["player2"].get("tag", "EUW")
                     url_acc2 = f"https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{urllib.parse.quote(p2_name)}/{urllib.parse.quote(p2_tag)}"
                     req2 = urllib.request.Request(url_acc2, headers=headers)
-                    with urllib.request.urlopen(req2, timeout=8) as resp2:
+                    with riot_open(req2, timeout=8) as resp2:
                         acc_data2 = json.loads(resp2.read().decode('utf-8'))
                         puuid2 = acc_data2.get("puuid")
                         if puuid2:
                             duo["player2"]["puuid"] = puuid2
                             updated = True
                 except Exception as ex_p2:
+                    failures += 1
                     safe_print(f"[Riot Sync PUUID P2 Error] {ex_p2}")
 
             if not puuid1:
@@ -895,12 +1133,12 @@ def sync_riot_data():
                 try:
                     url_m1 = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid1}/ids?count=1"
                     req_m1 = urllib.request.Request(url_m1, headers=headers)
-                    with urllib.request.urlopen(req_m1, timeout=8) as resp_m1:
+                    with riot_open(req_m1, timeout=8) as resp_m1:
                         m1_ids = json.loads(resp_m1.read().decode('utf-8'))
                         if m1_ids:
                             url_d1 = f"https://europe.api.riotgames.com/lol/match/v5/matches/{m1_ids[0]}"
                             req_d1 = urllib.request.Request(url_d1, headers=headers)
-                            with urllib.request.urlopen(req_d1, timeout=8) as resp_d1:
+                            with riot_open(req_d1, timeout=8) as resp_d1:
                                 md1 = json.loads(resp_d1.read().decode('utf-8'))
                                 for p in md1.get("info", {}).get("participants", []):
                                     if p.get("puuid") == puuid1 and p.get("profileIcon"):
@@ -915,12 +1153,12 @@ def sync_riot_data():
                 try:
                     url_m2 = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid2}/ids?count=1"
                     req_m2 = urllib.request.Request(url_m2, headers=headers)
-                    with urllib.request.urlopen(req_m2, timeout=8) as resp_m2:
+                    with riot_open(req_m2, timeout=8) as resp_m2:
                         m2_ids = json.loads(resp_m2.read().decode('utf-8'))
                         if m2_ids:
                             url_d2 = f"https://europe.api.riotgames.com/lol/match/v5/matches/{m2_ids[0]}"
                             req_d2 = urllib.request.Request(url_d2, headers=headers)
-                            with urllib.request.urlopen(req_d2, timeout=8) as resp_d2:
+                            with riot_open(req_d2, timeout=8) as resp_d2:
                                 md2 = json.loads(resp_d2.read().decode('utf-8'))
                                 for p in md2.get("info", {}).get("participants", []):
                                     if p.get("puuid") == puuid2 and p.get("profileIcon"):
@@ -935,7 +1173,7 @@ def sync_riot_data():
             try:
                 url_lea1 = f"https://euw1.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid1}"
                 req_lea1 = urllib.request.Request(url_lea1, headers=headers)
-                with urllib.request.urlopen(req_lea1, timeout=8) as resp_lea1:
+                with riot_open(req_lea1, timeout=8) as resp_lea1:
                     entries = json.loads(resp_lea1.read().decode('utf-8'))
                     for entry in entries:
                         if entry.get("queueType") == "RANKED_SOLO_5x5":
@@ -945,11 +1183,13 @@ def sync_riot_data():
                             duo["wins"] = entry.get("wins", duo["wins"])
                             duo["losses"] = entry.get("losses", duo["losses"])
 
+                            duo["rankObservedAt"] = time.time()
                             current_total_lp = calc_total_lp(duo["tier"], duo["division"], duo["lp"])
                             initial_total = duo.get("initialTotalLp", 0)
                             duo["netLp"] = current_total_lp - initial_total
                             updated = True
             except Exception as e:
+                failures += 1
                 safe_print(f"[Riot Sync League Error] {e}")
 
             # 4. Incremental Match-V5 fetch + progressive legacy backfill.
@@ -963,10 +1203,18 @@ def sync_riot_data():
 
             # Only fetch matches from 2026 onwards (startTime = 1767225600 seconds)
             MIN_2026_TIMESTAMP = 1767225600
-            url_matches = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid1}/ids?queue=420&start=0&count=100&startTime={MIN_2026_TIMESTAMP}"
-            req_m = urllib.request.Request(url_matches, headers=headers)
-            with urllib.request.urlopen(req_m, timeout=8) as resp_m:
-                recent_ids = json.loads(resp_m.read().decode('utf-8'))
+            recent_ids = []
+            offset = 0
+            while True:
+                url_matches = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid1}/ids?queue=420&start={offset}&count=100&startTime={MIN_2026_TIMESTAMP}"
+                req_m = urllib.request.Request(url_matches, headers=headers)
+                with riot_open(req_m, timeout=8) as resp_m:
+                    page = json.loads(resp_m.read().decode('utf-8'))
+                recent_ids.extend(page)
+                if len(page) < 100:
+                    break
+                offset += 100
+                time.sleep(0.2)
 
             new_match_ids = [mid for mid in recent_ids if mid not in existing_match_ids]
             legacy_ids = [
@@ -975,9 +1223,10 @@ def sync_riot_data():
                 if isinstance(match, dict)
                 and not match.get("isTest")
                 and match.get("matchId")
-                and int(match.get("statsVersion", 0) or 0) < 2
+                and (int(match.get("statsVersion", 0) or 0) < 2 or not match.get("gameStartTimestamp"))
             ]
-            fetch_ids = list(dict.fromkeys(new_match_ids + legacy_ids))[:RIOT_MATCH_DETAIL_BATCH_PER_DUO]
+            retry_ids = [m["matchId"] for m in existing_history if m.get("matchId") and needs_boots_timeline(duo, m)]
+            fetch_ids = list(dict.fromkeys(retry_ids[:10] + new_match_ids + legacy_ids + retry_ids[10:]))[:RIOT_MATCH_DETAIL_BATCH_PER_DUO]
             new_matches = []
             enriched_count = 0
 
@@ -986,7 +1235,7 @@ def sync_riot_data():
                     time.sleep(0.2)
                     url_detail = f"https://europe.api.riotgames.com/lol/match/v5/matches/{mid}"
                     req_d = urllib.request.Request(url_detail, headers=headers)
-                    with urllib.request.urlopen(req_d, timeout=8) as resp_d:
+                    with riot_open(req_d, timeout=8) as resp_d:
                         mdetail = json.loads(resp_d.read().decode('utf-8'))
                     info = mdetail.get("info", {})
                     duration_sec = int(info.get("gameDuration", 0) or 0)
@@ -1019,22 +1268,21 @@ def sync_riot_data():
                     match["gameEndTimestamp"] = int(game_end_ms or 0)
                     p1_detail, p2_detail = enrich_match_record(match, info, puuid1, puuid2)
                     timeline_info = None
-                    needs_timeline = any(
-                        d.get("status") == "ACTIVE" and (d.get("penalty", {}).get("baseId") or d.get("penalty", {}).get("id")) == "basic_boots_15"
-                        for d in duo.get("activeDebuffs", [])
-                    )
+                    needs_timeline = needs_boots_timeline(duo, match)
                     if needs_timeline and p1_detail and p2_detail:
                         try:
                             time.sleep(0.2)
                             timeline_url = f"https://europe.api.riotgames.com/lol/match/v5/matches/{mid}/timeline"
                             timeline_request = urllib.request.Request(timeline_url, headers=headers)
-                            with urllib.request.urlopen(timeline_request, timeout=8) as timeline_response:
+                            with riot_open(timeline_request, timeout=8) as timeline_response:
                                 timeline_info = json.loads(timeline_response.read().decode('utf-8')).get("info", {})
                         except Exception as timeline_error:
+                            failures += 1
                             safe_print(f"[Riot Timeline Error] {mid}: {timeline_error}")
-                    resolved_count = evaluate_active_penalties(duo, match, timeline_info)
-                    if resolved_count:
-                        safe_print(f"[Penalty Sync] {duo['teamName']}: {resolved_count} castigo(s) cumplido(s) en {mid}")
+                    if timeline_info is not None:
+                        compliance = boots_compliance_from_timeline(timeline_info, match)
+                        if compliance:
+                            match["bootsCompliance"] = compliance
                     if p1_detail and p1_detail.get("profileIcon"):
                         duo["player1"]["avatar"] = f'https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/{p1_detail["profileIcon"]}.png'
                     if p2_detail and duo.get("player2") and p2_detail.get("profileIcon"):
@@ -1047,16 +1295,13 @@ def sync_riot_data():
                         enriched_count += 1
                     updated = True
                 except Exception as ex_m:
+                    failures += 1
                     safe_print(f"[Riot Sync Match Detail Error] {mid}: {ex_m}")
 
+            pending_imports += len(set(new_match_ids) - {m.get("matchId") for m in new_matches})
             if new_matches:
                 existing_history = new_matches + existing_history
-            duo["history"] = sort_history_chronologically(existing_history)[:200]
-            update_duo_shells(duo)
-            update_duo_current_streak(duo)
-            calculate_player_insights(duo)
-            calculate_duo_best_match(duo)
-
+            duo["history"] = sort_history_chronologically(existing_history)
             backfill_status = update_stats_backfill_status(duo, include_timestamp=True)
             remaining_backfill = backfill_status["remaining"]
             if fetch_ids:
@@ -1068,19 +1313,49 @@ def sync_riot_data():
             safe_print(f"[Riot Sync Success] Updated {p1_name}#{p1_tag}: {duo['tier']} {duo['division']} ({duo['lp']} LP), History: {len(duo.get('history',[]))} matches, Shells: {duo.get('blueShells', 0)}")
 
         except Exception as e:
+            failures += 1
             safe_print(f"[Riot API Sync Error] {e}")
 
-    if updated:
-        save_db(db)
+    pending = merge_riot_result(original, db) if updated else 0
+    pending += pending_imports
+    return {"success": failures == 0, "pending": pending,
+            "error": f"Sincronización parcial: {failures} consulta(s) fallida(s). Se conservan los últimos datos disponibles." if failures else None}
+
+def public_trophies():
+    with db_lock:
+        db = load_db()
+        if db.get("awardedTrophies"):
+            return db["awardedTrophies"]
+        end_date = db.get("config", {}).get("endDate")
+        result = build_trophies(db.get("duos", []), end_date)
+        deadline = deadline_timestamp(end_date)
+        if deadline is not None and time.time() >= deadline:
+            result["status"] = "awarded"
+            result["awardedAt"] = time.time()
+            db["awardedTrophies"] = result
+            save_db(db)
+        return result
+
+
+def schedule_trophies():
+    def loop():
+        while True:
+            try:
+                public_trophies()
+            except Exception as error:
+                safe_print(f"[Trophies] {error}")
+            time.sleep(15)
+    threading.Thread(target=loop, daemon=True).start()
+
 
 def schedule_sync():
     def loop():
         while True:
             time.sleep(300)  # Sincronización automática cada 5 minutos (300 seg)
             try:
-                sync_riot_data()
-            except Exception:
-                pass
+                sync_jobs.start("riot", sync_riot_data)
+            except Exception as error:
+                safe_print(f"[Riot scheduler] {error}")
 
     t = threading.Thread(target=loop, daemon=True)
     t.start()
@@ -1089,7 +1364,7 @@ def schedule_twitch_sync():
     def loop():
         while True:
             try:
-                sync_twitch_live_status()
+                sync_jobs.start("twitch", sync_twitch_live_status)
             except Exception as error:
                 safe_print(f"[Twitch Sync Error] {error}")
             time.sleep(TWITCH_SYNC_INTERVAL)
@@ -1097,7 +1372,7 @@ def schedule_twitch_sync():
     t = threading.Thread(target=loop, daemon=True)
     t.start()
 
-class ReusableServer(HTTPServer):
+class ReusableServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 class CustomHandler(BaseHTTPRequestHandler):
@@ -1114,9 +1389,10 @@ class CustomHandler(BaseHTTPRequestHandler):
     def _send_bytes(self, content_bytes, content_type, code=200):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
-        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
         self.send_header('Pragma', 'no-cache')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Content-Length', str(len(content_bytes)))
         self.end_headers()
         self.wfile.write(content_bytes)
@@ -1127,67 +1403,125 @@ class CustomHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
+    def read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        if length < 0 or length > 1024 * 1024:
+            raise ValueError("Invalid body length")
+        body = json.loads(self.rfile.read(length).decode("utf-8") if length else "{}")
+        if not isinstance(body, dict):
+            raise ValueError("Expected JSON object")
+        return body
+
+    def stream_shell_notifications(self):
+        authorization = self.headers.get("Authorization", "")
+        token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else ""
+        # Read the revision first so a concurrent launch cannot be missed.
+        with shell_notifications:
+            revision = shell_notification_revision
+        state = receiver_notification_state(token)
+        if state is None:
+            self._send_json({"success": False, "error": "Sesión caducada"}, 401)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        self.connection.settimeout(20)
+        previous = None
+        try:
+            while True:
+                if state is None:
+                    self.wfile.write(b'event: expired\ndata: {}\n\n')
+                    self.wfile.flush()
+                    return
+                payload = json.dumps(state, ensure_ascii=False)
+                if payload != previous:
+                    self.wfile.write(("data: " + payload + "\n\n").encode("utf-8"))
+                    previous = payload
+                else:
+                    self.wfile.write(b': heartbeat\n\n')
+                self.wfile.flush()
+                with shell_notifications:
+                    shell_notifications.wait_for(lambda: shell_notification_revision != revision, timeout=15)
+                    revision = shell_notification_revision
+                state = receiver_notification_state(token)
+        except (OSError, StorageError):
+            # Disconnection and temporary storage errors reconnect on the client.
+            return
+
+    @http_errors
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == '/api/player/events':
+            self.stream_shell_notifications()
+            return
         if path == '/api/duos':
-            db = load_db()
-            duos = db.get("duos", [])
-            shell_attacks = db.get("shellAttacks", [])
-            for duo in duos:
-                update_duo_shells(duo)
-                update_duo_current_streak(duo)
-                calculate_player_insights(duo)
-                calculate_duo_best_match(duo)
-                update_stats_backfill_status(duo)
-                duo["shellsLaunched"] = sum(
-                    1 for attack in shell_attacks
-                    if attack.get("attackerTeamId") == duo.get("id")
-                )
-                duo["shellsReceived"] = sum(
-                    1 for attack in shell_attacks
-                    if attack.get("targetTeamId") == duo.get("id")
-                )
-            self._send_json([safe_duo_for_player(duo) for duo in duos])
+            self._send_json(public_duo_summaries())
+            return
+        elif path == '/api/sync/status':
+            self._send_json(sync_jobs.snapshot())
+            return
+        elif path.startswith('/api/duos/') and path.endswith('/history'):
+            duo_id = urllib.parse.unquote(path.split('/')[3])
+            duo = next((d for d in load_db().get("duos", []) if d.get("id") == duo_id), None)
+            if not duo:
+                self._send_json({"error": "Equipo no encontrado"}, 404)
+                return
+            offset, limit = page_args(parsed)
+            history = sort_history_chronologically(duo.get("history", []))
+            self._send_json({"matches": history[offset:offset + limit], "total": len(history), "offset": offset, "limit": limit})
+            return
+        elif path == '/api/trophies':
+            self._send_json(public_trophies())
             return
         elif path == '/api/config':
             db = load_db()
-            self._send_json(public_config(db.get("config", {})))
+            config = public_config(db.get("config", {}))
+            config["shellRewardRules"] = shell_reward_rules()
+            config["penaltyCatalog"] = [
+                {key: item[key] for key in ("id", "name", "icon", "desc")}
+                for item in PENALTY_CATALOG
+            ]
+            self._send_json(config)
             return
         elif path == '/api/events':
             db = load_db()
-            self._send_json(db.get("events", []))
+            offset, limit = page_args(parsed)
+            events = db.get("events", [])
+            event_type = urllib.parse.parse_qs(parsed.query).get("type", [None])[0]
+            if event_type:
+                events = [event for event in events if event.get("type") == event_type]
+            self._send_json(events[offset:offset + limit])
             return
 
-        # Static File Serving
-        if path == '/':
-            path = '/index.html'
-
-        if path == '/db.json' or path == '/secrets.json':
+        # The repository root is never a public directory.
+        public_files = {"torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
+        filename = "index.html" if path == "/" else path.removeprefix("/")
+        if filename not in public_files:
             self._send_json({"error": "File Not Found"}, 404)
             return
-        
-        filepath = os.path.normpath(os.path.join(BASE_DIR, path.lstrip('/')))
-        if os.path.exists(filepath) and os.path.isfile(filepath):
-            mime_type, _ = mimetypes.guess_type(filepath)
-            mime_type = mime_type or 'application/octet-stream'
-            with open(filepath, 'rb') as f:
-                content = f.read()
-            self._send_bytes(content, mime_type)
-        else:
+        filepath = os.path.realpath(os.path.join(BASE_DIR, filename))
+        if os.path.dirname(filepath) != os.path.realpath(BASE_DIR) or not os.path.isfile(filepath):
             self._send_json({"error": "File Not Found"}, 404)
+            return
+        with open(filepath, "rb") as handle:
+            content = handle.read()
+        self._send_bytes(content, mimetypes.guess_type(filename)[0] or "application/octet-stream")
 
+    @http_errors
+    @serialized_mutation
     def do_POST(self):
         parsed = urlparse(self.path)
-        length = int(self.headers.get('Content-Length', 0))
-        raw_body = self.rfile.read(length).decode('utf-8') if length > 0 else '{}'
-        data = json.loads(raw_body)
+        data = self.read_body()
         db = load_db()
 
         if parsed.path == '/api/admin/login':
@@ -1209,6 +1543,16 @@ class CustomHandler(BaseHTTPRequestHandler):
             data["id"] = new_id
             idx = next((i for i, d in enumerate(duos) if d["id"] == new_id), -1)
             existing_duo = duos[idx] if idx >= 0 else {}
+            if existing_duo:
+                editable = {"teamName", "twitchUrl", "password"}
+                submitted = data
+                data = copy.deepcopy(existing_duo)
+                data.update({key: submitted[key] for key in editable if key in submitted})
+                for player_key in ("player1", "player2"):
+                    if player_key in submitted:
+                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole"}}}
+            if not str(data.get("teamName", "")).strip():
+                raise ValueError("Team name is required")
 
             player1 = data.get("player1") or {}
             player2 = data.get("player2") or {}
@@ -1253,6 +1597,11 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "duo": player_state(db, duo), "sessionToken": token})
             else:
                 self._send_json({"success": False, "error": "Contraseña o equipo incorrecto"}, 401)
+
+        elif parsed.path == '/api/player/logout':
+            player_sessions.pop(str(data.get('sessionToken', '')), None)
+            notify_shell_receivers()
+            self._send_json({'success': True})
 
         elif parsed.path == '/api/player/state':
             team_id = session_team(data.get("sessionToken"))
@@ -1313,9 +1662,10 @@ class CustomHandler(BaseHTTPRequestHandler):
             }
             events = db.get("events", [])
             events.insert(0, event)
-            db["events"] = events[:20]
+            db["events"] = events
 
             save_db(db)
+            notify_shell_receivers()
             self._send_json({"success": True, "attacker": player_state(db, attacker), "attack": attack, "event": event})
 
         elif parsed.path == '/api/player/spin-shell':
@@ -1345,7 +1695,8 @@ class CustomHandler(BaseHTTPRequestHandler):
             if selected_penalty["baseId"] == "return_shell":
                 attacker = next((d for d in db.get("duos", []) if d.get("id") == attack.get("attackerTeamId")), None)
                 if attacker:
-                    attacker["blueShells"] = int(attacker.get("blueShells", 0) or 0) + 1
+                    if int(attacker.get("blueShells", 0) or 0) < MAX_SHELLS_INVENTORY:
+                        attacker["blueShells"] = int(attacker.get("blueShells", 0) or 0) + 1
                 attack["status"] = "RETURNED"
             else:
                 penalty_instance = {
@@ -1377,8 +1728,8 @@ class CustomHandler(BaseHTTPRequestHandler):
                 "message": f"🎰 {attack.get('targetName')} ha girado la ruleta: {selected_penalty['icon']} {selected_penalty['name']} — {selected_penalty['desc']}"
             }
             db.setdefault("events", []).insert(0, event)
-            db["events"] = db["events"][:50]
             save_db(db)
+            notify_shell_receivers()
             self._send_json({"success": True, "penalty": selected_penalty, "duo": player_state(db, target), "attack": attack})
 
         elif parsed.path == '/api/config':
@@ -1442,6 +1793,8 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "error": "Castigo no encontrado"}, 404)
                 return
             if action == "REOPEN":
+                if found.get("resolvedByMatchId"):
+                    found.setdefault("excludedMatchIds", []).append(found["resolvedByMatchId"])
                 found["status"] = "ACTIVE"
                 found["resolved"] = False
                 found.pop("resolvedAt", None)
@@ -1454,16 +1807,20 @@ class CustomHandler(BaseHTTPRequestHandler):
             else:
                 self._send_json({"success": False, "error": "Acción administrativa no válida"}, 400)
                 return
+            found.setdefault("resolutionHistory", []).append({"action": action, "note": note, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "by": "ADMIN"})
             db.setdefault("events", []).insert(0, {
-                "id": f"event-{int(time.time()*1000)}", "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "id": f"event-{uuid.uuid4().hex}", "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "penaltyInstanceId": instance_id, "action": action, "note": note,
                 "type": "PENALTY_ADMIN_CORRECTION", "target": owner.get("teamName"),
                 "penalty": found.get("penalty"), "message": f"🛡️ Administración ha actualizado {found.get('penalty', {}).get('name', 'un castigo')} de {owner.get('teamName')}: {action}. Motivo: {note}"
             })
-            db["events"] = db["events"][:50]
             save_db(db)
             self._send_json({"success": True, "duos": safe_duos(db.get("duos", []))})
 
         elif parsed.path == '/api/calculate-shells':
+            if not verify_admin_pin(db, data.get('authPin', '')):
+                self._send_json({'success': False, 'error': 'PIN incorrecto'}, 401)
+                return
             db = load_db()
             duos = db.get("duos", [])
             total_new_shells = 0
@@ -1476,29 +1833,24 @@ class CustomHandler(BaseHTTPRequestHandler):
             save_db(db)
             self._send_json({"success": True, "newShells": total_new_shells, "duos": safe_duos(duos)})
 
-        elif parsed.path == '/api/sync':
-            sync_riot_data()
-            db = load_db()
-            self._send_json({"success": True, "duos": safe_duos(db.get("duos", []))})
-
-        elif parsed.path == '/api/twitch/sync':
-            auth_pin = str(data.get("authPin", "")).strip()
-            if not verify_admin_pin(db, auth_pin):
+        elif parsed.path in ('/api/sync', '/api/twitch/sync'):
+            if not verify_admin_pin(db, data.get("authPin", "")):
                 self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
                 return
-            result = sync_twitch_live_status()
-            self._send_json(result, 200 if result.get("success") else 400)
+            name = "riot" if parsed.path == '/api/sync' else "twitch"
+            callback = sync_riot_data if name == "riot" else sync_twitch_live_status
+            self._send_json(sync_jobs.start(name, callback), 202)
 
         else:
             self._send_json({"error": "Endpoint Not Found"}, 404)
 
+    @http_errors
+    @serialized_mutation
     def do_DELETE(self):
         parsed = urlparse(self.path)
         if parsed.path.startswith('/api/duos/'):
-            length = int(self.headers.get('Content-Length', 0))
-            raw_body = self.rfile.read(length).decode('utf-8') if length > 0 else '{}'
-            data = json.loads(raw_body)
-            duo_id = parsed.path.split('/')[-1]
+            data = self.read_body()
+            duo_id = urllib.parse.unquote(parsed.path.split('/')[-1])
             db = load_db()
             if not verify_admin_pin(db, str(data.get("authPin", "")).strip()):
                 self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
@@ -1518,6 +1870,7 @@ if __name__ == "__main__":
     print(f"Pepes Krisis Duo Q Challenge Server Activo en http://127.0.0.1:{PORT}")
     print("==================================================")
 
+    schedule_trophies()
     schedule_sync()
     schedule_twitch_sync()
     server = ReusableServer(('', PORT), CustomHandler)

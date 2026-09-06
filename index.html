@@ -27,7 +27,7 @@
         </a>
         <ul class="nav-links">
           <li><a href="#leaderboard" class="nav-link active"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
-          <li><a href="#rules" class="nav-link"><i class="fa-solid fa-scroll"></i> Reglas</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open"></i> Torneo y premios</a></li>
           <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad"></i> Mi
               Panel</a></li>
           <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel
@@ -116,7 +116,7 @@
           </select>
 
           <select id="sort-by" class="filter-select" aria-label="Ordenar tabla por">
-            <option value="RANK">Ordenar por Rango / LP</option>
+            <option value="RANK">Ordenar por rango actual</option>
             <option value="WINRATE">Ordenar por Winrate %</option>
             <option value="GAMES">Ordenar por Partidas Jugadas</option>
             <option value="NAME">Ordenar por Nombre</option>
@@ -166,6 +166,8 @@
     </div>
   </section>
 
+
+
   <!-- Best Combined KDA Matches -->
   <section class="container best-matches-section" aria-labelledby="best-matches-title">
     <div class="best-matches-card">
@@ -200,10 +202,10 @@
     <div class="admin-card" style="border-color: rgba(0, 240, 255, 0.3); background: rgba(10, 15, 29, 0.7); backdrop-filter: blur(10px);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem; flex-wrap: wrap; gap: 0.5rem;">
         <h2 class="admin-card-title" style="margin-bottom: 0; font-size: 1.3rem;">
-          <i class="fa-solid fa-shield-halved" style="color: var(--cyan-primary);"></i> Historial de Ataques Recientes (Caparazones Azules)
+          <i class="fa-solid fa-shield-halved" style="color: var(--cyan-primary);"></i> Historial de Castigos Abiertos (Caparazones Azules)
         </h2>
         <span style="font-size: 0.8rem; color: var(--text-muted);">
-          <i class="fa-solid fa-clock-rotate-left"></i> Últimos 10 lanzamientos
+          <i class="fa-solid fa-clock-rotate-left"></i> Últimos 10 castigos abiertos
         </span>
       </div>
 
@@ -226,20 +228,11 @@
   </section>
 
   <!-- Rules Modal / Section -->
-  <section class="container" id="rules" style="padding-bottom: 4rem;">
-    <div class="admin-card" style="border-color: var(--border-glow);">
-      <h2 class="admin-card-title">
-        <i class="fa-solid fa-gavel"></i> Reglas y Formato de la Competición
-      </h2>
-      <ul style="color: var(--text-muted); padding-left: 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;">
-        <li>Todas las cuentas deben ser <strong>nuevas e iniciar desde Unranked</strong> en el servidor EUW.</li>
-        <li>El ranking se calcula ordenando por el <strong>LP Neto acumulado</strong> durante el periodo de la
-          competición.</li>
-        <li>La pareja debe jugar siempre junta en la cola de <strong>Ranked Solo/Duo</strong>.</li>
-        <li>En caso de empate en LP, ganará el dúo con mayor porcentaje de victoria (Winrate %).</li>
-      </ul>
-    </div>
-  </section>
+
+
+
+
+
 
   <!-- Modal Overlay for Duo Details -->
   <div class="modal-overlay" id="modal-overlay">
@@ -270,6 +263,7 @@
 
   <!-- Scripts -->
   <script src="data.js"></script>
+  <script src="alerts.js"></script>
   <script src="app.js"></script>
 </body>
 

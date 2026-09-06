@@ -1,11 +1,12 @@
-version: '3.8'
-
 services:
   pepes-duoq-challenge:
     build: .
     container_name: pepes_duoq_app
     ports:
       - "8085:8085"
+    environment:
+      PEPES_DATA_DIR: /data
     volumes:
-      - ./db.json:/app/db.json
+      # A directory mount is required for atomic replacement and backup files.
+      - ./:/data
     restart: unless-stopped

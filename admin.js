@@ -160,7 +160,7 @@ function renderAdminPenalties() {
       <td>${escapeHtml(scope === 'BOTH' ? 'Ambos' : scope === 'SPECIAL' ? 'Especial' : 'Uno')}</td>
       <td><span class="admin-penalty-status ${completed ? 'is-completed' : 'is-active'}">${completed ? 'Cumplido' : 'Activo'}</span></td>
       <td>${completed ? `<time>${escapeHtml(formatPenaltyTimestamp(debuff.resolvedAt))}</time>` : '<span class="admin-penalty-empty">—</span>'}</td>
-      <td>${debuff.id ? `<button type="button" class="btn-refresh admin-penalty-action" onclick="window.adminPenaltyAction('${escapeHtml(debuff.id)}','${completed ? 'REOPEN' : 'COMPLETE'}')">${completed ? 'Reabrir' : 'Marcar cumplido'}</button>` : '<span class="legacy-penalty-label">Antiguo</span>'}</td>
+      <td>${debuff.id ? `<button type="button" class="btn-refresh admin-penalty-action" data-penalty-id="${escapeHtml(debuff.id)}" data-penalty-action="${completed ? 'REOPEN' : 'COMPLETE'}">${completed ? 'Reabrir' : 'Marcar cumplido'}</button>` : '<span class="legacy-penalty-label">Antiguo</span>'}</td>
     </tr>`;
   }).join('');
 
@@ -284,38 +284,38 @@ function renderAdminDuosList() {
             </div>
           ` : ''}
           <div style="font-size: 0.8rem; color: var(--cyan-primary); margin-top: 0.2rem;">
-            Rango: ${duo.tier} ${duo.division} (${duo.lp} LP) | Net LP: +${duo.netLp} LP | ${duo.wins}W / ${duo.losses}L
+            Rango: ${escapeHtml(duo.tier)} ${escapeHtml(duo.division)} (${escapeHtml(duo.lp)} LP) | Net LP: +${escapeHtml(duo.netLp)} LP | ${escapeHtml(duo.wins)}W / ${escapeHtml(duo.losses)}L
           </div>
         </div>
         <div>
-          <button class="btn-danger" onclick="handleDeleteDuo('${duo.id}')">
+          <button class="btn-danger" data-team-action="delete" data-team-id="${escapeHtml(duo.id)}">
             <i class="fa-solid fa-trash"></i> Eliminar
           </button>
         </div>
       </div>
       <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap;">
         <div class="form-group" style="flex: 1 1 220px; margin: 0;">
-          <label for="p1-role-${duo.id}">Rol principal · ${escapeHtml(duo.player1.name)}</label>
-          <select id="p1-role-${duo.id}" class="form-control" required>
+          <label for="p1-role-${escapeHtml(duo.id)}">Rol principal · ${escapeHtml(duo.player1.name)}</label>
+          <select id="p1-role-${escapeHtml(duo.id)}" class="form-control" required>
             ${renderRoleOptions(duo.player1.mainRole)}
           </select>
         </div>
         <div class="form-group" style="flex: 1 1 220px; margin: 0;">
-          <label for="p2-role-${duo.id}">Rol principal · ${escapeHtml(duo.player2.name)}</label>
-          <select id="p2-role-${duo.id}" class="form-control" required>
+          <label for="p2-role-${escapeHtml(duo.id)}">Rol principal · ${escapeHtml(duo.player2.name)}</label>
+          <select id="p2-role-${escapeHtml(duo.id)}" class="form-control" required>
             ${renderRoleOptions(duo.player2.mainRole)}
           </select>
         </div>
-        <button class="btn-refresh" onclick="handleSaveRoles('${duo.id}')" style="height: fit-content;">
+        <button class="btn-refresh" data-team-action="roles" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
           <i class="fa-solid fa-user-tag"></i> Guardar roles
         </button>
       </div>
       <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap;">
         <div class="form-group" style="flex: 1 1 320px; margin: 0;">
-          <label for="twitch-url-${duo.id}">Canal de Twitch</label>
-          <input type="url" id="twitch-url-${duo.id}" class="form-control" value="${escapeHtml(duo.twitchUrl || '')}" placeholder="https://www.twitch.tv/nombre_del_canal">
+          <label for="twitch-url-${escapeHtml(duo.id)}">Canal de Twitch</label>
+          <input type="url" id="twitch-url-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.twitchUrl || '')}" placeholder="https://www.twitch.tv/nombre_del_canal">
         </div>
-        <button class="btn-refresh" onclick="handleSaveTwitch('${duo.id}')" style="height: fit-content;">
+        <button class="btn-refresh" data-team-action="twitch" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
           <i class="fa-brands fa-twitch"></i> Guardar Twitch
         </button>
       </div>
@@ -378,12 +378,10 @@ function setupAdminListeners() {
 
       const result = await DataStore.triggerTwitchSync(adminSessionPin);
       if (result.success) {
-        adminDuos = result.duos || await DataStore.getDuos();
-        renderAdminDuosList();
-        const message = `Twitch comprobado: ${result.checked || 0} canal(es), ${result.live || 0} en directo.`;
-        window.showToast ? showToast(message, 'success') : alert(message);
+        showToast(result.alreadyRunning ? 'Twitch ya se está sincronizando.' : 'Sincronización de Twitch iniciada. El estado aparece sobre el panel.');
+        await DataStore.refreshSyncStatus();
       } else {
-        alert(result.error || 'No se pudo comprobar el estado de Twitch.');
+        alert(result.error || 'No se pudo iniciar la sincronización de Twitch.');
       }
 
       if (icon) icon.classList.remove('spinning');
@@ -400,7 +398,13 @@ function setupAdminListeners() {
       if (icon) icon.classList.add('spinning');
       btnCalcShells.disabled = true;
 
-      const res = await DataStore.calculateShells();
+      const res = await DataStore.calculateShells(adminSessionPin);
+      if (!res.success) {
+        if (icon) icon.classList.remove('spinning');
+        btnCalcShells.disabled = false;
+        alert(res.error || 'No se pudieron calcular los caparazones.');
+        return;
+      }
       if (res.duos) adminDuos = res.duos;
       renderAdminDuosList();
 
@@ -445,16 +449,14 @@ function setupAdminListeners() {
       if (icon) icon.classList.add('spinning');
       btnSyncMatches.disabled = true;
 
-      adminDuos = await DataStore.triggerRiotSync();
-      renderAdminDuosList();
-
+      const result = await DataStore.triggerRiotSync(adminSessionPin);
       if (icon) icon.classList.remove('spinning');
       btnSyncMatches.disabled = false;
-
-      if (window.showToast) {
-        showToast('¡Últimas 5 partidas de cada equipo recuperadas con éxito desde la API de Riot Games!', 'success');
+      if (result.success) {
+        showToast(result.alreadyRunning ? 'Riot ya se está sincronizando.' : 'Sincronización de Riot iniciada. El estado aparece sobre el panel.');
+        await DataStore.refreshSyncStatus();
       } else {
-        alert('¡Últimas 5 partidas de cada equipo recuperadas con éxito desde la API de Riot Games!');
+        alert(result.error || 'No se pudo iniciar la sincronización.');
       }
     });
   }
@@ -567,9 +569,7 @@ async function handleSaveRoles(id) {
     return;
   }
 
-  duo.player1.mainRole = p1Input.value;
-  duo.player2.mainRole = p2Input.value;
-  const result = await DataStore.saveDuo(duo, adminSessionPin);
+  const result = await DataStore.saveDuo({id, player1: {mainRole: p1Input.value}, player2: {mainRole: p2Input.value}}, adminSessionPin);
   if (!result || result.success === false) {
     alert((result && result.error) || 'No se pudieron guardar los roles.');
     return;
@@ -594,8 +594,7 @@ async function handleSaveTwitch(id) {
     return;
   }
 
-  duo.twitchUrl = twitchUrl;
-  const result = await DataStore.saveDuo(duo, adminSessionPin);
+  const result = await DataStore.saveDuo({id, twitchUrl}, adminSessionPin);
   if (!result || result.success === false) {
     alert((result && result.error) || 'No se pudo guardar el canal de Twitch.');
     return;
@@ -662,3 +661,14 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+document.addEventListener('sync-finished', async () => {
+  if (adminSessionPin) { await refreshAdminData(); renderAdminDuosList(); renderAdminPenalties(); }
+});
+
+document.addEventListener('click', event => {
+  const penalty = event.target.closest('[data-penalty-id]');
+  if (penalty) window.adminPenaltyAction(penalty.dataset.penaltyId, penalty.dataset.penaltyAction);
+  const team = event.target.closest('[data-team-action]');
+  if (team) ({delete: handleDeleteDuo, roles: handleSaveRoles, twitch: handleSaveTwitch})[team.dataset.teamAction]?.(team.dataset.teamId);
+});

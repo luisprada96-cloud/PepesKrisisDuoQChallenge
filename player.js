@@ -19,14 +19,20 @@ async function initPlayerApp() {
   if (savedSession && playerSessionToken) {
     try {
       const state = await DataStore.getPlayerState(playerSessionToken);
-      if (!state.success || !state.duo) throw new Error('Sesión caducada');
+      if (!state.success || !state.duo) {
+        if (state.status === 401) throw new Error('Sesión caducada');
+        showLoginView(); setupPlayerListeners(); return;
+      }
       activeDuo = state.duo;
       sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
       showDashboardView();
     } catch (e) {
       sessionStorage.removeItem('pepes_player_session');
+      const previousToken = playerSessionToken;
       sessionStorage.removeItem('pepes_player_token');
       playerSessionToken = '';
+      DataStore.logoutPlayer(previousToken);
+      document.dispatchEvent(new Event('player-session-changed'));
       showLoginView();
     }
   } else {
@@ -35,30 +41,42 @@ async function initPlayerApp() {
 
   setupPlayerListeners();
 
-  // Auto-refresco silencioso desde db.json cada 15 segundos (sin llamadas a Riot API)
-  setInterval(async () => {
+  let signature = '';
+  async function refresh() {
     try {
-      allDuos = await DataStore.getDuos();
-      if (activeDuo) {
-        const state = await DataStore.getPlayerState(playerSessionToken);
-        if (state.success && state.duo) activeDuo = state.duo;
-        renderDashboardData();
+      if (!document.hidden) {
+        allDuos = await DataStore.getDuos();
+        if (activeDuo) {
+          const state = await DataStore.getPlayerState(playerSessionToken);
+          if (state.success && state.duo) {
+            const next = JSON.stringify([state.duo, allDuos]);
+            activeDuo = state.duo;
+            if (next !== signature) { signature = next; renderDashboardData(); }
+          } else if (state.status === 401) {
+            activeDuo = null;
+            playerSessionToken = '';
+            sessionStorage.removeItem('pepes_player_session');
+            sessionStorage.removeItem('pepes_player_token');
+            showLoginView();
+          }
+        } else { populateTeamsDropdown(); }
       }
-    } catch (e) {
-      console.warn("Error en auto-refresco del panel del jugador:", e);
-    }
-  }, 15000);
+    } finally { setTimeout(refresh, 15000); }
+  }
+  setTimeout(refresh, 15000);
 }
 
 function populateTeamsDropdown() {
   const teamSelect = document.getElementById('login-team-select');
   if (!teamSelect) return;
 
+  const selectedTeam = teamSelect.value;
   teamSelect.innerHTML = '<option value="">Selecciona tu equipo / pareja...</option>';
   allDuos.forEach(d => {
     const p2Str = d.player2 && d.player2.name ? ` & ${d.player2.name}` : '';
-    teamSelect.innerHTML += `<option value="${d.id}">${escapeHtml(d.teamName)} (${d.player1.name}${p2Str})</option>`;
+    teamSelect.add(new Option(`${d.teamName} (${d.player1.name}${p2Str})`, d.id));
   });
+  if (Array.from(teamSelect.options).some(option => option.value === selectedTeam)) teamSelect.value = selectedTeam;
 }
 
 function showLoginView() {
@@ -118,12 +136,15 @@ function renderDashboardData() {
   }
 
   // Populate Target Select (all teams except current)
+  const selectedTarget = targetSelect ? targetSelect.value : "";
   if (targetSelect) {
     targetSelect.innerHTML = '<option value="">Selecciona equipo objetivo...</option>';
     allDuos.filter(d => d.id !== activeDuo.id).forEach(d => {
-      targetSelect.innerHTML += `<option value="${d.id}">#${d.teamName} (${d.tier} ${d.division})</option>`;
+      targetSelect.add(new Option(`#${d.teamName} (${d.tier} ${d.division})`, d.id));
     });
   }
+
+  if (targetSelect && Array.from(targetSelect.options).some(o => o.value === selectedTarget)) targetSelect.value = selectedTarget;
 
   // Render received penalties table
   renderPendingShells();
@@ -156,7 +177,7 @@ function renderPendingShells() {
   container.innerHTML = attacks.map(attack => `
     <div class="pending-shell-card">
       <div><strong>🐢 Caparazón de #${escapeHtml(attack.attackerName || 'Rival')}</strong><span>Recibido ${escapeHtml(formatIsoDate(attack.launchedAt))}</span></div>
-      <button type="button" class="btn-refresh btn-neon-gold" onclick="window.spinShellHandler('${escapeHtml(attack.id)}')">🎰 Girar ruleta</button>
+      <button type="button" class="btn-refresh btn-neon-gold" data-spin-id="${escapeHtml(attack.id)}">🎰 Girar ruleta</button>
     </div>
   `).join('');
 }
@@ -229,7 +250,7 @@ function renderActiveDebuffs() {
 }
 
 window.spinShellHandler = async function(attackId) {
-  const button = document.querySelector(`[onclick*="${attackId}"]`);
+  const button = Array.from(document.querySelectorAll("[data-spin-id]")).find(el => el.dataset.spinId === attackId);
   if (button) button.disabled = true;
   const res = await DataStore.spinShell(attackId, playerSessionToken);
   if (!res.success) {
@@ -264,6 +285,7 @@ function setupPlayerListeners() {
         playerSessionToken = res.sessionToken || '';
         sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
         sessionStorage.setItem('pepes_player_token', playerSessionToken);
+        document.dispatchEvent(new Event('player-session-changed'));
         if (errorMsg) errorMsg.style.display = 'none';
         showDashboardView();
       } else {
@@ -328,8 +350,11 @@ function setupPlayerListeners() {
     btnLogout.addEventListener('click', () => {
       activeDuo = null;
       sessionStorage.removeItem('pepes_player_session');
+      const previousToken = playerSessionToken;
       sessionStorage.removeItem('pepes_player_token');
       playerSessionToken = '';
+      DataStore.logoutPlayer(previousToken);
+      document.dispatchEvent(new Event('player-session-changed'));
       showLoginView();
     });
   }
@@ -434,7 +459,7 @@ function showPlayerToast(msg, isError = false) {
     toast.style.border = '1px solid var(--gold-hextech)';
   }
 
-  toast.innerHTML = `<i class="fa-solid ${isError ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i> ${msg}`;
+  toast.textContent = msg;
   toast.style.opacity = '1';
   toast.style.transform = 'translateY(0)';
 
@@ -465,3 +490,14 @@ function getTierColor(tier) {
   if (t === 'diamond') return 'var(--tier-diamond)';
   return 'var(--cyan-primary)';
 }
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-spin-id]');
+  if (button) window.spinShellHandler(button.dataset.spinId);
+});
+
+document.addEventListener('player-session-ended', () => {
+  activeDuo = null;
+  playerSessionToken = '';
+  showLoginView();
+});

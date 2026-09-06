@@ -4,6 +4,8 @@
   "description": "Pepes Krisis Duo Q Challenge v0.1 - League of Legends ELO Tracking & Blue Shell Gamification Engine",
   "main": "server.py",
   "scripts": {
-    "start": "python server.py"
+    "start": "python server.py",
+    "test": "python -B -m unittest discover -v",
+    "test:ui": "node test_frontend.cjs"
   }
 }

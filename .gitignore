@@ -17,3 +17,5 @@ env/
 *.bak
 secrets.json
 *-verificado.png
+
+backups/

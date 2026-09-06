@@ -24,7 +24,7 @@ def penalty(base_id, scope="ONE", requirements=None, assigned_ms=1000):
 
 
 def match(p1, p2, end_ms=2000):
-    return {"matchId": "EUW1_TEST", "gameEndTimestamp": end_ms, "player1Stats": p1, "player2Stats": p2}
+    return {"matchId": "EUW1_TEST", "gameStartTimestamp": 1000, "gameEndTimestamp": end_ms, "player1Stats": p1, "player2Stats": p2}
 
 
 class ShellPenaltyTests(unittest.TestCase):
@@ -95,6 +95,8 @@ class ShellEndpointTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.old_db_file = server.DB_FILE
+        self.old_secrets_file = server.SECRETS_FILE
+        server.SECRETS_FILE = str(Path(self.temp_dir.name) / "secrets.json")
         server.DB_FILE = str(Path(self.temp_dir.name) / "db.json")
         weights = {item["id"]: 0 for item in server.PENALTY_CATALOG}
         weights["no_flash_one"] = 100
@@ -120,6 +122,7 @@ class ShellEndpointTests(unittest.TestCase):
         self.httpd.server_close()
         self.thread.join(timeout=2)
         server.DB_FILE = self.old_db_file
+        server.SECRETS_FILE = self.old_secrets_file
         self.temp_dir.cleanup()
 
     def post(self, path, payload, expected=200):
