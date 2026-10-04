@@ -93,7 +93,7 @@ const path = require('node:path');
         else if (url.pathname === '/api/config') result = {challengeTitle: 'Prueba', endDate: '2026-08-31', prizePool: 'Prueba', ...publicRules};
         else if (url.pathname === '/api/trophies') result = {status: 'provisional', roleMode: 'main_role_matches', endDate: '2030-01-01', cards: ['champion','TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY','dishonor'].map(id => ({id, title: id, icon: '🏆', description: 'Premio', entries: id === 'UTILITY' ? [] : [{name: 'Jugador', teamName: 'Equipo', value: '5.00 KDA', games: 10}]}))};
         else if (url.pathname === '/api/events') result = [{type: 'SHELL_LAUNCHED', attacker: 'Lanzamiento oculto'}, {type: 'SHELL_SPUN', attacker: 'Atacante', target: 'Receptor', ...assignedPenalty, penalty: {...assignedPenalty.penalty,desc:'Castigo abierto'}}, {type: 'PENALTY_ADMIN_CORRECTION', target: 'Corrección oculta'}];
-        else if (url.pathname === '/api/sync/status') result = {riot:{lastSuccessAt:1791100000000,pending:2},twitch:{lastSuccessAt:1791100000000,error:'Fallo técnico de Twitch'}};
+        else if (url.pathname === '/api/sync/status') result = {riot:{lastSuccessAt:1791100000000,lastApiSuccessAt:'2026-10-04T14:44:00+00:00',pending:2},twitch:{lastSuccessAt:1791100000000,error:'Fallo técnico de Twitch'}};
         else if (url.pathname === '/api/admin/login') result = {success: true, duos, config: {penaltyWeights: {}}, penaltyCatalog: []};
         else if (url.pathname === '/api/sync') { syncCount++; result = {success: true, job: {running: true}}; }
         else if (url.pathname === '/api/player/login') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}, sessionToken: 'fake'};
@@ -232,7 +232,11 @@ const path = require('node:path');
 
     await page.evaluate(() => DataStore.refreshSyncStatus());
     assert.equal(await page.locator('#admin-diagnostics').isVisible(), true);
-    assert.match(await page.locator('#connection-status').textContent(), /Riot: última sincronización correcta/);
+    assert.match(await page.locator('#connection-status').textContent(), /Riot: última llamada API OK 4\/10\/2026, 16:44:00 \(Madrid\)/);
+    await page.evaluate(() => { latestSyncStatus.riot.lastApiSuccessAt = null; renderConnectionStatus(); });
+    assert.match(await page.locator('#connection-status').textContent(), /Riot: todavía no hay llamadas a la API confirmadas/);
+    assert.doesNotMatch(await page.locator('#connection-status').textContent(), /Riot: última sincronización correcta/);
+    await page.evaluate(() => DataStore.refreshSyncStatus());
     assert.match(await page.locator('#connection-status').textContent(), /2 partidas pendientes de completar/);
     assert.match(await page.locator('#connection-status').textContent(), /Twitch: Fallo técnico/);
     assert.equal(await page.locator('#admin-data-diagnostics tbody tr').count(), 3);

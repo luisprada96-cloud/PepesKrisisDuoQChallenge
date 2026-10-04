@@ -123,12 +123,15 @@ function renderConnectionStatus() {
   }
   const visibleJobs = ['riot', 'twitch'];
   for (const name of visibleJobs) {
-    const state = latestSyncStatus[name];
-    if (!state) continue;
+    const state = latestSyncStatus[name] || {};
     const label = name === 'riot' ? 'Riot' : 'Twitch';
     if (state.running) messages.push(`${label}: sincronizando…`);
     else if (state.error) messages.push(`${label}: ${state.error}`);
-    if (state.lastSuccessAt) messages.push(`${label}: última sincronización correcta ${new Date(state.lastSuccessAt).toLocaleString()}.`);
+    if (name === 'riot') {
+      messages.push(state.lastApiSuccessAt
+        ? `Riot: última llamada API OK ${new Date(state.lastApiSuccessAt).toLocaleString('es-ES', {timeZone: 'Europe/Madrid'})} (Madrid).`
+        : 'Riot: todavía no hay llamadas a la API confirmadas.');
+    } else if (state.lastSuccessAt) messages.push(`${label}: última sincronización correcta ${new Date(state.lastSuccessAt).toLocaleString()}.`);
     if (state.pending) messages.push(`${state.pending} partidas pendientes de completar.`);
   }
   element.textContent = messages.join(' ');

@@ -4,6 +4,7 @@ import io
 import json
 import unittest
 import urllib.error
+import urllib.request
 from collections import Counter
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
@@ -168,6 +169,50 @@ class IncrementalSyncTests(unittest.TestCase):
     def sync(self, ids, calls, **kwargs):
         with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open", side_effect=self.responses(ids, calls, **kwargs)), patch.object(server.time, "sleep"):
             return server.sync_riot_data()
+
+    def test_real_api_success_is_persisted_and_exposed_after_job_restart(self):
+        self.prepare()
+        stamp = "2026-10-04T14:44:00+00:00"
+        with patch.object(server, "utc_now", return_value=stamp):
+            self.assertTrue(self.sync([], [])["success"])
+        self.assertEqual(server.load_db()["lastRiotApiSuccessAt"], stamp)
+        with patch.object(server, "sync_jobs", server.SyncJobs()):
+            with urllib.request.urlopen(self.base + '/api/sync/status', timeout=3) as response:
+                status = json.load(response)
+        self.assertEqual(status["riot"]["lastApiSuccessAt"], stamp)
+        self.assertNotIn("lastSuccessAt", status["riot"])
+
+    def test_empty_job_does_not_invent_or_advance_api_success(self):
+        db = server.load_db()
+        db["duos"] = []
+        server.save_db(db)
+        with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open") as request:
+            self.assertTrue(server.sync_riot_data()["success"])
+            request.assert_not_called()
+        self.assertNotIn("lastRiotApiSuccessAt", server.load_db())
+        db = server.load_db()
+        db["lastRiotApiSuccessAt"] = "2026-10-03T14:44:00+00:00"
+        server.save_db(db)
+        self.sync([], [])
+        self.assertEqual(server.load_db()["lastRiotApiSuccessAt"], db["lastRiotApiSuccessAt"])
+
+    def test_failed_calls_keep_previous_real_api_success(self):
+        self.prepare()
+        db = server.load_db()
+        db["lastRiotApiSuccessAt"] = "2026-10-03T14:44:00+00:00"
+        server.save_db(db)
+        error = urllib.error.HTTPError('https://riot.invalid', 403, 'Forbidden', {}, None)
+        with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open", side_effect=error):
+            self.assertFalse(server.sync_riot_data()["success"])
+        self.assertEqual(server.load_db()["lastRiotApiSuccessAt"], db["lastRiotApiSuccessAt"])
+
+    def test_partial_sync_still_records_successful_api_responses(self):
+        self.prepare()
+        stamp = "2026-10-04T14:44:00+00:00"
+        with patch.object(server, "utc_now", return_value=stamp):
+            result = self.sync(['EUW1_FAILED'], [], fail_once={'EUW1_FAILED'})
+        self.assertFalse(result["success"])
+        self.assertEqual(server.load_db()["lastRiotApiSuccessAt"], stamp)
 
     def test_500_game_history_needs_one_list_request_after_first_scan(self):
         ids = [f"EUW1_{i}" for i in range(500)]

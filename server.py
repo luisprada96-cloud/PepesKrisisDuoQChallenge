@@ -27,7 +27,7 @@ from storage import read_json, write_json, StorageError
 from postgres_storage import from_environment
 from elo_history import record_elo, ensure_player_elo_histories, record_player_elo
 from trophies import build_trophies, deadline_timestamp
-from sync_jobs import SyncJobs
+from sync_jobs import SyncJobs, utc_now
 from match_details import participant_details, add_match_metadata, needs_match_details, update_match_details_backfill
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -1244,6 +1244,9 @@ def merge_riot_result(original, scanned):
     """Merge only Riot-owned fields; inventory and penalties use the latest state."""
     with db_lock:
         current = load_db()
+        last_api_success = scanned.get("lastRiotApiSuccessAt")
+        if last_api_success and last_api_success > current.get("lastRiotApiSuccessAt", ""):
+            current["lastRiotApiSuccessAt"] = last_api_success
         originals = {d["id"]: d for d in original.get("duos", [])}
         scanned_by_id = {d["id"]: d for d in scanned.get("duos", [])}
         for duo in current.get("duos", []):
@@ -1406,6 +1409,7 @@ def sync_riot_data():
             request = urllib.request.Request(url, headers=headers)
             with riot_open(request, timeout=8) as response:
                 response_cache[url] = json.loads(response.read().decode("utf-8"))
+            db["lastRiotApiSuccessAt"] = utc_now()
         return copy.deepcopy(response_cache[url])
 
     for duo in db.get("duos", []):
@@ -1613,7 +1617,8 @@ def sync_riot_data():
             failures += 1
             safe_print(f"[Riot API Sync Error] {e}")
 
-    pending = merge_riot_result(original, db) if updated else 0
+    confirmed_api_call = db.get("lastRiotApiSuccessAt") != original.get("lastRiotApiSuccessAt")
+    pending = merge_riot_result(original, db) if updated or confirmed_api_call else 0
     pending += pending_imports
     return {"success": failures == 0, "pending": pending,
             "error": f"Sincronización parcial: {failures} consulta(s) fallida(s). Se conservan los últimos datos disponibles." if failures else None}
@@ -1839,7 +1844,9 @@ class CustomHandler(BaseHTTPRequestHandler):
             self._send_json(public_duo_summaries())
             return
         elif path == '/api/sync/status':
-            self._send_json(sync_jobs.snapshot())
+            status = sync_jobs.snapshot()
+            status.setdefault("riot", {})["lastApiSuccessAt"] = load_db().get("lastRiotApiSuccessAt")
+            self._send_json(status)
             return
         elif path.startswith('/api/duos/') and path.endswith('/history'):
             duo_id = urllib.parse.unquote(path.split('/')[3])
