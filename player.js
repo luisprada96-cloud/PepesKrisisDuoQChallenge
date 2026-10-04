@@ -6,6 +6,11 @@ let activeDuo = null;
 let rouletteBusy = false;
 const ROULETTE_RESULT_HOLD_MS = 13500;
 let allDuos = [];
+let playerPanelTeamId = null;
+let playerPanelTab = 'shells';
+let playerPenaltyView = 'pending';
+let playerHistoryPage = 1;
+const PLAYER_HISTORY_PAGE_SIZE = 20;
 let playerSessionToken = sessionStorage.getItem('pepes_player_token') || '';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -95,6 +100,13 @@ function showDashboardView() {
   if (loginSec) loginSec.style.display = 'none';
   if (dashSec) dashSec.style.display = 'block';
 
+  if (playerPanelTeamId !== activeDuo?.id) {
+    playerPanelTeamId = activeDuo?.id;
+    playerPanelTab = 'shells';
+    playerPenaltyView = 'pending';
+    playerHistoryPage = 1;
+  }
+  selectPlayerPanel(playerPanelTab);
   renderDashboardData();
 }
 
@@ -180,103 +192,207 @@ function renderPendingShells() {
   section.style.display = attacks.length ? 'block' : 'none';
   container.innerHTML = attacks.map(attack => `
     <div class="pending-shell-card">
-      <div><strong>🐢 Caparazón de #${escapeHtml(attack.attackerName || 'Rival')}</strong><span>Recibido ${escapeHtml(formatIsoDate(attack.launchedAt))}</span></div>
-      <button type="button" class="btn-refresh btn-neon-gold" data-spin-id="${escapeHtml(attack.id)}">🎰 Girar ruleta</button>
+      <div><strong>${attack.returnedFromAttackId ? '↩️ Caparazón devuelto por' : '🐢 Caparazón de'} #${escapeHtml(attack.attackerName || 'Rival')}</strong><span>Recibido ${escapeHtml(formatIsoDate(attack.launchedAt))}</span></div>
+      <div class="pending-shell-actions">
+        <button type="button" class="btn-refresh btn-neon-gold" data-spin-id="${escapeHtml(attack.id)}">🎰 Girar ruleta</button>
+        <button type="button" class="btn-refresh" data-spin-outside-id="${escapeHtml(attack.id)}">Girar ruleta fuera ↗</button>
+      </div>
     </div>
   `).join('');
+}
+
+function selectPlayerPanel(tab) {
+  playerPanelTab = tab === 'penalties' ? 'penalties' : 'shells';
+  document.querySelectorAll('[data-player-panel-tab]').forEach(button => {
+    const selected = button.dataset.playerPanelTab === playerPanelTab;
+    button.setAttribute('aria-selected', String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    document.getElementById(button.getAttribute('aria-controls')).hidden = !selected;
+  });
+}
+
+function playerPenaltyFinished(d) {
+  return d.status === 'CANCELLED' || d.status === 'COMPLETED' || !!d.resolved;
+}
+
+function playerPenaltyGroup(d) {
+  const scope = d.scope || d.penalty?.scope;
+  if (scope === 'BOTH') return 'both';
+  const req = d.requirements || {};
+  if (scope === 'ONE') {
+    const key = req.assignedPlayer;
+    if (key !== 'player1' && key !== 'player2') return req.assignmentVersion >= 2 ? 'unassigned' : 'any';
+    const saved = req.assignedAccount || {};
+    const current = activeDuo[key] || {};
+    // Account-bound assignments must not move to a replacement team member.
+    const normalized = value => String(value || '').trim().toLowerCase();
+    const changed = saved.puuid && current.puuid ? saved.puuid !== current.puuid :
+      saved.name && (normalized(saved.name) !== normalized(current.name) || normalized(saved.tag) !== normalized(current.tag));
+    return changed ? 'previous' : key;
+  }
+  return 'unassigned';
+}
+
+function playerPenaltyCard(d) {
+  const pen = d.penalty || {};
+  const retired = d.status === 'CANCELLED';
+  const completed = playerPenaltyFinished(d) && !retired;
+  const status = retired ? 'retired' : completed ? 'completed' : 'active';
+  const date = d.assignedAt || d.timestamp || '';
+  return `<article class="player-penalty-card">
+    <div class="player-penalty-heading"><span aria-hidden="true">${escapeHtml(pen.icon || '⚡')}</span><h4>${escapeHtml(pen.name || 'Castigo')}</h4></div>
+    <div class="penalty-assignment">${escapeHtml(penaltyAssignmentText(d, activeDuo))}</div>
+    <p class="player-penalty-description">${escapeHtml(pen.desc || '')}</p>
+    <div class="player-penalty-meta"><span>De #${escapeHtml(d.attacker || 'Rival')}</span>${date ? `<span>${escapeHtml(formatIsoDate(date))}</span>` : ''}</div>
+    <span class="penalty-status-${status}" title="${escapeHtml(retired ? d.retirementReason || '' : '')}"><i class="fa-solid ${retired ? 'fa-ban' : completed ? 'fa-circle-check' : 'fa-clock'}" aria-hidden="true"></i> ${retired ? 'Retirado' : completed ? 'Cumplido' : 'Pendiente'}</span>
+  </article>`;
 }
 
 function renderActiveDebuffs() {
   const container = document.getElementById('active-debuffs-list');
   if (!container || !activeDuo) return;
-
-  const rawDebuffs = activeDuo.activeDebuffs || [];
-  const visibleDebuffs = rawDebuffs.slice(0, 20);
-
-  if (visibleDebuffs.length === 0) {
-    container.innerHTML = `
-      <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
-        <i class="fa-solid fa-shield-halved" style="color: #28a745; font-size: 1.2rem; margin-bottom: 0.3rem; display: block;"></i>
-        No tienes ningún castigo activo actualmente. ¡Tu equipo está limpio! 🎉
-      </div>
-    `;
+  const records = activeDuo.activeDebuffs || [];
+  // Legacy free-choice penalties stay stored, but no longer appear in this panel.
+  const pending = records.filter(d => !playerPenaltyFinished(d) && playerPenaltyGroup(d) !== 'any');
+  const history = records.filter(playerPenaltyFinished).sort((a, b) => {
+    const time = d => Number(d.assignedAtEpochMs) || Date.parse(d.assignedAt || d.timestamp || '') || 0;
+    return time(b) - time(a);
+  });
+  document.getElementById('player-penalties-count').textContent = pending.length;
+  document.getElementById('player-pending-count').textContent = pending.length;
+  document.getElementById('player-history-count').textContent = history.length;
+  document.querySelectorAll('[data-player-penalty-view]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.playerPenaltyView === playerPenaltyView));
+  });
+  if (playerPenaltyView === 'history') {
+    const pages = Math.max(1, Math.ceil(history.length / PLAYER_HISTORY_PAGE_SIZE));
+    playerHistoryPage = Math.min(playerHistoryPage, pages);
+    const start = (playerHistoryPage - 1) * PLAYER_HISTORY_PAGE_SIZE;
+    container.innerHTML = history.length ? `<div class="player-penalty-history">${history.slice(start, start + PLAYER_HISTORY_PAGE_SIZE).map(playerPenaltyCard).join('')}</div>
+      <nav class="player-history-pagination" aria-label="Páginas del historial de castigos">
+        <button type="button" data-player-history-step="-1" ${playerHistoryPage === 1 ? 'disabled' : ''}>Anterior</button>
+        <span aria-live="polite">Página ${playerHistoryPage} de ${pages}</span>
+        <button type="button" data-player-history-step="1" ${playerHistoryPage === pages ? 'disabled' : ''}>Siguiente</button>
+      </nav>` : '<p class="player-penalty-empty">Todavía no hay castigos cumplidos ni retirados.</p>';
     return;
   }
-
-  let html = `
-    <div style="overflow-x: auto;">
-      <table class="leaderboard-table" style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); text-align: left; font-size: 0.8rem; color: var(--text-muted);">
-            <th style="padding: 0.6rem;">Castigo</th>
-            <th style="padding: 0.6rem;">Atacante</th>
-            <th style="padding: 0.6rem;">Fecha</th>
-            <th style="padding: 0.6rem; text-align: right;">Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-
-  visibleDebuffs.forEach((d) => {
-    const pen = d.penalty || { name: 'Castigo', icon: '⚡', desc: '' };
-    const completed = d.status === 'COMPLETED' || d.resolved;
-    html += `
-      <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem;">
-        <td style="padding: 0.75rem 0.6rem;">
-          <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700; color: #ff4d4d;">
-            <span style="font-size: 1.2rem;">${pen.icon || '⚡'}</span>
-            <div>
-              <div>${escapeHtml(pen.name)}</div>
-              <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">${escapeHtml(pen.desc)}</div>
-            </div>
-          </div>
-        </td>
-        <td style="padding: 0.75rem 0.6rem; font-weight: 700; color: var(--cyan-primary);">
-          #${escapeHtml(d.attacker || 'Rival')}
-        </td>
-        <td style="padding: 0.75rem 0.6rem; color: var(--text-muted); font-size: 0.8rem;">
-          ${escapeHtml(d.timestamp || '')}
-        </td>
-        <td style="padding: 0.75rem 0.6rem; text-align: right;">
-          <span class="${completed ? 'penalty-status-completed' : 'penalty-status-active'}"><i class="fa-solid ${completed ? 'fa-circle-check' : 'fa-clock'}"></i> ${completed ? 'Cumplido' : 'Pendiente'}</span>
-        </td>
-      </tr>
-    `;
-  });
-
-  html += `
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  container.innerHTML = html;
+  if (!pending.length) {
+    container.innerHTML = '<p class="player-penalty-empty"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> No tenéis castigos pendientes. ¡Equipo limpio! 🎉</p>';
+    return;
+  }
+  const groups = [
+    ...['player1', 'player2'].map((key, index) => {
+      const player = activeDuo[key] || {};
+      return {key, title: player.displayName || player.name || `Integrante ${index + 1}`,
+        subtitle: player.name ? `${player.name}#${player.tag || 'EUW'}` : 'Integrante sin configurar'};
+    }),
+    {key:'both', title:'Ambos integrantes', subtitle:'Debéis cumplirlos juntos en la misma partida.'},
+    {key:'previous', title:'Asignaciones anteriores', subtitle:'Siguen vinculados a la cuenta que recibió el castigo.'},
+    {key:'unassigned', title:'Asignación pendiente', subtitle:'Revisad la asignación antes de intentar cumplirlos.'}
+  ];
+  container.innerHTML = `<div class="player-penalty-groups">${groups.map(group => {
+    const items = pending.filter(d => playerPenaltyGroup(d) === group.key);
+    if (!items.length && !['player1','player2','both'].includes(group.key)) return '';
+    return `<section class="player-penalty-group ${group.key.startsWith('player') ? '' : 'player-penalty-group-shared'}" data-penalty-group="${group.key}">
+      <h3>${escapeHtml(group.title)} <span class="player-tab-count">${items.length}</span></h3>
+      <p class="player-penalty-group-subtitle">${escapeHtml(group.subtitle)}</p>
+      ${items.length ? items.map(playerPenaltyCard).join('') : '<p class="player-penalty-empty">Sin castigos pendientes.</p>'}
+    </section>`;
+  }).join('')}</div>`;
 }
 
-window.spinShellHandler = async function(attackId) {
+window.openShellRouletteOutside = function(attackId) {
+  if (rouletteBusy || !playerSessionToken) return;
+  const attack = activeDuo?.pendingShellAttacks?.find(item => item.id === attackId);
+  if (!attack) return;
+  RouletteWindow.update({phase: 'prepared', teamName: activeDuo.teamName, attackId,
+    message: `Caparazón de ${attack.attackerName || 'Rival'}. Pulsa Girar cuando estés listo.`});
+  if (!RouletteWindow.open()) {
+    showPlayerToast('Permite las ventanas emergentes para abrir la ruleta fuera.', true);
+    return;
+  }
+  document.getElementById('open-roulette-window').hidden = false;
+};
+
+window.spinShellHandler = async function(attackId, outside = false) {
   if (rouletteBusy) return;
+  const teamName = activeDuo?.teamName || 'Tu equipo';
+  if (!playerSessionToken || !activeDuo?.pendingShellAttacks?.some(attack => attack.id === attackId)) {
+    if (outside) RouletteWindow.update({phase: 'unavailable', teamName, message: 'Este caparazón ya no está pendiente. Vuelve al panel de tu equipo.'});
+    return;
+  }
   rouletteBusy = true;
   const spinToken = playerSessionToken;
-  const button = Array.from(document.querySelectorAll("[data-spin-id]")).find(el => el.dataset.spinId === attackId);
-  if (button) button.disabled = true;
-  const res = await DataStore.spinShell(attackId, playerSessionToken);
+  document.querySelectorAll('[data-spin-id], [data-spin-outside-id]').forEach(button => { button.disabled = true; });
+  RouletteWindow.update(outside ? {phase: 'waiting', teamName} :
+    {phase: 'unavailable', teamName, message: 'La ruleta se está girando en el panel del equipo.'});
+  const res = await DataStore.spinShell(attackId, spinToken);
+  if (playerSessionToken !== spinToken) {
+    rouletteBusy = false;
+    RouletteWindow.update({phase: 'unavailable', teamName, message: 'La sesión del equipo ha terminado. Vuelve a entrar desde el panel.'});
+    return;
+  }
   if (!res.success) {
     rouletteBusy = false;
-    if (button) button.disabled = false;
+    renderDashboardData();
+    if (outside) RouletteWindow.update({phase: 'error', teamName, attackId, canSpin: true, message: res.error || 'No se pudo girar la ruleta.'});
     showPlayerToast(res.error || 'No se pudo girar la ruleta.', true);
     return;
   }
-  showRouletteInline(res.penalty, async () => {
+  const instance = res.penaltyInstance || res.duo?.activeDebuffs?.find(item => item.id === res.attack?.penaltyInstanceId);
+  const state = {
+    phase: 'spinning', teamName, startedAt: Date.now(), holdMs: ROULETTE_RESULT_HOLD_MS,
+    penalty: {name: String(res.penalty?.name || 'CASTIGO'), icon: String(res.penalty?.icon || '⚡'), desc: String(res.penalty?.desc || ''),
+      assignment: penaltyAssignmentText(instance, res.duo)}
+  };
+  const finish = async () => {
     rouletteBusy = false;
     if (playerSessionToken !== spinToken) return;
     activeDuo = res.duo;
     sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
     allDuos = await DataStore.getDuos();
     renderDashboardData();
-  });
+  };
+  if (outside) {
+    RouletteWindow.update(state);
+    ShellRoulette.animate(state, () => {}, finish);
+  } else {
+    showRouletteInline(state, finish);
+  }
 };
 
+RouletteWindow.onSpin(attackId => window.spinShellHandler(attackId, true));
+
 function setupPlayerListeners() {
+  const tabs = Array.from(document.querySelectorAll('[data-player-panel-tab]'));
+  tabs.forEach((button, index) => {
+    button.addEventListener('click', () => selectPlayerPanel(button.dataset.playerPanelTab));
+    button.addEventListener('keydown', event => {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = tabs.length - 1;
+      if (next === undefined) return;
+      event.preventDefault();
+      selectPlayerPanel(tabs[next].dataset.playerPanelTab);
+      tabs[next].focus();
+    });
+  });
+  document.querySelectorAll('[data-player-penalty-view]').forEach(button => {
+    button.addEventListener('click', () => {
+      playerPenaltyView = button.dataset.playerPenaltyView;
+      playerHistoryPage = 1;
+      renderActiveDebuffs();
+    });
+  });
+  document.getElementById('active-debuffs-list').addEventListener('click', event => {
+    const button = event.target.closest('[data-player-history-step]');
+    if (!button || button.disabled) return;
+    playerHistoryPage += Number(button.dataset.playerHistoryStep);
+    renderActiveDebuffs();
+    document.querySelector(`[data-player-history-step="${button.dataset.playerHistoryStep}"]`)?.focus();
+  });
   const loginForm = document.getElementById('player-login-form');
   const launchForm = document.getElementById('launch-shell-form');
   const btnLogout = document.getElementById('btn-logout');
@@ -370,65 +486,42 @@ function setupPlayerListeners() {
   }
 }
 
-function showRouletteInline(finalPenalty, onCloseCallback) {
+function showRouletteInline(state, onCloseCallback) {
   const container = document.getElementById('inline-roulette-container');
   const targetText = document.getElementById('inline-target-name');
   const rouletteIcon = document.getElementById('inline-roulette-icon');
   const rouletteName = document.getElementById('inline-roulette-name');
   const resultDesc = document.getElementById('inline-roulette-desc');
-
+  const assignmentText = document.getElementById('inline-roulette-assignment');
   if (!container) {
     if (onCloseCallback) onCloseCallback();
     return;
   }
-
-  const options = [
-    { name: "POLIVALENTE", icon: "🎲" }, { name: "SIN CAMPEÓN FAVORITO", icon: "🚫" },
-    { name: "CAMPEÓN ALEATORIO", icon: "🎯" }, { name: "SIN FLASH", icon: "⚡" },
-    { name: "BOTAS BÁSICAS HASTA 15", icon: "👢" }, { name: "DEVUELVE EL CAPARAZÓN", icon: "↩️" }
-  ];
-
-  if (targetText) targetText.textContent = `Tu equipo está girando el Caparazón Azul...`;
+  if (targetText) targetText.textContent = 'Tu equipo está girando el Caparazón Azul...';
   container.style.display = 'block';
-  if (resultDesc) resultDesc.style.display = 'none';
-
-  let speed = 70;
-  let counter = 0;
-  const totalRounds = 22;
-
-  function cycle() {
-    const currentOpt = options[counter % options.length];
-    if (rouletteIcon) rouletteIcon.textContent = currentOpt.icon;
+  ShellRoulette.animate(state, current => {
+    if (rouletteIcon) rouletteIcon.textContent = current.icon;
     if (rouletteName) {
-      rouletteName.textContent = currentOpt.name;
-      rouletteName.style.color = "#fff";
+      rouletteName.textContent = current.name;
+      rouletteName.style.color = current.revealed ? 'var(--gold-hextech)' : '#fff';
     }
-
-    counter++;
-    if (counter < totalRounds) {
-      speed += 14;
-      setTimeout(cycle, speed);
-    } else {
-      if (rouletteIcon) rouletteIcon.textContent = finalPenalty.icon || "⚡";
-      if (rouletteName) {
-        rouletteName.textContent = (finalPenalty.name || "CASTIGO").toUpperCase();
-        rouletteName.style.color = "var(--gold-hextech)";
-      }
-
-      if (resultDesc) {
-        resultDesc.innerHTML = `<i class="fa-solid fa-bullhorn"></i> <strong>${escapeHtml(finalPenalty.name || 'Resultado')}:</strong> ${escapeHtml(finalPenalty.desc || '')}`;
-        resultDesc.style.display = 'block';
-      }
-
-      setTimeout(() => {
-        container.style.display = 'none';
-        if (onCloseCallback) onCloseCallback();
-      }, ROULETTE_RESULT_HOLD_MS);
+    if (assignmentText) {
+      assignmentText.textContent = current.assignment || '';
+      assignmentText.hidden = !current.revealed || !current.assignment;
     }
-  }
-
-  cycle();
+    if (resultDesc) {
+      resultDesc.innerHTML = current.revealed ? `<i class="fa-solid fa-bullhorn"></i> <strong>${escapeHtml(state.penalty.name)}:</strong> ${escapeHtml(current.desc)}` : '';
+      resultDesc.style.display = current.revealed ? 'block' : 'none';
+    }
+  }, () => {
+    container.style.display = 'none';
+    if (onCloseCallback) onCloseCallback();
+  });
 }
+
+document.getElementById('open-roulette-window').addEventListener('click', () => {
+  if (!RouletteWindow.open()) showPlayerToast('Permite las ventanas emergentes para abrir la ruleta para stream.', true);
+});
 
 function formatIsoDate(value) {
   if (!value) return '';
@@ -502,6 +595,8 @@ function getTierColor(tier) {
 }
 
 document.addEventListener('click', event => {
+  const outsideButton = event.target.closest('[data-spin-outside-id]');
+  if (outsideButton) { window.openShellRouletteOutside(outsideButton.dataset.spinOutsideId); return; }
   const button = event.target.closest('[data-spin-id]');
   if (button) window.spinShellHandler(button.dataset.spinId);
 });

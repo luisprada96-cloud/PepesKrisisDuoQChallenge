@@ -1,0 +1,27 @@
+{
+  "config": {
+    "challengeTitle": "Pepes Krisis Duo Q Challenge",
+    "startDate": "2026-10-15T00:00",
+    "endDate": "2026-11-15T23:59",
+    "prizePool": "Bote:???",
+    "server": "EUW",
+    "penaltyWeights": {
+      "autofill_one": 29,
+      "autofill_both": 5,
+      "no_main_champion_one": 10,
+      "no_main_champion_both": 5,
+      "random_champion_one": 9,
+      "random_champion_both": 5,
+      "no_flash_one": 9,
+      "no_flash_both": 5,
+      "swap_flash_one": 12,
+      "swap_flash_both": 6,
+      "return_shell": 5
+    }
+  },
+  "duos": [],
+  "events": [],
+  "shellAttacks": [],
+  "shellRewardsVersion": 1,
+  "flashPenaltyConfigVersion": 1
+}

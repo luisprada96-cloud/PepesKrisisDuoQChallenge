@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clips de la semana | Pepes Krisis Duo Q Challenge</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="clips.css">
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo"><i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i><span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span></a>
+        <ul class="nav-links">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo y premios</a></li>
+          <li><a href="clips.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+          <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad" aria-hidden="true"></i> Mi Panel</a></li>
+          <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Panel Admin</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+  <main class="container clips-page">
+    <div class="clips-heading">
+      <div><span class="section-eyebrow">Los momentos del challenge</span><h1 class="text-gradient-cyan">Clips de la semana</h1><p>Las mejores jugadas. Las peores decisiones.</p></div>
+      <button type="button" class="clips-publish" id="clips-publish" aria-expanded="false" aria-controls="clips-form"><i class="fa-solid fa-plus" aria-hidden="true"></i> Publicar clip</button>
+    </div>
+    <div class="clips-preview-note"><i class="fa-brands fa-twitch" aria-hidden="true"></i><span>Cargando la semana actual…</span></div>
+    <div class="clips-layout">
+      <section class="clips-content" aria-label="Publicaciones de la semana">
+        <div class="clips-toolbar"><div class="clips-sort" role="group" aria-label="Ordenar clips"><button type="button" data-clips-sort="votes" aria-pressed="true"><i class="fa-solid fa-thumbs-up" aria-hidden="true"></i> Más votados</button><button type="button" data-clips-sort="recent" aria-pressed="false"><i class="fa-regular fa-clock" aria-hidden="true"></i> Recientes</button><button type="button" data-clips-sort="unseen" aria-pressed="false"><i class="fa-regular fa-eye" aria-hidden="true"></i> No vistos</button></div><span id="clips-count">0 clips</span></div>
+        <form class="clips-form" id="clips-form" hidden>
+          <h2>Comparte ese momento</h2>
+          <p>Pega un clip de Twitch para compartirlo con los demás.</p>
+          <label for="clip-url">Enlace del clip de Twitch</label><input class="form-control" id="clip-url" type="url" placeholder="https://clips.twitch.tv/…" required>
+          <label for="clip-title">Título</label><input class="form-control" id="clip-title" type="text" placeholder="La jugada merece un buen título" maxlength="100" required>
+          <label for="clip-team">Equipo al que representa el clip</label><select class="form-control" id="clip-team" required><option value="">Selecciona un equipo</option></select>
+          <p>El equipo elegido recibirá 3 caparazones si este clip gana la votación semanal.</p>
+          <div class="clips-form-actions"><button class="clips-publish" type="submit">Publicar clip</button><button class="clips-secondary" type="button" id="clips-cancel">Cancelar</button></div>
+          <p id="clips-form-error" role="alert" hidden></p>
+        </form>
+        <nav class="clips-pagination" data-clips-pagination aria-label="Páginas de clips" hidden>
+          <button type="button" class="clips-secondary" data-clips-page="previous">← Anterior</button>
+          <span data-clips-page-info tabindex="-1" aria-live="polite"></span>
+          <button type="button" class="clips-secondary" data-clips-page="next">Siguiente →</button>
+        </nav>
+        <div class="clips-feed" id="clips-feed"></div>
+        <nav class="clips-pagination" data-clips-pagination aria-label="Páginas de clips al final del listado" hidden>
+          <button type="button" class="clips-secondary" data-clips-page="previous">← Anterior</button>
+          <span data-clips-page-info tabindex="-1" aria-live="polite"></span>
+          <button type="button" class="clips-secondary" data-clips-page="next">Siguiente →</button>
+        </nav>
+        <p class="clips-feedback" id="clips-feedback" aria-live="polite"></p>
+      </section>
+      <aside class="clips-sidebar">
+        <section class="clips-sidebox"><h2><i class="fa-solid fa-trophy" aria-hidden="true"></i> Clip de la semana</h2><p>El clip con más likes gana <strong>3 caparazones</strong> para el equipo que representa, aunque supere el límite normal de 5.</p><p>Cierre: <strong>domingo a las 23:59</strong>, hora de Madrid.</p><p>En caso de empate gana el publicado primero. Hace falta al menos un like. Solo participan clips con equipo asignado.</p><hr><p id="clips-reward-status" aria-live="polite">La votación está abierta.</p><p id="clips-previous-reward" hidden></p></section>
+        <section class="clips-sidebox"><h2><i class="fa-regular fa-calendar" aria-hidden="true"></i> Esta semana</h2><strong class="clips-week" id="clips-week"></strong><p id="clips-year"></p><hr><p>Una nueva semana, nuevos clips.</p><p>La lista se renovará el lunes a las <strong>00:00</strong>.</p></section>
+        <section class="clips-sidebox"><h2><i class="fa-solid fa-users" aria-hidden="true"></i> La comunidad</h2><p>Comparte las jugadas del torneo y vota tus favoritas.</p><hr><p>Pulsa el like para votar y vuelve a pulsarlo para retirarlo.</p><p id="clips-voting-status"></p><a id="clips-login" class="clip-open" href="player.html">Iniciar sesión con mi equipo ↗</a><hr><p>El ojo de cada clip permite marcarlo como visto sin iniciar sesión. «No vistos» muestra los pendientes del más reciente al más antiguo. Las marcas se guardan solo en este navegador.</p></section>
+      </aside>
+    </div>
+  </main>
+  <footer class="footer"><div class="container"><p><strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026.</p></div></footer>
+  <script src="data.js"></script>
+  <script src="alerts.js"></script>
+  <script src="clips.js"></script>
+</body>
+</html>

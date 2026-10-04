@@ -16,6 +16,7 @@ env/
 *.tmp
 *.bak
 secrets.json
+/db.json
 *-verificado.png
 
 backups/

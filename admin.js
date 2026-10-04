@@ -78,6 +78,7 @@ async function loadAdminData() {
   renderPenaltyWeights();
   renderAdminPenalties();
   fillConfigForm();
+  refreshAdminWeeklyDiagnostics();
 }
 
 async function refreshAdminData() {
@@ -87,10 +88,49 @@ async function refreshAdminData() {
       adminDuos = result.duos || [];
       adminConfig = result.config || adminConfig;
       penaltyCatalog = result.penaltyCatalog || penaltyCatalog;
+      renderAdminDiagnostics();
       return;
     }
   }
   adminDuos = await DataStore.getDuos();
+  renderAdminDiagnostics();
+}
+
+function renderAdminDiagnostics() {
+  if (!adminSessionPin) return;
+  const section = document.getElementById('admin-diagnostics');
+  if (!section) return;
+  section.hidden = false;
+  renderConnectionStatus();
+  const count = value => value == null ? '—' : Number(value) || 0;
+  const rows = adminDuos.map(duo => {
+    const discovery = duo.riotMatchDiscovery;
+    const unknownCredits = (duo.history || []).reduce((total, match) => total + (match.shellRewardIds || [])
+      .filter(rule => typeof match.shellRewardCredits?.[rule] !== 'boolean').length, 0);
+    return `<tr><td>${escapeHtml(duo.teamName)}</td>
+      <td>${discovery ? count(discovery.pendingMatchIds?.length) : '—'}</td>
+      <td>${count(duo.statsBackfill?.remaining)}</td><td>${count(duo.matchDetailsBackfill?.remaining)}</td>
+      <td>${unknownCredits}</td></tr>`;
+  }).join('');
+  document.getElementById('admin-data-diagnostics').innerHTML = rows ? `<div class="admin-diagnostics-table-wrap"><table class="admin-diagnostics-table">
+    <thead><tr><th>Equipo</th><th>Partidas por importar</th><th>Estadísticas pendientes</th><th>Detalles pendientes</th><th>Logros sin registro de ingreso</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>` : '<p class="admin-diagnostics-note">Todavía no hay equipos.</p>';
+}
+
+async function refreshAdminWeeklyDiagnostics() {
+  const element = document.getElementById('admin-weekly-diagnostics');
+  if (!element || !adminSessionPin) return;
+  try {
+    let data = await DataStore.getWeeklySummary();
+    const closedWeek = data.weeks?.[1];
+    if (closedWeek) data = await DataStore.getWeeklySummary(closedWeek);
+    if (!data.summary) return;
+    element.textContent = closedWeek
+      ? `Último resumen archivado: ${data.summary.week}. Actualizado ${new Date(data.summary.updatedAt * 1000).toLocaleString('es-ES', {timeZone:'Europe/Madrid'})}.`
+      : 'Resumen semanal: todavía no hay semanas archivadas. El primer cierre se realizará el lunes a las 00:00 (Madrid).';
+  } catch (_) {
+    element.textContent = 'No se pudo consultar el estado del archivo semanal.';
+  }
 }
 
 function renderPenaltyWeights() {
@@ -152,15 +192,16 @@ function renderAdminPenalties() {
   const tableRows = pageRows.map(({duo, debuff}) => {
     const pen = debuff.penalty || {};
     const completed = debuff.status === 'COMPLETED' || debuff.resolved;
+    const retired = debuff.status === 'CANCELLED';
     const scope = debuff.scope || pen.scope;
     return `<tr>
       <td><time>${escapeHtml(formatPenaltyTimestamp(debuff.assignedAt || debuff.timestamp))}</time></td>
       <td><strong>${escapeHtml(duo.teamName || 'Equipo')}</strong></td>
       <td><span class="admin-penalty-name">${pen.icon || '⚡'} ${escapeHtml(pen.name || 'Castigo')}</span></td>
-      <td>${escapeHtml(scope === 'BOTH' ? 'Ambos' : scope === 'SPECIAL' ? 'Especial' : 'Uno')}</td>
-      <td><span class="admin-penalty-status ${completed ? 'is-completed' : 'is-active'}">${completed ? 'Cumplido' : 'Activo'}</span></td>
+      <td>${escapeHtml(scope === 'BOTH' ? 'Ambos' : scope === 'SPECIAL' ? 'Especial' : 'Uno')}<div class="penalty-assignment">${escapeHtml(penaltyAssignmentText(debuff, duo))}</div></td>
+      <td><span class="admin-penalty-status ${retired ? 'is-retired' : completed ? 'is-completed' : 'is-active'}">${retired ? 'Retirado' : completed ? 'Cumplido' : 'Activo'}</span></td>
       <td>${completed ? `<time>${escapeHtml(formatPenaltyTimestamp(debuff.resolvedAt))}</time>` : '<span class="admin-penalty-empty">—</span>'}</td>
-      <td>${debuff.id ? `<button type="button" class="btn-refresh admin-penalty-action" data-penalty-id="${escapeHtml(debuff.id)}" data-penalty-action="${completed ? 'REOPEN' : 'COMPLETE'}">${completed ? 'Reabrir' : 'Marcar cumplido'}</button>` : '<span class="legacy-penalty-label">Antiguo</span>'}</td>
+      <td>${debuff.retiredPenalty || retired ? '<span class="legacy-penalty-label">Castigo retirado</span>' : debuff.id ? `<button type="button" class="btn-refresh admin-penalty-action" data-penalty-id="${escapeHtml(debuff.id)}" data-penalty-action="${completed ? 'REOPEN' : 'COMPLETE'}">${completed ? 'Reabrir' : 'Marcar cumplido'}</button>` : '<span class="legacy-penalty-label">Antiguo</span>'}</td>
     </tr>`;
   }).join('');
 
@@ -226,8 +267,8 @@ function fillConfigForm() {
 
   if (titleInput) titleInput.value = adminConfig.challengeTitle || '';
   if (prizeInput) prizeInput.value = adminConfig.prizePool || '';
-  if (startInput) startInput.value = adminConfig.startDate || '';
-  if (endInput) endInput.value = adminConfig.endDate || '';
+  if (startInput) startInput.value = tournamentDateInput(adminConfig.startDate);
+  if (endInput) endInput.value = tournamentDateInput(adminConfig.endDate);
   if (pinInput) {
     pinInput.value = '';
     pinInput.placeholder = adminConfig.adminPinConfigured ? 'PIN guardado — déjalo vacío para conservarlo' : 'Nuevo PIN';
@@ -245,6 +286,22 @@ function fillConfigForm() {
       ? 'Client Secret guardado — déjalo vacío para conservarlo'
       : 'Introduce el Client Secret';
   }
+}
+
+function renderParticipantSettings(duo, playerKey, index) {
+  const player = duo[playerKey] || {};
+  const prefix = `p${index}`;
+  return `<fieldset class="admin-participant-settings">
+    <legend>Integrante ${index} · ${escapeHtml(player.name || '')}#${escapeHtml(player.tag || 'EUW')}</legend>
+    <div class="form-group">
+      <label for="${prefix}-display-name-${escapeHtml(duo.id)}">Nombre del integrante</label>
+      <input type="text" class="form-control" id="${prefix}-display-name-${escapeHtml(duo.id)}" value="${escapeHtml(player.displayName || player.name || '')}" maxlength="60" required>
+    </div>
+    <div class="form-group">
+      <label for="${prefix}-twitch-url-${escapeHtml(duo.id)}">Canal de Twitch (opcional)</label>
+      <input type="url" class="form-control" id="${prefix}-twitch-url-${escapeHtml(duo.id)}" value="${escapeHtml(participantTwitch(duo, playerKey).url)}" placeholder="https://www.twitch.tv/nombre_del_canal">
+    </div>
+  </fieldset>`;
 }
 
 function renderAdminDuosList() {
@@ -310,15 +367,13 @@ function renderAdminDuosList() {
           <i class="fa-solid fa-user-tag"></i> Guardar roles
         </button>
       </div>
-      <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap;">
-        <div class="form-group" style="flex: 1 1 320px; margin: 0;">
-          <label for="twitch-url-${escapeHtml(duo.id)}">Canal de Twitch</label>
-          <input type="url" id="twitch-url-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.twitchUrl || '')}" placeholder="https://www.twitch.tv/nombre_del_canal">
-        </div>
-        <button class="btn-refresh" data-team-action="twitch" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
-          <i class="fa-brands fa-twitch"></i> Guardar Twitch
-        </button>
+      <div class="admin-participant-grid">
+        ${renderParticipantSettings(duo, 'player1', 1)}
+        ${renderParticipantSettings(duo, 'player2', 2)}
       </div>
+      <button type="button" class="btn-refresh" data-team-action="profiles" data-team-id="${escapeHtml(duo.id)}" style="align-self: flex-start;">
+        <i class="fa-solid fa-save"></i> Guardar nombres y Twitch
+      </button>
     `;
     container.appendChild(card);
   });
@@ -495,18 +550,27 @@ async function addNewDuo() {
   const p2Role = document.getElementById('new-p2-role').value;
   const pwdInput = document.getElementById('new-password');
   const password = (pwdInput && pwdInput.value.trim()) ? pwdInput.value.trim() : "1234";
-  const twitchInput = document.getElementById('new-twitch-url');
-  const rawTwitchUrl = twitchInput ? twitchInput.value.trim() : '';
-  const twitchUrl = normalizeTwitchUrl(rawTwitchUrl);
-
-  if (!teamName || !p1NameTag || !p2NameTag || !p1Role || !p2Role) {
-    alert("Por favor rellena todos los campos del nuevo dúo.");
-    return;
+  const profiles = {};
+  for (const i of [1, 2]) {
+    const nameInput = document.getElementById(`new-p${i}-display-name`);
+    const twitchInput = document.getElementById(`new-p${i}-twitch-url`);
+    const displayName = nameInput.value.trim();
+    const rawUrl = twitchInput.value.trim();
+    const twitchUrl = normalizeTwitchUrl(rawUrl);
+    if (!displayName || displayName.length > 60) {
+      alert('Introduce el nombre de cada integrante (máximo 60 caracteres).');
+      nameInput.focus();
+      return;
+    }
+    if (rawUrl && !twitchUrl) {
+      alert('Introduce un enlace válido de canal de Twitch.');
+      twitchInput.focus();
+      return;
+    }
+    profiles[`player${i}`] = {displayName, twitchUrl};
   }
-
-  if (rawTwitchUrl && !twitchUrl) {
-    alert("Introduce una URL válida de canal de Twitch, por ejemplo: https://www.twitch.tv/nombre_del_canal");
-    twitchInput.focus();
+  if (!teamName || !p1NameTag || !p2NameTag || !p1Role || !p2Role) {
+    alert('Por favor rellena todos los campos del nuevo dúo.');
     return;
   }
 
@@ -516,10 +580,10 @@ async function addNewDuo() {
   const newDuo = {
     id: `duo-${Date.now()}`,
     teamName: teamName,
-    twitchUrl: twitchUrl,
     password: password,
     blueShells: 0,
     player1: {
+      ...profiles.player1,
       name: p1Name,
       tag: p1Tag,
       mainRole: p1Role,
@@ -527,6 +591,7 @@ async function addNewDuo() {
       champ: "LeeSin"
     },
     player2: {
+      ...profiles.player2,
       name: p2Name,
       tag: p2Tag,
       mainRole: p2Role,
@@ -580,28 +645,37 @@ async function handleSaveRoles(id) {
   alert(`Roles principales guardados para "${duo.teamName}".`);
 }
 
-async function handleSaveTwitch(id) {
+async function handleSaveParticipantProfiles(id) {
   const duo = adminDuos.find(d => d.id === id);
-  const input = document.getElementById(`twitch-url-${id}`);
-  if (!duo || !input) return;
-
-  const rawTwitchUrl = input.value.trim();
-  const twitchUrl = normalizeTwitchUrl(rawTwitchUrl);
-
-  if (rawTwitchUrl && !twitchUrl) {
-    alert("Introduce una URL válida de canal de Twitch, por ejemplo: https://www.twitch.tv/nombre_del_canal");
-    input.focus();
-    return;
+  if (!duo) return;
+  const profiles = {};
+  for (const i of [1, 2]) {
+    const nameInput = document.getElementById(`p${i}-display-name-${id}`);
+    const twitchInput = document.getElementById(`p${i}-twitch-url-${id}`);
+    if (!nameInput || !twitchInput) return;
+    const displayName = nameInput.value.trim();
+    const rawUrl = twitchInput.value.trim();
+    const twitchUrl = normalizeTwitchUrl(rawUrl);
+    if (!displayName || displayName.length > 60) {
+      alert('Introduce el nombre de cada integrante (máximo 60 caracteres).');
+      nameInput.focus();
+      return;
+    }
+    if (rawUrl && !twitchUrl) {
+      alert('Introduce un enlace válido de canal de Twitch.');
+      twitchInput.focus();
+      return;
+    }
+    profiles[`player${i}`] = {displayName, twitchUrl};
   }
-
-  const result = await DataStore.saveDuo({id, twitchUrl}, adminSessionPin);
+  const result = await DataStore.saveDuo({id, ...profiles}, adminSessionPin);
   if (!result || result.success === false) {
-    alert((result && result.error) || 'No se pudo guardar el canal de Twitch.');
+    alert(result?.error || 'No se pudieron guardar los integrantes.');
     return;
   }
   await refreshAdminData();
   renderAdminDuosList();
-  alert(twitchUrl ? `Canal de Twitch guardado para "${duo.teamName}".` : `Canal de Twitch eliminado de "${duo.teamName}".`);
+  alert(`Nombres y canales de Twitch guardados para "${duo.teamName}".`);
 }
 
 let pendingDeleteId = null;
@@ -621,12 +695,18 @@ function handleDeleteDuo(id) {
 }
 
 async function saveConfigForm() {
+  const start = tournamentDateTimestamp(document.getElementById('cfg-start').value);
+  const end = tournamentDateTimestamp(document.getElementById('cfg-end').value);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    alert('Introduce fechas válidas en hora de Madrid; el cierre debe ser posterior al inicio.');
+    return;
+  }
   const nextConfig = {
     ...adminConfig,
     challengeTitle: document.getElementById('cfg-title').value.trim(),
     prizePool: document.getElementById('cfg-prize').value.trim(),
-    startDate: document.getElementById('cfg-start').value,
-    endDate: document.getElementById('cfg-end').value,
+    startDate: new Date(start).toISOString(),
+    endDate: new Date(end).toISOString(),
     twitchClientId: document.getElementById('cfg-twitch-client-id').value.trim()
   };
   const nextAdminPin = document.getElementById('cfg-pin').value.trim();
@@ -663,12 +743,12 @@ function escapeHtml(str) {
 }
 
 document.addEventListener('sync-finished', async () => {
-  if (adminSessionPin) { await refreshAdminData(); renderAdminDuosList(); renderAdminPenalties(); }
+  if (adminSessionPin) { await refreshAdminData(); renderAdminDuosList(); renderAdminPenalties(); refreshAdminWeeklyDiagnostics(); }
 });
 
 document.addEventListener('click', event => {
   const penalty = event.target.closest('[data-penalty-id]');
   if (penalty) window.adminPenaltyAction(penalty.dataset.penaltyId, penalty.dataset.penaltyAction);
   const team = event.target.closest('[data-team-action]');
-  if (team) ({delete: handleDeleteDuo, roles: handleSaveRoles, twitch: handleSaveTwitch})[team.dataset.teamAction]?.(team.dataset.teamId);
+  if (team) ({delete: handleDeleteDuo, roles: handleSaveRoles, profiles: handleSaveParticipantProfiles})[team.dataset.teamAction]?.(team.dataset.teamId);
 });

@@ -32,7 +32,7 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(self.reward(player1Stats={"kills":10,"assists":11})["blueShells"], 0)
 
     def test_streak_and_other_rewards_share_cap_and_are_idempotent(self):
-        duo = {"history": [game(1,"WIN"),game(2,"WIN"),game(3,"WIN",pentaKill=True,player1Stats={"kills":20,"assists":30,"deaths":0})]}
+        duo = {"history": [game(1,"WIN"),game(2,"WIN"),game(3,"WIN"),game(4,"WIN",pentaKill=True,player1Stats={"kills":20,"assists":30,"deaths":0})]}
         server.update_duo_shells(duo)
         self.assertEqual(duo["blueShells"], 2)
         self.assertEqual(duo["history"][0]["shellRewardIds"], ["streak","penta"])
@@ -65,7 +65,14 @@ class RewardTests(unittest.TestCase):
         self.assertEqual(duo["blueShells"],3)
 
     def test_streak_blocks_and_loss_reset(self):
-        duo = {"history":[game(i,"LOSS" if i==3 else "WIN") for i in range(1,10)]}
+        for count, expected in ((3,0),(4,1),(7,1),(8,2)):
+            with self.subTest(wins=count):
+                team = {"history":[game(i,"WIN") for i in range(1,count+1)]}
+                server.update_duo_shells(team)
+                self.assertEqual(team.get("blueShells",0),expected)
+                server.update_duo_shells(team)
+                self.assertEqual(team.get("blueShells",0),expected)
+        duo = {"history":[game(i,"LOSS" if i==3 else "WIN") for i in range(1,12)]}
         server.update_duo_shells(duo)
         self.assertEqual(duo["blueShells"],2)
         server.update_duo_shells(duo)

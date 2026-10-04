@@ -24,6 +24,8 @@
         <ul class="nav-links">
           <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
           <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-scroll"></i> Torneo y premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
           <li><a href="player.html" class="btn-player-panel active"><i class="fa-solid fa-gamepad"></i> Mi Panel</a></li>
           <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel Admin</a></li>
         </ul>
@@ -96,8 +98,14 @@
         </button>
       </div>
 
+      <div class="player-panel-tabs" role="tablist" aria-label="Secciones del equipo">
+        <button type="button" id="player-shells-tab" role="tab" aria-selected="true" aria-controls="player-shells-panel" data-player-panel-tab="shells"><i class="fa-solid fa-gift" aria-hidden="true"></i> Caparazones</button>
+        <button type="button" id="player-penalties-tab" role="tab" aria-selected="false" aria-controls="player-penalties-panel" tabindex="-1" data-player-panel-tab="penalties"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mis castigos <span id="player-penalties-count" class="player-tab-count">0</span></button>
+      </div>
+
+      <section id="player-shells-panel" class="player-panel-content" role="tabpanel" aria-labelledby="player-shells-tab">
       <!-- Gamification Grid -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+      <div class="player-shells-grid">
         
         <!-- Inventory Card: Blue Shells -->
         <div class="admin-card" style="border-color: rgba(0, 240, 255, 0.4); box-shadow: 0 0 25px rgba(0, 240, 255, 0.15);">
@@ -119,7 +127,7 @@
               0
             </div>
             <div style="font-size: 0.8rem; color: var(--gold-hextech);">
-              <i class="fa-solid fa-gift"></i> Gana caparazones por rachas de 3 victorias, pentakills, 20 kills, 30 asistencias o KDA perfecto. <a href="torneo.html#shell-rewards">Ver requisitos y límites</a>
+              <i class="fa-solid fa-gift"></i> Gana caparazones por rachas de 4 victorias, pentakills, 20 kills, 30 asistencias o KDA perfecto. <a href="torneo.html#shell-rewards">Ver requisitos y límites</a>
             </div>
           </div>
 
@@ -167,6 +175,9 @@
 
       </div>
 
+      <div style="text-align: right; margin-top: 1rem;">
+        <button type="button" id="open-roulette-window" class="btn-refresh" hidden>Abrir ruleta para stream ↗</button>
+      </div>
       <section class="admin-card" id="pending-shells-section" style="display: none; border-color: rgba(0, 240, 255, 0.55); background: rgba(0, 240, 255, 0.06); margin-top: 2rem;">
         <h2 class="admin-card-title" style="color: var(--cyan-primary); margin-bottom: 1rem;">
           <i class="fa-solid fa-gift"></i> Caparazones pendientes de girar
@@ -178,15 +189,22 @@
             <span id="inline-roulette-icon" style="font-size: 1.8rem;">🎰</span>
             <span id="inline-roulette-name">GIRANDO...</span>
           </div>
+          <p id="inline-roulette-assignment" class="roulette-assignment" aria-live="polite" hidden></p>
           <div id="inline-roulette-desc" style="display: none; margin-top: 0.8rem; font-size: 0.85rem; font-weight: 700; color: var(--gold-hextech); background: rgba(245, 197, 66, 0.1); padding: 0.6rem; border-radius: 6px; border: 1px dashed var(--gold-hextech);"></div>
         </div>
       </section>
+      </section>
 
       <!-- Active Debuffs (Castigos Recibidos) Section -->
-      <section class="admin-card" style="border-color: rgba(255, 77, 77, 0.4); background: rgba(255, 77, 77, 0.05); margin-top: 2rem;">
-        <h2 class="admin-card-title" style="color: #ff4d4d; margin-bottom: 1rem;">
-          <i class="fa-solid fa-triangle-exclamation"></i> Castigos Recibidos (Equipo Receptor)
+      <section id="player-penalties-panel" class="admin-card player-panel-content" role="tabpanel" aria-labelledby="player-penalties-tab" hidden>
+        <h2 class="admin-card-title">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mis castigos
         </h2>
+        <p class="player-penalties-intro">Consulta qué debe cumplir cada integrante y qué castigos tenéis en común. Se comprueban automáticamente al recibir las partidas.</p>
+        <div class="player-penalty-filters" role="group" aria-label="Estado de los castigos">
+          <button type="button" data-player-penalty-view="pending" aria-pressed="true">Pendientes <span id="player-pending-count">0</span></button>
+          <button type="button" data-player-penalty-view="history" aria-pressed="false">Historial <span id="player-history-count">0</span></button>
+        </div>
         <div id="active-debuffs-list">
           <!-- Dynamically populated by player.js -->
         </div>
@@ -199,6 +217,8 @@
   <!-- External JavaScript Files -->
   <script src="data.js"></script>
   <script src="alerts.js"></script>
+  <script src="roulette-core.js"></script>
+  <script src="roulette-window.js"></script>
   <script src="player.js"></script>
 </body>
 </html>

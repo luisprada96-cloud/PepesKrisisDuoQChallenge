@@ -18,12 +18,17 @@ import uuid
 import hashlib
 import hmac
 import copy
+import re
+import clips_service
+import weekly_summary
+from http.cookies import SimpleCookie, CookieError
 from functools import wraps
 from storage import read_json, write_json, StorageError
 from postgres_storage import from_environment
-from elo_history import record_elo
+from elo_history import record_elo, ensure_player_elo_histories, record_player_elo
 from trophies import build_trophies, deadline_timestamp
 from sync_jobs import SyncJobs
+from match_details import participant_details, add_match_metadata, needs_match_details, update_match_details_backfill
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -45,7 +50,7 @@ RIOT_MATCH_DETAIL_BATCH_PER_DUO = 40
 VALID_MAIN_ROLES = {"TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"}
 MAX_SHELLS_INVENTORY = 5
 MAX_SHELLS_PER_MATCH = 2
-SHELL_WIN_STREAK = 3
+SHELL_WIN_STREAK = 4
 SHELL_KILLS = 20
 SHELL_ASSISTS = 30
 SHELL_PERFECT_KDA = 20
@@ -68,17 +73,17 @@ SECRET_HASH_ITERATIONS = 260000
 SECRET_HASH_PREFIX = "pbkdf2_sha256"
 
 PENALTY_CATALOG = [
-    {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "Al menos uno debe jugar fuera de su rol principal.", "defaultWeight": 12},
+    {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido por la ruleta (50/50) debe jugar fuera de su rol principal.", "defaultWeight": 12},
     {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Los dos deben jugar fuera de sus roles principales.", "defaultWeight": 5},
-    {"id": "no_main_champion_one", "baseId": "no_main_champion", "scope": "ONE", "name": "Sin campeón favorito · UNO", "icon": "🚫", "desc": "Al menos uno debe evitar su campeón más jugado.", "defaultWeight": 16},
+    {"id": "no_main_champion_one", "baseId": "no_main_champion", "scope": "ONE", "name": "Sin campeón favorito · UNO", "icon": "🚫", "desc": "El integrante elegido por la ruleta (50/50) debe evitar su campeón más jugado.", "defaultWeight": 16},
     {"id": "no_main_champion_both", "baseId": "no_main_champion", "scope": "BOTH", "name": "Sin campeón favorito · AMBOS", "icon": "🚫", "desc": "Los dos deben evitar sus campeones más jugados.", "defaultWeight": 7},
-    {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "Un integrante debe jugar el campeón que indique la ruleta.", "defaultWeight": 12},
+    {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido por la ruleta (50/50) debe jugar su campeón aleatorio asignado.", "defaultWeight": 12},
     {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón aleatorio asignado.", "defaultWeight": 5},
-    {"id": "no_flash_one", "baseId": "no_flash", "scope": "ONE", "name": "Sin Flash · UNO", "icon": "⚡", "desc": "Al menos uno debe jugar sin Flash.", "defaultWeight": 14},
+    {"id": "no_flash_one", "baseId": "no_flash", "scope": "ONE", "name": "Sin Flash · UNO", "icon": "⚡", "desc": "El integrante elegido por la ruleta (50/50) debe jugar sin Flash.", "defaultWeight": 14},
     {"id": "no_flash_both", "baseId": "no_flash", "scope": "BOTH", "name": "Sin Flash · AMBOS", "icon": "⚡", "desc": "Los dos deben jugar sin Flash.", "defaultWeight": 6},
-    {"id": "basic_boots_15_one", "baseId": "basic_boots_15", "scope": "ONE", "name": "Botas básicas hasta 15 · UNO", "icon": "👢", "desc": "Al menos uno no puede mejorar sus botas antes del minuto 15.", "defaultWeight": 12},
-    {"id": "basic_boots_15_both", "baseId": "basic_boots_15", "scope": "BOTH", "name": "Botas básicas hasta 15 · AMBOS", "icon": "👢", "desc": "Los dos deben mantener botas básicas o ninguna hasta el minuto 15.", "defaultWeight": 6},
-    {"id": "return_shell", "baseId": "return_shell", "scope": "SPECIAL", "name": "Devuelve el caparazón", "icon": "↩️", "desc": "El caparazón vuelve inmediatamente al equipo atacante.", "defaultWeight": 5}
+    {"id": "swap_flash_one", "baseId": "swap_flash", "scope": "ONE", "name": "Flash al otro lado · UNO", "icon": "🔄", "desc": "El integrante elegido por la ruleta (50/50) debe llevar Flash en la posición contraria a la registrada en su primera partida con Flash. El otro hechizo es libre.", "defaultWeight": 12},
+    {"id": "swap_flash_both", "baseId": "swap_flash", "scope": "BOTH", "name": "Flash al otro lado · AMBOS", "icon": "🔄", "desc": "Ambos deben llevar Flash en la posición contraria a la registrada en su primera partida con Flash, cada uno según su propia referencia. El otro hechizo es libre.", "defaultWeight": 6},
+    {"id": "return_shell", "baseId": "return_shell", "scope": "SPECIAL", "name": "Devuelve el caparazón", "icon": "↩️", "desc": "El equipo atacante recibe el caparazón en su bandeja y debe girar su ruleta.", "defaultWeight": 5}
 ]
 
 player_sessions = {}
@@ -162,6 +167,47 @@ def verify_admin_pin(db, candidate):
 def default_penalty_weights():
     return {item["id"]: item["defaultWeight"] for item in PENALTY_CATALOG}
 
+RETIRED_PENALTY_IDS = {"no_boots", "basic_boots_15", "basic_boots_15_one", "basic_boots_15_both"}
+
+
+def is_retired_penalty(penalty):
+    return penalty.get("id") in RETIRED_PENALTY_IDS or penalty.get("baseId") == "basic_boots_15"
+
+
+def without_retired_weights(weights):
+    """Preserve remaining odds, recovering old wheels with only retired outcomes."""
+    remaining = {key: value for key, value in weights.items() if key not in RETIRED_PENALTY_IDS}
+    if any(int(weights.get(key, 0) or 0) > 0 for key in RETIRED_PENALTY_IDS):
+        if not any(int(remaining.get(item["id"], 0) or 0) > 0 for item in PENALTY_CATALOG):
+            return default_penalty_weights()
+    return remaining
+
+
+def retire_removed_penalties(db):
+    changed = False
+    config = db.setdefault("config", {})
+    wheels = [config] + [attack for attack in db.get("shellAttacks", []) if attack.get("status") == "PENDING_SPIN"]
+    for owner in wheels:
+        key = "penaltyWeights" if owner is config else "wheelSnapshot"
+        weights = owner.get(key)
+        if isinstance(weights, dict) and RETIRED_PENALTY_IDS.intersection(weights):
+            owner[key] = without_retired_weights(weights)
+            changed = True
+    for duo in db.get("duos", []):
+        for debuff in duo.get("activeDebuffs", []):
+            if not is_retired_penalty(debuff.get("penalty", {})):
+                continue
+            if not debuff.get("retiredPenalty"):
+                debuff["retiredPenalty"] = True
+                changed = True
+            if not debuff.get("resolved") and debuff.get("status") in (None, "ACTIVE"):
+                debuff["status"] = "CANCELLED"
+                debuff["retiredAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                debuff["retirementReason"] = "El castigo de botas se ha retirado del torneo."
+                changed = True
+    return changed
+
+
 def ensure_shell_schema(db):
     config = db.setdefault("config", {})
     configured = config.get("penaltyWeights")
@@ -177,10 +223,36 @@ def ensure_shell_schema(db):
     db.setdefault("events", [])
     return db
 
+
+def migrate_flash_penalty_weights(db):
+    """Introduce the new outcomes once while keeping admin percentages at 100."""
+    if db.get("flashPenaltyConfigVersion") == 1:
+        return False
+    weights = db["config"]["penaltyWeights"]
+    total = sum(weights.values())
+    if total > 0 and total != 100:
+        flash_ids = {"swap_flash_one", "swap_flash_both"}
+        flash_total = sum(weights[key] for key in flash_ids)
+        other_total = total - flash_total
+        protected = flash_ids if 0 < flash_total < 100 and other_total > 0 else set()
+        budget = 100 - flash_total if protected else 100
+        pool = {key: max(0, value) for key, value in weights.items() if key not in protected}
+        pool_total = sum(pool.values())
+        if pool_total:
+            allocation = {key: value * budget // pool_total for key, value in pool.items()}
+            remainder = budget - sum(allocation.values())
+            order = sorted(pool, key=lambda key: pool[key] * budget % pool_total, reverse=True)
+            for key in order[:remainder]:
+                allocation[key] += 1
+            weights.update(allocation)
+    db["flashPenaltyConfigVersion"] = 1
+    return True
+
 def safe_duo_for_player(duo):
     result = dict(duo)
     result.pop("password", None)
     result.pop("passwordHash", None)
+    result.pop("riotMatchDiscovery", None)
     return result
 
 def safe_duos(duos):
@@ -263,6 +335,24 @@ def player_state(db, duo):
     state["outgoingShellAttacks"] = [a for a in attacks if a.get("attackerTeamId") == duo.get("id")][:20]
     return state
 
+def create_pending_shell(db, attacker, target, wheel_snapshot=None, returned_from=None):
+    """Create an inbox attack; spending inventory is handled only by a normal launch."""
+    attack = {
+        "id": f"shell-{uuid.uuid4().hex}",
+        "attackerTeamId": attacker["id"], "attackerName": attacker["teamName"],
+        "targetTeamId": target["id"], "targetName": target["teamName"],
+        "status": "PENDING_SPIN",
+        "launchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "wheelSnapshot": without_retired_weights(wheel_snapshot if wheel_snapshot is not None else db.get("config", {}).get("penaltyWeights", default_penalty_weights()))
+    }
+    if returned_from:
+        attack.update(returnedFromAttackId=returned_from["id"],
+                      rootShellId=returned_from.get("rootShellId") or returned_from["id"],
+                      reflectionCount=int(returned_from.get("reflectionCount", 0)) + 1)
+    db.setdefault("shellAttacks", []).insert(0, attack)
+    return attack
+
+
 def weighted_penalty(snapshot):
     available = [(item, max(0, int(snapshot.get(item["id"], 0) or 0))) for item in PENALTY_CATALOG]
     total = sum(weight for _, weight in available)
@@ -291,6 +381,35 @@ def favorite_snapshot(duo):
         result[player_key] = sorted(name for name, count in counts.items() if count == maximum) if maximum else []
     return result
 
+def fill_pending_penalty_favorites(duo):
+    """Resolve empty favorite references from newly available history, once."""
+    snapshot = None
+    changed = []
+    for debuff in duo.get("activeDebuffs", []):
+        penalty = debuff.get("penalty") or {}
+        if debuff.get("status") != "ACTIVE" or debuff.get("resolved"):
+            continue
+        if (penalty.get("baseId") or penalty.get("id")) != "no_main_champion":
+            continue
+        requirements = debuff.setdefault("requirements", {})
+        favorites = requirements.setdefault("favoriteChampions", {})
+        scope = debuff.get("scope") or penalty.get("scope") or "ONE"
+        assigned = requirements.get("assignedPlayer")
+        keys = (assigned,) if scope == "ONE" and assigned in ("player1", "player2") else ("player1", "player2")
+        updated = False
+        for key in keys:
+            if favorites.get(key):
+                continue  # An existing reference must not move while serving the penalty.
+            if snapshot is None:
+                snapshot = favorite_snapshot(duo)
+            if snapshot[key]:
+                favorites[key] = list(snapshot[key])
+                updated = True
+        if updated:
+            changed.append(debuff)
+    return changed
+
+
 def champion_pool(duos):
     global ddragon_champion_cache
     if ddragon_champion_cache:
@@ -316,27 +435,114 @@ def champion_pool(duos):
     fallback = {"Ahri", "Ashe", "Caitlyn", "Darius", "Ezreal", "Garen", "Jinx", "LeeSin", "Lux", "Morgana", "Nami", "Orianna", "Thresh", "Vi", "Yasuo"}
     return sorted(champions | fallback)
 
+def flash_account(player):
+    return {field: player.get(field, "") for field in ("name", "tag", "puuid", "displayName")}
+
+
+def same_flash_account(left, right):
+    if left.get("puuid") and right.get("puuid"):
+        return left["puuid"] == right["puuid"]
+    identity = lambda account: (str(account.get("name", "")).strip().casefold(), str(account.get("tag") or "EUW").strip().casefold())
+    return bool(left.get("name")) and identity(left) == identity(right)
+
+
+def player_flash_baseline(player):
+    baseline = player.get("flashBaseline") or {}
+    if (baseline.get("slot") in (1, 2) and baseline.get("matchId")
+            and baseline.get("gameStartTimestamp", 0) > 0
+            and same_flash_account(baseline.get("account", {}), player)):
+        return baseline
+    return None
+
+
+def record_flash_baselines(duo, match):
+    """First successfully imported game with Flash fixes each account's comfort slot."""
+    if match.get("isTest") or not match.get("matchId") or not match.get("gameStartTimestamp"):
+        return
+    for key in ("player1", "player2"):
+        player = duo.get(key) or {}
+        if not player.get("name") or player_flash_baseline(player):
+            continue
+        stats = match.get(f"{key}Stats") or {}
+        spells = stats.get("summonerSpellIds") or []
+        if not stats.get("puuid") or (player.get("puuid") and player["puuid"] != stats["puuid"]):
+            continue
+        if len(spells) != 2 or not all(spells) or spells.count(4) != 1:
+            continue
+        player["flashBaseline"] = {"slot": spells.index(4) + 1, "matchId": match["matchId"],
+                                   "gameStartTimestamp": match["gameStartTimestamp"],
+                                   "account": {**flash_account(player), "puuid": stats["puuid"]}}
+
+
+def fill_pending_flash_baselines(duo):
+    changed = []
+    for debuff in duo.get("activeDebuffs", []):
+        if debuff.get("status") != "ACTIVE" or debuff.get("resolved") or debuff.get("penalty", {}).get("baseId") != "swap_flash":
+            continue
+        req = debuff.setdefault("requirements", {})
+        baselines = req.setdefault("flashBaselines", {})
+        updated = False
+        for key, account in req.get("flashAccounts", {}).items():
+            baseline = player_flash_baseline(duo.get(key) or {})
+            if key not in baselines and baseline and same_flash_account(account, baseline["account"]):
+                baselines[key] = copy.deepcopy(baseline)
+                updated = True
+        if updated:
+            changed.append(debuff)
+    return changed
+
+
 def penalty_requirements(duo, penalty, duos):
     requirements = {
-        "mainRoles": {
-            "player1": duo.get("player1", {}).get("mainRole"),
-            "player2": duo.get("player2", {}).get("mainRole")
-        },
+        "mainRoles": {key: (duo.get(key) or {}).get("mainRole") for key in ("player1", "player2")},
         "favoriteChampions": favorite_snapshot(duo)
     }
-    if penalty["baseId"] == "random_champion":
+    if penalty.get("scope") == "ONE":
+        # Exactly one independent, uniform draw for every individual penalty.
+        player_key = secrets.choice(("player1", "player2"))
+        player = duo.get(player_key) or {}
+        requirements.update(
+            assignmentVersion=2,
+            assignedPlayer=player_key,
+            assignedAccount={"name": player.get("name", ""), "tag": player.get("tag", "EUW"),
+                             "displayName": player.get("displayName") or player.get("name", ""),
+                             "puuid": player.get("puuid", "")})
+    if penalty.get("baseId") == "random_champion":
         pool = champion_pool(duos)
-        if penalty["scope"] == "ONE":
-            player_key = secrets.choice(["player1", "player2"])
-            requirements["randomChampions"] = {player_key: secrets.choice(pool)}
-            requirements["assignedPlayer"] = player_key
-        else:
-            requirements["randomChampions"] = {"player1": secrets.choice(pool), "player2": secrets.choice(pool)}
+        keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
+        requirements["randomChampions"] = {key: secrets.choice(pool) for key in keys}
+    if penalty.get("baseId") == "swap_flash":
+        keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
+        requirements["flashAccounts"] = {key: flash_account(duo.get(key) or {}) for key in keys}
+        requirements["flashBaselines"] = {key: copy.deepcopy(player_flash_baseline(duo.get(key) or {}))
+                                          for key in keys if player_flash_baseline(duo.get(key) or {})}
     return requirements
+
+
+def penalty_player_matches(duo, match, requirements):
+    """Check the selected participant's account, not just their slot in the duo."""
+    key = requirements.get("assignedPlayer")
+    if key not in ("player1", "player2"):
+        return False
+    account = requirements.get("assignedAccount")
+    if not account:
+        return requirements.get("assignmentVersion", 0) < 2  # Older random-champion assignments.
+    stats = match.get(f"{key}Stats") or {}
+    if account.get("puuid"):
+        return stats.get("puuid") == account["puuid"]
+    player = duo.get(key) or {}
+    # Before the first Riot sync, bind to the configured Riot ID until its PUUID is known.
+    identity = lambda value: (str(value.get("name", "")).strip().casefold(), str(value.get("tag") or "EUW").strip().casefold())
+    if identity(player) != identity(account):
+        return False
+    if player.get("puuid") and stats.get("puuid") != player["puuid"]:
+        return False
+    return bool(account.get("name"))
+
 
 def migrate_legacy_penalties(db):
     changed = False
-    legacy_map = {"no_flash": "no_flash_one", "autofill": "autofill_both", "no_boots": "basic_boots_15_both"}
+    legacy_map = {"no_flash": "no_flash_one", "autofill": "autofill_both"}
     catalog_by_id = {item["id"]: item for item in PENALTY_CATALOG}
     for duo in db.get("duos", []):
         for debuff in duo.get("activeDebuffs", []):
@@ -344,16 +550,28 @@ def migrate_legacy_penalties(db):
                 debuff["id"] = f"penalty-{uuid.uuid4().hex}"
                 changed = True
             old_penalty = debuff.get("penalty", {})
+            if is_retired_penalty(old_penalty):
+                continue
             mapped = catalog_by_id.get(legacy_map.get(old_penalty.get("id")))
             if mapped and not old_penalty.get("baseId"):
                 debuff["penalty"] = dict(mapped)
+                if mapped["scope"] == "ONE":
+                    debuff["penalty"]["desc"] = "Uno de los dos integrantes debe jugar sin Flash."
                 debuff["scope"] = mapped["scope"]
                 changed = True
             expected_status = "COMPLETED" if debuff.get("resolved") else "ACTIVE"
             if not debuff.get("status"):
                 debuff["status"] = expected_status
                 changed = True
-            debuff.setdefault("requirements", penalty_requirements(duo, debuff.get("penalty", {}), db.get("duos", [])))
+            if "requirements" not in debuff:
+                # Already-open penalties keep their original scope and player assignment.
+                legacy_requirements = penalty_requirements(duo, {**debuff.get("penalty", {}), "scope": "BOTH"}, db.get("duos", []))
+                if (debuff.get("scope") or debuff.get("penalty", {}).get("scope")) == "ONE" and debuff.get("penalty", {}).get("baseId") == "random_champion":
+                    key = secrets.choice(("player1", "player2"))
+                    legacy_requirements["assignedPlayer"] = key
+                    legacy_requirements["randomChampions"] = {key: legacy_requirements["randomChampions"][key]}
+                debuff["requirements"] = legacy_requirements
+                changed = True
     return changed
 
 def safe_print(*args, **kwargs):
@@ -364,8 +582,8 @@ def safe_print(*args, **kwargs):
 
 DEFAULT_CONFIG = {
     "challengeTitle": "Pepes Krisis Duo Q Challenge",
-    "startDate": "2026-08-01T00:00:00",
-    "endDate": "2026-08-31T23:59:59",
+    "startDate": "2026-10-15T18:00:00+02:00",
+    "endDate": "2026-11-15T23:59:00+01:00",
     "prizePool": "Bote: 500€ + Cena de Ganadores 🏆",
     "server": "EUW",
     "twitchClientId": ""
@@ -396,6 +614,7 @@ twitch_token_lock = threading.Lock()
 twitch_token_cache = {"client_id": "", "access_token": "", "expires_at": 0}
 
 remote_backend = from_environment()
+CLIPS_PREVIEW = os.environ.get("PEPES_CLIPS_PREVIEW") == "1" and remote_backend is None
 
 
 def load_db():
@@ -426,8 +645,19 @@ def load_db():
             if not duo.get("eloHistory") or duo.get("eloHistoryAccount") != account:
                 record_elo(duo, calc_total_lp(duo.get("tier"), duo.get("division"), duo.get("lp")), time.time(), "initial")
                 elo_migrated = True
+            elo_migrated = ensure_player_elo_histories(duo) or elo_migrated
+            for key in ("player1", "player2"):
+                participant = duo.get(key) or {}
+                rank = participant.get("rank") or {}
+                if not participant.get("eloHistory") and rank.get("tier") and rank.get("observedAt"):
+                    record_player_elo(participant, calc_total_lp(rank.get("tier"), rank.get("division"), rank.get("lp")), rank["observedAt"])
+                    elo_migrated = True
+        penalties_retired = retire_removed_penalties(data)
         data = ensure_shell_schema(data)
-        if migrate_credentials(data) or rewards_migrated or elo_migrated:
+        flash_weights_migrated = migrate_flash_penalty_weights(data)
+        clips_awarded = clips_service.settle_weekly_reward(data)
+        weekly_archived = weekly_summary.maintain(data)
+        if migrate_credentials(data) or rewards_migrated or elo_migrated or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived:
             save_db(data)
         return data
 
@@ -496,14 +726,30 @@ def twitch_channel_from_url(value):
         if hostname.startswith('www.'):
             hostname = hostname[4:]
         parts = [part for part in parsed.path.split('/') if part]
-        if parsed.scheme != 'https' or hostname != 'twitch.tv' or len(parts) != 1:
+        if parsed.scheme != 'https' or hostname != 'twitch.tv' or len(parts) != 1 or parsed.username or parsed.password or parsed.port:
             return ''
         channel = parts[0]
-        if not 4 <= len(channel) <= 25 or not all(ch.isalnum() or ch == '_' for ch in channel):
+        if not re.fullmatch(r'[A-Za-z0-9_]{4,25}', channel):
             return ''
         return channel.lower()
     except Exception:
         return ''
+
+def participant_twitch_channel(duo, player_key):
+    player = duo.get(player_key) or {}
+    # Legacy team links belong to the first participant until explicitly edited.
+    url = player.get("twitchUrl") if "twitchUrl" in player else duo.get("twitchUrl") if player_key == "player1" else ""
+    return twitch_channel_from_url(url)
+
+
+def participant_twitch_live(duo, player_key):
+    player = duo.get(player_key) or {}
+    if not participant_twitch_channel(duo, player_key):
+        return False
+    if "twitchIsLive" in player:
+        return player["twitchIsLive"] is True
+    return "twitchUrl" not in player and player_key == "player1" and duo.get("twitchIsLive") is True
+
 
 def get_twitch_credentials(db):
     config = db.get("config", {})
@@ -571,62 +817,52 @@ def single_sync(lock):
 @single_sync(twitch_sync_lock)
 def sync_twitch_live_status():
     db = load_db()
-    duos = db.get("duos", [])
-    channel_to_duos = {}
-
-    for duo in duos:
-        channel = twitch_channel_from_url(duo.get("twitchUrl"))
-        if channel:
-            channel_to_duos.setdefault(channel, []).append(duo)
-
-    if not channel_to_duos:
-        return {"success": True, "checked": 0, "live": 0}
-
-    client_id, client_secret = get_twitch_credentials(db)
-    if not client_id or not client_secret:
-        safe_print("[Twitch Sync] Client ID o Client Secret no configurados.")
-        return {"success": False, "error": "Credenciales de Twitch no configuradas"}
-
+    requested = {(duo["id"], key): participant_twitch_channel(duo, key)
+                 for duo in db.get("duos", []) for key in ("player1", "player2")}
+    channels = sorted({channel for channel in requested.values() if channel})
+    live_channels = set()
     try:
-        access_token = get_twitch_app_token(client_id, client_secret)
-        query = urllib.parse.urlencode(
-            [("user_login", channel) for channel in channel_to_duos.keys()]
-        )
-        request = urllib.request.Request(
-            f"https://api.twitch.tv/helix/streams?{query}",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Client-Id": client_id
-            }
-        )
-        with urllib.request.urlopen(request, timeout=20) as response:
-            stream_data = json.loads(response.read().decode('utf-8'))
-
-        live_channels = {
-            str(stream.get("user_login", "")).lower()
-            for stream in stream_data.get("data", [])
-            if stream.get("type") == "live"
-        }
+        if channels:
+            client_id, client_secret = get_twitch_credentials(db)
+            if not client_id or not client_secret:
+                return {"success": False, "error": "Credenciales de Twitch no configuradas"}
+            access_token = get_twitch_app_token(client_id, client_secret)
+            # Twitch accepts up to 100 logins; request all possible live results per batch.
+            for offset in range(0, len(channels), 100):
+                batch = channels[offset:offset + 100]
+                query = urllib.parse.urlencode([("first", 100)] + [("user_login", channel) for channel in batch])
+                request = urllib.request.Request(
+                    f"https://api.twitch.tv/helix/streams?{query}",
+                    headers={"Authorization": f"Bearer {access_token}", "Client-Id": client_id})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    stream_data = json.loads(response.read().decode('utf-8'))
+                if not isinstance(stream_data.get("data"), list):
+                    raise ValueError("Respuesta de Twitch inválida")
+                live_channels.update(str(stream.get("user_login", "")).lower()
+                                     for stream in stream_data["data"]
+                                     if stream.get("type") == "live" and str(stream.get("user_login", "")).lower() in batch)
 
         with db_lock:
             current = load_db()
             changed = False
             for duo in current.get("duos", []):
-                channel = twitch_channel_from_url(duo.get("twitchUrl"))
-                if channel in channel_to_duos:
-                    is_live = channel in live_channels
-                    if duo.get("twitchIsLive") is not is_live:
-                        duo["twitchIsLive"] = is_live
+                for key in ("player1", "player2"):
+                    channel = participant_twitch_channel(duo, key)
+                    # An edit made while Twitch was responding must keep its own state.
+                    if (duo["id"], key) not in requested or requested[(duo["id"], key)] != channel:
+                        continue
+                    player = duo.get(key)
+                    if isinstance(player, dict) and player.get("twitchIsLive") is not (channel in live_channels):
+                        player["twitchIsLive"] = channel in live_channels
                         changed = True
+                is_live = any(participant_twitch_live(duo, key) for key in ("player1", "player2"))
+                if duo.get("twitchIsLive") is not is_live:
+                    duo["twitchIsLive"] = is_live
+                    changed = True
             if changed:
                 save_db(current)
-
-        safe_print(f"[Twitch Sync] {len(channel_to_duos)} canal(es) comprobados; {len(live_channels)} en directo.")
-        return {
-            "success": True,
-            "checked": len(channel_to_duos),
-            "live": len(live_channels),
-        }
+        safe_print(f"[Twitch Sync] {len(channels)} canal(es) comprobados; {len(live_channels)} en directo.")
+        return {"success": True, "checked": len(channels), "live": len(live_channels)}
     except urllib.error.HTTPError as error:
         if error.code == 401:
             clear_twitch_token_cache()
@@ -635,6 +871,7 @@ def sync_twitch_live_status():
     except Exception as error:
         safe_print(f"[Twitch Sync Error] {error}")
         return {"success": False, "error": "No se pudo consultar Twitch"}
+
 
 def sort_history_chronologically(history):
     """Sort match history descending: newest date/matchId first."""
@@ -694,10 +931,11 @@ def normalize_position(participant):
     position = str(participant.get("teamPosition") or participant.get("individualPosition") or "UNKNOWN").upper()
     return position if position in {"TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"} else "UNKNOWN"
 
-def participant_stats(participant):
+def participant_stats(participant, participants=()):
     if not participant:
         return None
     return {
+        "puuid": str(participant.get("puuid") or ""),
         "championName": normalize_champion_name(participant.get("championName")),
         "kills": int(participant.get("kills", 0) or 0),
         "deaths": int(participant.get("deaths", 0) or 0),
@@ -705,7 +943,8 @@ def participant_stats(participant):
         "win": bool(participant.get("win", False)),
         "position": normalize_position(participant),
         "summonerSpellIds": [int(participant.get("summoner1Id", 0) or 0), int(participant.get("summoner2Id", 0) or 0)],
-        "participantId": int(participant.get("participantId", 0) or 0)
+        "participantId": int(participant.get("participantId", 0) or 0),
+        **participant_details(participant, participants)
     }
 
 def enrich_match_record(match, info, puuid1, puuid2):
@@ -713,12 +952,13 @@ def enrich_match_record(match, info, puuid1, puuid2):
     participants = info.get("participants", [])
     p1 = next((p for p in participants if p.get("puuid") == puuid1), None)
     p2 = next((p for p in participants if puuid2 and p.get("puuid") == puuid2), None)
-    p1_stats = participant_stats(p1)
-    p2_stats = participant_stats(p2)
+    p1_stats = participant_stats(p1, participants)
+    p2_stats = participant_stats(p2, participants)
 
     match["player1Stats"] = p1_stats
     match["player2Stats"] = p2_stats
     match["statsVersion"] = 2
+    add_match_metadata(match, info, puuid1, puuid2, bool(p1))
 
     if p1_stats:
         match["result"] = "WIN" if p1_stats["win"] else "LOSS"
@@ -735,28 +975,9 @@ def enrich_match_record(match, info, puuid1, puuid2):
     )
     return p1, p2
 
-UPGRADED_BOOT_IDS = {3006, 3009, 3020, 3047, 3111, 3117, 3158, 3172, 3173, 3174, 3175, 3176, 3177, 3178, 3179}
-
-def boots_compliance_from_timeline(timeline_info, match):
-    if not isinstance(timeline_info, dict) or not timeline_info.get("frames"):
-        return {}
-    if any(not (match.get(f"{key}Stats") or {}).get("participantId") for key in ("player1", "player2")):
-        return {}
-    purchased_before_15 = {"player1": False, "player2": False}
-    participant_keys = {
-        (match.get("player1Stats") or {}).get("participantId"): "player1",
-        (match.get("player2Stats") or {}).get("participantId"): "player2"
-    }
-    for frame in timeline_info.get("frames", []):
-        for event in frame.get("events", []):
-            if event.get("type") != "ITEM_PURCHASED" or int(event.get("timestamp", 0) or 0) >= 900000:
-                continue
-            key = participant_keys.get(event.get("participantId"))
-            if key and int(event.get("itemId", 0) or 0) in UPGRADED_BOOT_IDS:
-                purchased_before_15[key] = True
-    return {key: not upgraded for key, upgraded in purchased_before_15.items()}
-
-def evaluate_active_penalties(duo, match, timeline_info=None):
+def evaluate_active_penalties(duo, match):
+    if match.get("isTest"):
+        return 0
     if not match.get("player1Stats") or not match.get("player2Stats"):
         return 0
     game_start_ms = int(match.get("gameStartTimestamp", 0) or 0)
@@ -788,21 +1009,36 @@ def evaluate_active_penalties(duo, match, timeline_info=None):
             elif base_id == "no_flash":
                 spells = stats.get("summonerSpellIds") or []
                 results[player_key] = len(spells) == 2 and all(spells) and 4 not in spells
-            elif base_id == "basic_boots_15":
-                results = boots_compliance_from_timeline(timeline_info, match) if timeline_info is not None else match.get("bootsCompliance", {})
-                break
+            elif base_id == "swap_flash":
+                baseline = req.get("flashBaselines", {}).get(player_key) or {}
+                slot = baseline.get("slot")
+                spells = stats.get("summonerSpellIds") or []
+                results[player_key] = bool(
+                    slot in (1, 2) and baseline.get("account", {}).get("puuid") == stats.get("puuid")
+                    and stats.get("puuid") and baseline.get("gameStartTimestamp", 0) > 0
+                    and game_start_ms > baseline["gameStartTimestamp"]
+                    and match.get("matchId") != baseline.get("matchId")
+                    and len(spells) == 2 and all(spells) and spells.count(4) == 1 and spells[2 - slot] == 4)
         relevant = [results.get("player1") is True, results.get("player2") is True]
-        if base_id == "random_champion" and scope == "ONE":
+        if scope == "ONE" and ("assignedPlayer" in req or req.get("assignmentVersion", 0) >= 2):
             assigned_player = req.get("assignedPlayer")
-            passed = bool(assigned_player and results.get(assigned_player))
+            passed = penalty_player_matches(duo, match, req) and results.get(assigned_player) is True
+        elif scope == "ONE":
+            # Historical penalties without a selected player retain their published rule.
+            passed = base_id != "random_champion" and any(relevant)
         else:
-            passed = all(relevant) if scope == "BOTH" else any(relevant)
+            passed = scope == "BOTH" and all(relevant)
         if passed:
             debuff["status"] = "COMPLETED"
             debuff["resolved"] = True
             debuff["resolvedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             debuff["resolvedByMatchId"] = match.get("matchId")
-            debuff["evidence"] = {"players": results, "matchId": match.get("matchId")}
+            debuff["evidence"] = {"players": results, "matchId": match.get("matchId"),
+                                  "assignedPlayer": req.get("assignedPlayer"),
+                                  "assignedAccount": copy.deepcopy(req.get("assignedAccount"))}
+            if base_id == "swap_flash":
+                debuff["evidence"]["flashBaselines"] = copy.deepcopy(req.get("flashBaselines", {}))
+                debuff["evidence"]["summonerSpellIds"] = {key: list((match.get(f"{key}Stats") or {}).get("summonerSpellIds") or []) for key in req.get("flashBaselines", {})}
             completed += 1
     return completed
 
@@ -999,22 +1235,9 @@ def update_duo_shells(duo):
                 continue
             rewards.append(rule)
             duo["shellsEarnedTotal"] = duo.get("shellsEarnedTotal", 0) + 1
+            match.setdefault("shellRewardCredits", {})[rule] = duo.get("blueShells", 0) < MAX_SHELLS_INVENTORY
             if duo.get("blueShells", 0) < MAX_SHELLS_INVENTORY:
                 duo["blueShells"] = duo.get("blueShells", 0) + 1
-
-
-def needs_boots_timeline(duo, match):
-    if match.get("isTest") or match.get("bootsCompliance"):
-        return False
-    if not match.get("player1Stats") or not match.get("player2Stats"):
-        return False
-    start = int(match.get("gameStartTimestamp", 0) or 0)
-    return any(
-        d.get("status") == "ACTIVE" and not d.get("resolved")
-        and d.get("penalty", {}).get("baseId") == "basic_boots_15"
-        and start >= int(d.get("assignedAtEpochMs", 0) or 0)
-        for d in duo.get("activeDebuffs", [])
-    )
 
 
 def merge_riot_result(original, scanned):
@@ -1042,9 +1265,13 @@ def merge_riot_result(original, scanned):
             for key in ("player1", "player2"):
                 if not duo.get(key):
                     continue
-                for field in ("puuid", "avatar"):
+                for field in ("puuid", "avatar", "rank", "flashBaseline"):
                     if field in (incoming.get(key) or {}) and duo[key].get(field) == (old.get(key) or {}).get(field):
                         duo[key][field] = incoming[key][field]
+                rank = duo[key].get("rank") or {}
+                incoming_rank = (incoming.get(key) or {}).get("rank") or {}
+                if rank.get("observedAt") and rank == incoming_rank:
+                    record_player_elo(duo[key], calc_total_lp(rank.get("tier"), rank.get("division"), rank.get("lp")), rank["observedAt"])
             matches = {m["matchId"]: m for m in duo.get("history", []) if m.get("matchId")}
             unkeyed = [m for m in duo.get("history", []) if not m.get("matchId")]
             for match in incoming.get("history", []):
@@ -1053,11 +1280,26 @@ def merge_riot_result(original, scanned):
                     continue
                 existing = matches.get(mid, {})
                 merged = {**existing, **copy.deepcopy(match)}
-                for flag in ("processedForShell", "processedForPenta", "shellRewardIds", "shellRewardsEvaluated", "legacyShellRewards"):
+                for flag in ("processedForShell", "processedForPenta", "shellRewardIds", "shellRewardsEvaluated", "shellRewardCredits", "legacyShellRewards"):
                     if flag in existing:
                         merged[flag] = existing[flag]
                 matches[mid] = merged
             duo["history"] = sort_history_chronologically(list(matches.values()) + unkeyed)
+            if incoming.get("riotMatchDiscovery") and duo.get("riotMatchDiscovery") == old.get("riotMatchDiscovery"):
+                duo["riotMatchDiscovery"] = copy.deepcopy(incoming["riotMatchDiscovery"])
+                known_ids = {m.get("matchId") for m in duo["history"] if not m.get("isTest")}
+                duo["riotMatchDiscovery"]["pendingMatchIds"] = [mid for mid in duo["riotMatchDiscovery"]["pendingMatchIds"] if mid not in known_ids]
+            # History can arrive after the roulette draw. Resolve only empty
+            # references before evaluating it, preserving existing player draws.
+            for debuff in fill_pending_penalty_favorites(duo) + fill_pending_flash_baselines(duo):
+                source_id = debuff.get("sourceShellId")
+                if source_id:
+                    for attack in current.get("shellAttacks", []):
+                        if attack.get("id") == source_id:
+                            attack["requirements"] = copy.deepcopy(debuff["requirements"])
+                    for event in current.get("events", []):
+                        if event.get("type") == "SHELL_SPUN" and event.get("shellAttackId") == source_id:
+                            event["requirements"] = copy.deepcopy(debuff["requirements"])
             # Oldest first makes the first qualifying match the recorded evidence.
             for match in reversed(duo["history"]):
                 evaluate_active_penalties(duo, match)
@@ -1066,8 +1308,10 @@ def merge_riot_result(original, scanned):
             calculate_player_insights(duo)
             calculate_duo_best_match(duo)
             update_stats_backfill_status(duo, include_timestamp=True)
+            update_match_details_backfill(duo)
+        weekly_summary.maintain(current, refresh=True)
         save_db(current)
-        return sum(needs_boots_timeline(d, m) or int(m.get("statsVersion", 0) or 0) < 2
+        return sum(int(m.get("statsVersion", 0) or 0) < 2 or needs_match_details(m)
                    for d in current.get("duos", []) for m in d.get("history", []) if not m.get("isTest"))
 
 
@@ -1088,6 +1332,55 @@ def riot_open(request, timeout=8):
             time.sleep(max(0.2, delay))
 
 
+def solo_rank_snapshot(entries):
+    """A confirmed Solo/Duo rank; an empty successful response means unranked."""
+    if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
+        raise ValueError("Invalid league response")
+    entry = next((item for item in entries if item.get("queueType") == "RANKED_SOLO_5x5"), None)
+    if entry is None:
+        return {"tier": "Unranked", "division": "", "lp": 0, "observedAt": time.time()}
+    return {"tier": str(entry["tier"]).capitalize(), "division": str(entry.get("rank", "")),
+            "lp": int(entry["leaguePoints"]), "wins": int(entry.get("wins", 0)),
+            "losses": int(entry.get("losses", 0)), "observedAt": time.time()}
+
+
+def discover_riot_matches(duo, puuid, fetch_json, min_timestamp):
+    """Discover new IDs while retaining every previously discovered import gap."""
+    player = duo.get("player1") or {}
+    account = [str(player.get("name", "")).strip().casefold(),
+               str(player.get("tag") or "EUW").strip().casefold()]
+    previous = duo.get("riotMatchDiscovery") or {}
+    if not isinstance(previous, dict) or previous.get("version") != 1 or previous.get("account") != account:
+        previous = {}
+    boundary = previous.get("latestMatchId")
+    known = {m["matchId"] for m in duo.get("history", [])
+             if isinstance(m, dict) and m.get("matchId") and not m.get("isTest")}
+    discovered = []
+    seen = set()
+    latest = boundary
+    offset = 0
+    while True:
+        url = (f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
+               f"?queue=420&start={offset}&count=100&startTime={min_timestamp}")
+        page = fetch_json(url)
+        if not isinstance(page, list) or any(not isinstance(mid, str) or not mid for mid in page):
+            raise ValueError("Riot devolvió una lista de partidas no válida.")
+        if offset == 0 and page:
+            latest = page[0]
+        if page and not any(mid not in seen for mid in page):
+            raise ValueError("Riot repitió la página de partidas; no se ha avanzado el historial.")
+        seen.update(page)
+        discovered.extend(page)
+        # Only an earlier successful discovery is a safe boundary: existing history
+        # alone may have holes from failed details or the per-sync import budget.
+        if boundary in page or len(page) < 100:
+            break
+        offset += 100
+        time.sleep(0.2)
+    pending = [mid for mid in dict.fromkeys(discovered + previous.get("pendingMatchIds", [])) if mid not in known]
+    return {"version": 1, "account": account, "latestMatchId": latest, "pendingMatchIds": pending}
+
+
 @single_sync(riot_sync_lock)
 def sync_riot_data():
     db = load_db()
@@ -1104,6 +1397,16 @@ def sync_riot_data():
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
     updated = False
+    response_cache = {}
+
+    def fetch_json(url):
+        # Shared matches/profiles are requested once per job, never across jobs.
+        # Failed requests are not cached so a later request can still recover.
+        if url not in response_cache:
+            request = urllib.request.Request(url, headers=headers)
+            with riot_open(request, timeout=8) as response:
+                response_cache[url] = json.loads(response.read().decode("utf-8"))
+        return copy.deepcopy(response_cache[url])
 
     for duo in db.get("duos", []):
         try:
@@ -1117,13 +1420,11 @@ def sync_riot_data():
             if p1_name and p1_tag:
                 try:
                     url_acc1 = f"https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{urllib.parse.quote(p1_name)}/{urllib.parse.quote(p1_tag)}"
-                    req1 = urllib.request.Request(url_acc1, headers=headers)
-                    with riot_open(req1, timeout=8) as resp1:
-                        acc_data1 = json.loads(resp1.read().decode('utf-8'))
-                        puuid1 = acc_data1.get("puuid")
-                        if puuid1:
-                            duo["player1"]["puuid"] = puuid1
-                            updated = True
+                    acc_data1 = fetch_json(url_acc1)
+                    puuid1 = acc_data1.get("puuid")
+                    if puuid1:
+                        duo["player1"]["puuid"] = puuid1
+                        updated = True
                 except Exception as ex_p1:
                     failures += 1
                     safe_print(f"[Riot Sync PUUID P1 Error] {p1_name}: {ex_p1}")
@@ -1133,80 +1434,81 @@ def sync_riot_data():
                     p2_name = duo["player2"]["name"]
                     p2_tag = duo["player2"].get("tag", "EUW")
                     url_acc2 = f"https://europe.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{urllib.parse.quote(p2_name)}/{urllib.parse.quote(p2_tag)}"
-                    req2 = urllib.request.Request(url_acc2, headers=headers)
-                    with riot_open(req2, timeout=8) as resp2:
-                        acc_data2 = json.loads(resp2.read().decode('utf-8'))
-                        puuid2 = acc_data2.get("puuid")
-                        if puuid2:
-                            duo["player2"]["puuid"] = puuid2
-                            updated = True
+                    acc_data2 = fetch_json(url_acc2)
+                    puuid2 = acc_data2.get("puuid")
+                    if puuid2:
+                        duo["player2"]["puuid"] = puuid2
+                        updated = True
                 except Exception as ex_p2:
                     failures += 1
                     safe_print(f"[Riot Sync PUUID P2 Error] {ex_p2}")
+
+            # Each participant has an independent Solo/Duo rank for the public table.
+            if puuid2 and duo.get("player2") and duo["player2"].get("name"):
+                try:
+                    url_lea2 = f"https://euw1.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid2}"
+                    entries2 = fetch_json(url_lea2)
+                    duo["player2"]["rank"] = solo_rank_snapshot(entries2)
+                    updated = True
+                except Exception as error:
+                    failures += 1
+                    safe_print(f"[Riot Sync League P2 Error] {error}")
 
             if not puuid1:
                 continue
 
             # 2. Fetch Profile Icons if default
-            if puuid1 and duo.get("player1") and (not duo["player1"].get("avatar") or duo["player1"].get("avatar", "").endswith("29.png")):
+            if puuid1 and duo.get("player1") and (not duo["player1"].get("avatar") or duo["player1"].get("avatar", "").rsplit("/", 1)[-1] == "29.png"):
                 try:
                     url_m1 = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid1}/ids?count=1"
-                    req_m1 = urllib.request.Request(url_m1, headers=headers)
-                    with riot_open(req_m1, timeout=8) as resp_m1:
-                        m1_ids = json.loads(resp_m1.read().decode('utf-8'))
-                        if m1_ids:
-                            url_d1 = f"https://europe.api.riotgames.com/lol/match/v5/matches/{m1_ids[0]}"
-                            req_d1 = urllib.request.Request(url_d1, headers=headers)
-                            with riot_open(req_d1, timeout=8) as resp_d1:
-                                md1 = json.loads(resp_d1.read().decode('utf-8'))
-                                for p in md1.get("info", {}).get("participants", []):
-                                    if p.get("puuid") == puuid1 and p.get("profileIcon"):
-                                        icon_id1 = p.get("profileIcon")
-                                        duo["player1"]["avatar"] = f"https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/{icon_id1}.png"
-                                        updated = True
-                                        break
+                    m1_ids = fetch_json(url_m1)
+                    if m1_ids:
+                        url_d1 = f"https://europe.api.riotgames.com/lol/match/v5/matches/{m1_ids[0]}"
+                        md1 = fetch_json(url_d1)
+                        for p in md1.get("info", {}).get("participants", []):
+                            if p.get("puuid") == puuid1 and p.get("profileIcon"):
+                                icon_id1 = p.get("profileIcon")
+                                duo["player1"]["avatar"] = f"https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/{icon_id1}.png"
+                                updated = True
+                                break
                 except Exception:
                     pass
 
-            if puuid2 and duo.get("player2") and (not duo["player2"].get("avatar") or duo["player2"].get("avatar", "").endswith("1.png")):
+            if puuid2 and duo.get("player2") and (not duo["player2"].get("avatar") or duo["player2"].get("avatar", "").rsplit("/", 1)[-1] == "1.png"):
                 try:
                     url_m2 = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid2}/ids?count=1"
-                    req_m2 = urllib.request.Request(url_m2, headers=headers)
-                    with riot_open(req_m2, timeout=8) as resp_m2:
-                        m2_ids = json.loads(resp_m2.read().decode('utf-8'))
-                        if m2_ids:
-                            url_d2 = f"https://europe.api.riotgames.com/lol/match/v5/matches/{m2_ids[0]}"
-                            req_d2 = urllib.request.Request(url_d2, headers=headers)
-                            with riot_open(req_d2, timeout=8) as resp_d2:
-                                md2 = json.loads(resp_d2.read().decode('utf-8'))
-                                for p in md2.get("info", {}).get("participants", []):
-                                    if p.get("puuid") == puuid2 and p.get("profileIcon"):
-                                        icon_id2 = p.get("profileIcon")
-                                        duo["player2"]["avatar"] = f"https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/{icon_id2}.png"
-                                        updated = True
-                                        break
+                    m2_ids = fetch_json(url_m2)
+                    if m2_ids:
+                        url_d2 = f"https://europe.api.riotgames.com/lol/match/v5/matches/{m2_ids[0]}"
+                        md2 = fetch_json(url_d2)
+                        for p in md2.get("info", {}).get("participants", []):
+                            if p.get("puuid") == puuid2 and p.get("profileIcon"):
+                                icon_id2 = p.get("profileIcon")
+                                duo["player2"]["avatar"] = f"https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/{icon_id2}.png"
+                                updated = True
+                                break
                 except Exception:
                     pass
 
             # 3. Fetch League Rank (SOLO 5x5)
             try:
                 url_lea1 = f"https://euw1.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid1}"
-                req_lea1 = urllib.request.Request(url_lea1, headers=headers)
-                with riot_open(req_lea1, timeout=8) as resp_lea1:
-                    entries = json.loads(resp_lea1.read().decode('utf-8'))
-                    for entry in entries:
-                        if entry.get("queueType") == "RANKED_SOLO_5x5":
-                            duo["tier"] = entry.get("tier", duo["tier"]).capitalize()
-                            duo["division"] = entry.get("rank", duo["division"])
-                            duo["lp"] = entry.get("leaguePoints", duo["lp"])
-                            duo["wins"] = entry.get("wins", duo["wins"])
-                            duo["losses"] = entry.get("losses", duo["losses"])
+                entries = fetch_json(url_lea1)
+                duo["player1"]["rank"] = solo_rank_snapshot(entries)
+                updated = True
+                for entry in entries:
+                    if entry.get("queueType") == "RANKED_SOLO_5x5":
+                        duo["tier"] = entry.get("tier", duo["tier"]).capitalize()
+                        duo["division"] = entry.get("rank", duo["division"])
+                        duo["lp"] = entry.get("leaguePoints", duo["lp"])
+                        duo["wins"] = entry.get("wins", duo["wins"])
+                        duo["losses"] = entry.get("losses", duo["losses"])
 
-                            duo["rankObservedAt"] = time.time()
-                            current_total_lp = calc_total_lp(duo["tier"], duo["division"], duo["lp"])
-                            initial_total = duo.get("initialTotalLp", 0)
-                            duo["netLp"] = current_total_lp - initial_total
-                            updated = True
+                        duo["rankObservedAt"] = duo["player1"]["rank"]["observedAt"]
+                        current_total_lp = calc_total_lp(duo["tier"], duo["division"], duo["lp"])
+                        initial_total = duo.get("initialTotalLp", 0)
+                        duo["netLp"] = current_total_lp - initial_total
+                        updated = True
             except Exception as e:
                 failures += 1
                 safe_print(f"[Riot Sync League Error] {e}")
@@ -1218,34 +1520,22 @@ def sync_riot_data():
                 for match in existing_history
                 if isinstance(match, dict) and match.get("matchId")
             }
-            existing_match_ids = set(existing_by_id)
-
-            # Only fetch matches from 2026 onwards (startTime = 1767225600 seconds)
+            # Keep the existing date/queue filters. First discovery scans all pages;
+            # subsequent jobs stop at the saved boundary and retry their saved gaps.
             MIN_2026_TIMESTAMP = 1767225600
-            recent_ids = []
-            offset = 0
-            while True:
-                url_matches = f"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid1}/ids?queue=420&start={offset}&count=100&startTime={MIN_2026_TIMESTAMP}"
-                req_m = urllib.request.Request(url_matches, headers=headers)
-                with riot_open(req_m, timeout=8) as resp_m:
-                    page = json.loads(resp_m.read().decode('utf-8'))
-                recent_ids.extend(page)
-                if len(page) < 100:
-                    break
-                offset += 100
-                time.sleep(0.2)
-
-            new_match_ids = [mid for mid in recent_ids if mid not in existing_match_ids]
+            discovery = discover_riot_matches(duo, puuid1, fetch_json, MIN_2026_TIMESTAMP)
+            duo["riotMatchDiscovery"] = discovery
+            new_match_ids = discovery["pendingMatchIds"]
+            updated = True
             legacy_ids = [
                 match.get("matchId")
                 for match in existing_history
                 if isinstance(match, dict)
                 and not match.get("isTest")
                 and match.get("matchId")
-                and (int(match.get("statsVersion", 0) or 0) < 2 or not match.get("gameStartTimestamp"))
+                and (int(match.get("statsVersion", 0) or 0) < 2 or not match.get("gameStartTimestamp") or needs_match_details(match))
             ]
-            retry_ids = [m["matchId"] for m in existing_history if m.get("matchId") and needs_boots_timeline(duo, m)]
-            fetch_ids = list(dict.fromkeys(retry_ids[:10] + new_match_ids + legacy_ids + retry_ids[10:]))[:RIOT_MATCH_DETAIL_BATCH_PER_DUO]
+            fetch_ids = list(dict.fromkeys(new_match_ids + legacy_ids))[:RIOT_MATCH_DETAIL_BATCH_PER_DUO]
             new_matches = []
             enriched_count = 0
 
@@ -1253,9 +1543,7 @@ def sync_riot_data():
                 try:
                     time.sleep(0.2)
                     url_detail = f"https://europe.api.riotgames.com/lol/match/v5/matches/{mid}"
-                    req_d = urllib.request.Request(url_detail, headers=headers)
-                    with riot_open(req_d, timeout=8) as resp_d:
-                        mdetail = json.loads(resp_d.read().decode('utf-8'))
+                    mdetail = fetch_json(url_detail)
                     info = mdetail.get("info", {})
                     duration_sec = int(info.get("gameDuration", 0) or 0)
                     mins, secs = divmod(duration_sec, 60)
@@ -1286,22 +1574,10 @@ def sync_riot_data():
                     match["gameStartTimestamp"] = int(info.get("gameStartTimestamp", 0) or 0)
                     match["gameEndTimestamp"] = int(game_end_ms or 0)
                     p1_detail, p2_detail = enrich_match_record(match, info, puuid1, puuid2)
-                    timeline_info = None
-                    needs_timeline = needs_boots_timeline(duo, match)
-                    if needs_timeline and p1_detail and p2_detail:
-                        try:
-                            time.sleep(0.2)
-                            timeline_url = f"https://europe.api.riotgames.com/lol/match/v5/matches/{mid}/timeline"
-                            timeline_request = urllib.request.Request(timeline_url, headers=headers)
-                            with riot_open(timeline_request, timeout=8) as timeline_response:
-                                timeline_info = json.loads(timeline_response.read().decode('utf-8')).get("info", {})
-                        except Exception as timeline_error:
-                            failures += 1
-                            safe_print(f"[Riot Timeline Error] {mid}: {timeline_error}")
-                    if timeline_info is not None:
-                        compliance = boots_compliance_from_timeline(timeline_info, match)
-                        if compliance:
-                            match["bootsCompliance"] = compliance
+                    record_flash_baselines(duo, match)
+                    if (duo.get("player2") or {}).get("name") and not puuid2:
+                        # Retry details once the second account can be identified.
+                        match["matchDetailsVersion"] = 0
                     if p1_detail and p1_detail.get("profileIcon"):
                         duo["player1"]["avatar"] = f'https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/{p1_detail["profileIcon"]}.png'
                     if p2_detail and duo.get("player2") and p2_detail.get("profileIcon"):
@@ -1317,11 +1593,13 @@ def sync_riot_data():
                     failures += 1
                     safe_print(f"[Riot Sync Match Detail Error] {mid}: {ex_m}")
 
-            pending_imports += len(set(new_match_ids) - {m.get("matchId") for m in new_matches})
+            discovery["pendingMatchIds"] = [mid for mid in new_match_ids if mid not in existing_by_id]
+            pending_imports += len(discovery["pendingMatchIds"])
             if new_matches:
                 existing_history = new_matches + existing_history
             duo["history"] = sort_history_chronologically(existing_history)
             backfill_status = update_stats_backfill_status(duo, include_timestamp=True)
+            update_match_details_backfill(duo)
             remaining_backfill = backfill_status["remaining"]
             if fetch_ids:
                 safe_print(
@@ -1367,6 +1645,25 @@ def schedule_trophies():
     threading.Thread(target=loop, daemon=True).start()
 
 
+def schedule_clip_rewards():
+    def loop():
+        while True:
+            delay = 30
+            try:
+                with db_lock:
+                    # Settles overdue awards and prunes while no publication can intervene.
+                    db = load_db()
+                    board, changed = clips_service.board_for(db, CLIPS_PREVIEW)
+                    if changed:
+                        save_db(db)
+                deadline = clips_service.week_closes_at(board['week']) + (60 if board.get('weeklyAward') else 0)
+                delay = max(0.1, min(30, deadline - time.time()))
+            except Exception as error:
+                safe_print(f"[Clips rewards] {error}")
+            time.sleep(delay)
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def schedule_sync():
     def loop():
         while True:
@@ -1405,7 +1702,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-    def _send_bytes(self, content_bytes, content_type, code=200):
+    def _send_bytes(self, content_bytes, content_type, code=200, headers=None):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
@@ -1413,12 +1710,41 @@ class CustomHandler(BaseHTTPRequestHandler):
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Content-Length', str(len(content_bytes)))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(content_bytes)
 
-    def _send_json(self, data_obj, code=200):
+    def _send_json(self, data_obj, code=200, headers=None):
         body_bytes = json.dumps(data_obj, ensure_ascii=False).encode('utf-8')
-        self._send_bytes(body_bytes, 'application/json; charset=utf-8', code)
+        self._send_bytes(body_bytes, 'application/json; charset=utf-8', code, headers)
+
+    def clips_visitor(self):
+        try:
+            cookies = SimpleCookie()
+            cookies.load(self.headers.get('Cookie', ''))
+            value = cookies.get('pepes_clips_visitor')
+            token = value.value if value else ''
+            return token if re.fullmatch(r'[A-Za-z0-9_-]{43}', token) else None
+        except CookieError:
+            return None
+
+    def clips_cookie(self, token):
+        secure = self.headers.get('X-Forwarded-Proto', '').split(',')[0].strip() == 'https'
+        return f'pepes_clips_visitor={token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax' + ('; Secure' if secure else '')
+
+    def clips_origin_allowed(self):
+        origin = self.headers.get('Origin')
+        if not origin:
+            return True
+        parsed = urlparse(origin)
+        return parsed.scheme in ('http', 'https') and parsed.netloc == self.headers.get('Host')
+
+    def clips_team(self, db):
+        authorization = self.headers.get('Authorization', '')
+        token = authorization[7:] if authorization.startswith('Bearer ') else ''
+        team_id = session_team(token)
+        return team_id if any(duo.get('id') == team_id for duo in db.get('duos', [])) else None
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -1480,6 +1806,32 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == '/api/clips':
+            token = self.clips_visitor()
+            new_token = token is None
+            token = token or secrets.token_urlsafe(32)
+            with db_lock:
+                db = load_db()
+                board, changed = clips_service.board_for(db, CLIPS_PREVIEW)
+                if changed:
+                    save_db(db)
+                result = clips_service.public_board(board, self.clips_team(db), CLIPS_PREVIEW, db.get('duos', []), clips_service.visitor_hash(token))
+            headers = {'Vary': 'Cookie, Authorization'}
+            if new_token:
+                headers['Set-Cookie'] = self.clips_cookie(token)
+            self._send_json(result, headers=headers)
+            return
+        if path == '/api/weekly-summary':
+            week = urllib.parse.parse_qs(parsed.query).get('week', [None])[0]
+            with db_lock:
+                db = load_db()
+                try:
+                    result = weekly_summary.public_payload(db, week)
+                except LookupError as error:
+                    self._send_json({'error': str(error)}, 404)
+                    return
+            self._send_json(result)
+            return
         if path == '/api/player/events':
             self.stream_shell_notifications()
             return
@@ -1523,7 +1875,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             return
 
         # The repository root is never a public directory.
-        public_files = {"torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
+        public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files:
             self._send_json({"error": "File Not Found"}, 404)
@@ -1542,6 +1894,39 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         data = self.read_body()
         db = load_db()
+
+        if parsed.path in ('/api/clips', '/api/clips/like'):
+            if not self.clips_origin_allowed():
+                self._send_json({'error': 'Origen no permitido.'}, 403)
+                return
+            team_id = self.clips_team(db)
+            if parsed.path == '/api/clips/like' and not team_id:
+                self._send_json({'error': 'Inicia sesión con tu equipo para votar.'}, 401)
+                return
+            visitor_token = self.clips_visitor()
+            if not visitor_token:
+                self._send_json({'error': 'Activa las cookies y recarga la página para participar.'}, 401)
+                return
+            board, changed = clips_service.board_for(db, CLIPS_PREVIEW)
+            try:
+                if parsed.path == '/api/clips/like':
+                    changed = clips_service.set_like(board, data.get('clipId'), team_id, clips_service.visitor_hash(visitor_token), data.get('liked')) or changed
+                else:
+                    team = next((duo for duo in db.get('duos', []) if duo['id'] == data.get('teamId')), None)
+                    clips_service.publish(board, data.get('title'), data.get('url'), team=team)
+                    changed = True
+            except LookupError as error:
+                if changed:
+                    save_db(db)
+                self._send_json({'error': str(error)}, 404)
+                return
+            except (FileExistsError, OverflowError) as error:
+                self._send_json({'error': str(error)}, 409)
+                return
+            if changed:
+                save_db(db)
+            self._send_json(clips_service.public_board(board, team_id, CLIPS_PREVIEW, db.get('duos', []), clips_service.visitor_hash(visitor_token)), headers={'Vary': 'Cookie, Authorization'})
+            return
 
         if parsed.path == '/api/admin/login':
             entered_pin = str(data.get("pin", "")).strip()
@@ -1569,7 +1954,13 @@ class CustomHandler(BaseHTTPRequestHandler):
                 data.update({key: submitted[key] for key in editable if key in submitted})
                 for player_key in ("player1", "player2"):
                     if player_key in submitted:
-                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole"}}}
+                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole", "displayName", "twitchUrl"}}}
+                        if any((data.get(player_key) or {}).get(field) != (existing_duo.get(player_key) or {}).get(field) for field in ("name", "tag")):
+                            data[player_key]["rank"] = None
+                            data[player_key].pop("flashBaseline", None)
+                            data[player_key].pop("puuid", None)
+                            data[player_key]["eloHistory"] = []
+                            data[player_key]["eloHistoryAccount"] = [str(data[player_key].get("name", "")).lower(), str(data[player_key].get("tag", "")).lower()]
             if not str(data.get("teamName", "")).strip():
                 raise ValueError("Team name is required")
 
@@ -1579,8 +1970,26 @@ class CustomHandler(BaseHTTPRequestHandler):
             if any(role not in VALID_MAIN_ROLES for role in roles):
                 self._send_json({"success": False, "error": "Debes seleccionar un rol principal válido para ambos integrantes."}, 400)
                 return
+            for player_key, player in (("player1", player1), ("player2", player2)):
+                display_name = str(player.get("displayName", player.get("name", ""))).strip()
+                if not display_name or len(display_name) > 60:
+                    self._send_json({"success": False, "error": "Indica un nombre de entre 1 y 60 caracteres para cada integrante."}, 400)
+                    return
+                player["displayName"] = display_name
+                if "twitchUrl" in player:
+                    raw_url = str(player.get("twitchUrl") or "").strip()
+                    channel = twitch_channel_from_url(raw_url)
+                    if raw_url and not channel:
+                        self._send_json({"success": False, "error": "El enlace de Twitch debe ser la URL HTTPS de un canal válido."}, 400)
+                        return
+                    player["twitchUrl"] = f"https://www.twitch.tv/{channel}" if channel else ""
+                # Live status comes only from Twitch, never from an admin form.
+                player["twitchIsLive"] = participant_twitch_live(existing_duo, player_key) if existing_duo else False
+                if participant_twitch_channel({player_key: player, "twitchUrl": data.get("twitchUrl")}, player_key) != participant_twitch_channel(existing_duo, player_key):
+                    player["twitchIsLive"] = False
             player1["mainRole"], player2["mainRole"] = roles
             data["player1"], data["player2"] = player1, player2
+            data["twitchIsLive"] = any(participant_twitch_live(data, key) for key in ("player1", "player2"))
             
             if "blueShells" not in data:
                 data["blueShells"] = 0
@@ -1657,17 +2066,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             attacker["blueShells"] -= 1
             attacker["shellsUsed"] = attacker.get("shellsUsed", 0) + 1
 
-            attack = {
-                "id": f"shell-{uuid.uuid4().hex}",
-                "attackerTeamId": attacker["id"],
-                "attackerName": attacker["teamName"],
-                "targetTeamId": target["id"],
-                "targetName": target["teamName"],
-                "status": "PENDING_SPIN",
-                "launchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "wheelSnapshot": dict(db.get("config", {}).get("penaltyWeights", default_penalty_weights()))
-            }
-            db.setdefault("shellAttacks", []).insert(0, attack)
+            attack = create_pending_shell(db, attacker, target)
 
             # Log Event
             event = {
@@ -1708,15 +2107,29 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "error": str(error)}, 400)
                 return
 
+            return_target = None
+            if selected_penalty["baseId"] == "return_shell":
+                return_target = next((d for d in db.get("duos", []) if d.get("id") == attack.get("attackerTeamId")), None)
+                if not return_target or return_target["id"] == target["id"]:
+                    self._send_json({"success": False, "error": "No se puede devolver el caparazón: el equipo atacante ya no está disponible."}, 409)
+                    return
+                selected_penalty["desc"] = f"El caparazón vuelve a {return_target['teamName']}, que debe girarlo desde su bandeja."
+
             now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             attack["spunAt"] = now_iso
             attack["result"] = selected_penalty
-            if selected_penalty["baseId"] == "return_shell":
-                attacker = next((d for d in db.get("duos", []) if d.get("id") == attack.get("attackerTeamId")), None)
-                if attacker:
-                    if int(attacker.get("blueShells", 0) or 0) < MAX_SHELLS_INVENTORY:
-                        attacker["blueShells"] = int(attacker.get("blueShells", 0) or 0) + 1
+            penalty_instance = None
+            returned_attack = None
+            if return_target:
+                returned_attack = create_pending_shell(db, target, return_target, attack.get("wheelSnapshot", {}), attack)
                 attack["status"] = "RETURNED"
+                attack["returnedAttackId"] = returned_attack["id"]
+                db.setdefault("events", []).insert(0, {
+                    "id": f"event-{uuid.uuid4().hex}", "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "type": "SHELL_RETURNED", "shellAttackId": returned_attack["id"],
+                    "sourceShellAttackId": attack["id"], "attacker": target["teamName"], "target": return_target["teamName"],
+                    "message": f"↩️ {target['teamName']} ha devuelto el caparazón a {return_target['teamName']}. Debe girar su ruleta."
+                })
             else:
                 penalty_instance = {
                     "id": f"penalty-{uuid.uuid4().hex}",
@@ -1732,6 +2145,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                     "requirements": penalty_requirements(target, selected_penalty, db.get("duos", [])),
                     "resolved": False
                 }
+                attack["requirements"] = copy.deepcopy(penalty_instance["requirements"])
                 target.setdefault("activeDebuffs", []).insert(0, penalty_instance)
                 attack["status"] = "PENALTY_ASSIGNED"
                 attack["penaltyInstanceId"] = penalty_instance["id"]
@@ -1744,12 +2158,14 @@ class CustomHandler(BaseHTTPRequestHandler):
                 "attacker": attack.get("attackerName"),
                 "target": attack.get("targetName"),
                 "penalty": selected_penalty,
+                "scope": selected_penalty["scope"],
+                "requirements": copy.deepcopy(penalty_instance["requirements"]) if penalty_instance else {},
                 "message": f"🎰 {attack.get('targetName')} ha girado la ruleta: {selected_penalty['icon']} {selected_penalty['name']} — {selected_penalty['desc']}"
             }
             db.setdefault("events", []).insert(0, event)
             save_db(db)
             notify_shell_receivers()
-            self._send_json({"success": True, "penalty": selected_penalty, "duo": player_state(db, target), "attack": attack})
+            self._send_json({"success": True, "penalty": selected_penalty, "penaltyInstance": penalty_instance, "duo": player_state(db, target), "attack": attack, "returnedAttack": returned_attack})
 
         elif parsed.path == '/api/config':
             auth_pin = str(data.get("authPin", "")).strip()
@@ -1811,6 +2227,9 @@ class CustomHandler(BaseHTTPRequestHandler):
             if not found:
                 self._send_json({"success": False, "error": "Castigo no encontrado"}, 404)
                 return
+            if is_retired_penalty(found.get("penalty", {})):
+                self._send_json({"success": False, "error": "Este castigo se ha retirado del torneo y no se puede modificar."}, 409)
+                return
             if action == "REOPEN":
                 if found.get("resolvedByMatchId"):
                     found.setdefault("excludedMatchIds", []).append(found["resolvedByMatchId"])
@@ -1833,6 +2252,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 "type": "PENALTY_ADMIN_CORRECTION", "target": owner.get("teamName"),
                 "penalty": found.get("penalty"), "message": f"🛡️ Administración ha actualizado {found.get('penalty', {}).get('name', 'un castigo')} de {owner.get('teamName')}: {action}. Motivo: {note}"
             })
+            weekly_summary.maintain(db, refresh=True)
             save_db(db)
             self._send_json({"success": True, "duos": safe_duos(db.get("duos", []))})
 
@@ -1849,6 +2269,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 after = duo.get("blueShells", 0)
                 safe_print(f"[CalcShells] {duo['teamName']}: before={before}, after={after}")
                 total_new_shells += max(0, after - before)
+            weekly_summary.maintain(db, refresh=True)
             save_db(db)
             self._send_json({"success": True, "newShells": total_new_shells, "duos": safe_duos(duos)})
 
@@ -1890,6 +2311,7 @@ if __name__ == "__main__":
     print("==================================================")
 
     schedule_trophies()
+    schedule_clip_rewards()
     schedule_sync()
     schedule_twitch_sync()
     server = ReusableServer(('', PORT), CustomHandler)

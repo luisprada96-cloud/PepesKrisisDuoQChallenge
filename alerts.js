@@ -42,7 +42,7 @@
     stopSound();
     const start = audio.currentTime + .03;
     const master = audio.createGain();
-    master.gain.value = 1.8;
+    master.gain.value = 2.25; // A modest +25% gain; keep the peak limiter below.
     const limiter = audio.createDynamicsCompressor();
     limiter.threshold.value = -3;
     limiter.knee.value = 0;

@@ -7,6 +7,8 @@
 !admin.html
 !player.html
 !app.js
+!match-history.js
+!match_details.py
 !admin.js
 !player.js
 !data.js
@@ -18,7 +20,24 @@
 !trophies.py
 !elo_history.py
 
-!db.json
+!seed-db.json
 
 !postgres_storage.py
 !requirements.txt
+
+!clips.html
+!clips.css
+!clips.js
+!clips_service.py
+!clip_votes.py
+
+!weekly_summary.py
+!resumen.html
+!resumen.js
+!resumen.css
+
+!roulette.html
+!roulette.css
+!roulette-core.js
+!roulette-window.js
+!roulette-popup.js

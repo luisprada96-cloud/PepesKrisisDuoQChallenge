@@ -28,6 +28,8 @@
         <ul class="nav-links">
           <li><a href="#leaderboard" class="nav-link active"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
           <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open"></i> Torneo y premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
           <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad"></i> Mi
               Panel</a></li>
           <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel
@@ -40,31 +42,18 @@
   <!-- Hero Section -->
   <section class="hero">
     <div class="container">
-      <div class="hero-badge">
-        <span class="pulse-dot"></span> EUW Duo Queue League • En Vivo
-      </div>
-
       <h1 class="hero-title text-gradient-cyan" id="challenge-title">
         Pepes Krisis Duo Q Challenge
       </h1>
-
-      <p class="hero-subtitle">
-        Competición de ascenso de ELO en tiempo semi-real. 12 Dúos luchan por escalar desde <strong
-          style="color: var(--cyan-primary);">Unranked</strong> hasta la cima de League of Legends.
-      </p>
 
       <!-- Countdown Timer Box -->
       <div style="margin-bottom: 2rem;">
         <div
           style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading); margin-bottom: 0.5rem;">
-          <i class="fa-solid fa-clock"></i> Tiempo Restante del Desafío
+          <i class="fa-solid fa-clock" aria-hidden="true"></i> <span id="countdown-label">El torneo empieza en</span>
         </div>
         <div id="countdown-timer" class="countdown-box">
           <!-- Dynamically populated by app.js -->
-        </div>
-        <div id="prize-pool-text"
-          style="color: var(--gold-hextech); font-weight: 700; font-size: 0.95rem; margin-top: 0.6rem;">
-          <!-- Dynamically populated -->
         </div>
       </div>
 
@@ -137,11 +126,12 @@
             <tr>
               <th style="width: 70px;">Pos</th>
               <th>Nombre Dúo</th>
-              <th>Liga / Rango</th>
-              <th>Winrate %</th>
+              <th>Integrante 1</th>
+              <th>Integrante 2</th>
+              <th class="leaderboard-winrate-column">Winrate %</th>
               <th>Racha</th>
               <th>Caparazones</th>
-              <th style="width: 120px;">Acción</th>
+              <th class="leaderboard-expand-column" aria-label="Detalles del equipo"></th>
             </tr>
           </thead>
           <tbody id="leaderboard-tbody">
@@ -264,6 +254,7 @@
   <!-- Scripts -->
   <script src="data.js"></script>
   <script src="alerts.js"></script>
+  <script src="match-history.js"></script>
   <script src="app.js"></script>
 </body>
 

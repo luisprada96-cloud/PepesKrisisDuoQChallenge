@@ -1,0 +1,19 @@
+:root { color-scheme: dark; --gold: #f5c542; --cyan: #00d4ff; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: #070a12; color: #fff; font-family: system-ui, sans-serif; display: grid; place-items: center; }
+.roulette-stage { width: min(100%, 760px); padding: 28px; text-align: center; }
+.roulette-label { color: var(--cyan); font-size: 12px; font-weight: 800; letter-spacing: .2em; }
+h1 { margin: 12px 0 24px; font-size: clamp(18px, 4vw, 28px); overflow-wrap: anywhere; }
+.roulette-box { min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 20px; border: 2px solid var(--cyan); border-radius: 16px; background: #0c1423; box-shadow: 0 0 28px #00d4ff22; }
+#roulette-icon { font-size: clamp(42px, 9vw, 64px); line-height: 1.1; }
+#roulette-name { font-size: clamp(18px, 4vw, 28px); font-weight: 900; overflow-wrap: anywhere; }
+#roulette-desc { min-height: 44px; margin: 20px 0 0; font-size: 16px; line-height: 1.5; color: #9aa9be; overflow-wrap: anywhere; }
+.roulette-box.revealed { border-color: var(--gold); box-shadow: 0 0 32px #f5c54230; }
+.roulette-box.revealed #roulette-name { color: var(--gold); }
+.roulette-spin { margin-top: 20px; padding: 12px 32px; border: 1px solid var(--gold); border-radius: 10px; background: #f5c54218; color: var(--gold); font: inherit; font-size: 18px; font-weight: 800; cursor: pointer; }
+.roulette-spin:hover { background: #f5c54230; }
+.roulette-spin:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
+.roulette-spin:disabled { opacity: .5; cursor: wait; }
+@media (max-width: 400px) { .roulette-stage { padding: 16px; } }
+
+.roulette-assignment { color:var(--cyan);font-size:clamp(16px,3vw,20px);font-weight:800;overflow-wrap:anywhere;margin:20px 0 0; }

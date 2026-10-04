@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resumen semanal | Pepes Krisis Duo Q Challenge</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="resumen.css">
+</head>
+<body>
+  <header><nav class="navbar"><div class="container nav-container">
+    <a href="index.html" class="brand-logo"><i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i><span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+      <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo y premios</a></li>
+      <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+      <li><a href="resumen.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+      <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad" aria-hidden="true"></i> Mi Panel</a></li>
+      <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Panel Admin</a></li>
+    </ul>
+  </div></nav></header>
+  <main class="container weekly-page">
+    <div class="weekly-heading"><div><span class="section-eyebrow">La historia del challenge</span><h1 class="text-gradient-cyan">Resumen semanal</h1><p>Cada lunes, una nueva semana para recordar.</p></div>
+      <label class="weekly-week-label" for="weekly-week">Semana<select id="weekly-week" class="form-control" disabled></select></label>
+    </div>
+    <p id="weekly-status" role="status">Cargando el resumen…</p>
+    <section id="weekly-report" class="weekly-report" hidden>
+      <div class="weekly-period"><h2 id="weekly-period"></h2><span id="weekly-state" class="weekly-badge"></span></div>
+      <div class="weekly-view-controls"><div class="weekly-view-tabs" role="group" aria-label="Vista del resumen">
+        <button type="button" data-weekly-view="general" aria-pressed="true">Todo el torneo</button>
+        <button type="button" data-weekly-view="team" aria-pressed="false">Por equipo</button>
+      </div><label id="weekly-team-label" for="weekly-team" hidden>Equipo<select id="weekly-team" class="form-control"></select></label></div>
+      <div id="weekly-content"></div>
+      <p id="weekly-footer" class="weekly-footer"></p>
+    </section>
+  </main>
+  <script src="data.js"></script>
+  <script src="alerts.js"></script>
+  <script src="resumen.js"></script>
+</body>
+</html>

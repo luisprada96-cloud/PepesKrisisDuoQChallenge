@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentDuos = [];
 let currentConfig = {};
+let countdownInterval = null;
 const expandedDuoIds = new Set();
 
 const POSITION_LABELS = {
@@ -56,40 +57,46 @@ async function initApp() {
 /* Header & Timer */
 function setupHeaderConfig() {
   const titleEl = document.getElementById('challenge-title');
-  const prizeEl = document.getElementById('prize-pool-text');
   if (titleEl) titleEl.textContent = currentConfig.challengeTitle;
-  if (prizeEl) prizeEl.textContent = currentConfig.prizePool;
 }
 
 function startCountdownTimer() {
+  if (countdownInterval !== null) clearInterval(countdownInterval);
+  updateCountdownTimer();
+  countdownInterval = setInterval(updateCountdownTimer, 1000);
+}
+
+function updateCountdownTimer(now = Date.now()) {
   const countdownEl = document.getElementById('countdown-timer');
   if (!countdownEl) return;
+  const label = document.getElementById('countdown-label');
+  const start = tournamentDateTimestamp(currentConfig.startDate || DEFAULT_CONFIG.startDate);
+  const end = tournamentDateTimestamp(currentConfig.endDate || DEFAULT_CONFIG.endDate);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    countdownEl.dataset.phase = 'invalid';
+    if (label) label.textContent = 'Fechas del torneo';
+    countdownEl.textContent = 'Pendientes de configurar';
+    return;
+  }
+  const beforeStart = now < start;
+  if (label) label.textContent = now >= end ? 'Torneo finalizado' : beforeStart ? 'El torneo empieza en' : 'El torneo acaba en:';
+  countdownEl.dataset.phase = now >= end ? 'finished' : beforeStart ? 'upcoming' : 'active';
+  if (now >= end) {
+    countdownEl.innerHTML = '<span class="text-gradient-pink">¡DESAFÍO FINALIZADO!</span>';
+    return;
+  }
+  const diff = (beforeStart ? start : end) - now;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  const secs = Math.floor((diff % (1000 * 60)) / 1000);
 
-  function updateTimer() {
-    const end = new Date(currentConfig.endDate).getTime();
-    const now = new Date().getTime();
-    const diff = end - now;
-
-    if (diff <= 0) {
-      countdownEl.innerHTML = '<span class="text-gradient-pink">¡DESAFÍO FINALIZADO!</span>';
-      return;
-    }
-
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const secs = Math.floor((diff % (1000 * 60)) / 1000);
-
-    countdownEl.innerHTML = `
+  countdownEl.innerHTML = `
       <span class="countdown-unit">${days}d</span> :
       <span class="countdown-unit">${hours}h</span> :
       <span class="countdown-unit">${mins}m</span> :
       <span class="countdown-unit">${secs}s</span>
     `;
-  }
-
-  updateTimer();
-  setInterval(updateTimer, 1000);
 }
 
 /* Stats Overview */
@@ -126,44 +133,54 @@ function toggleDuoAccordion(duoId) {
 }
 
 function renderPlayerInsightCard(player, insight) {
-  const champion = insight && insight.topChampion;
-  const position = insight && insight.mostPlayedPosition;
-  const playerName = player && player.name ? player.name : 'Jugador';
-  const mainRoleLabel = POSITION_LABELS[player && player.mainRole] || 'Sin configurar';
-
-  if (!champion) {
-    return `
-      <article class="player-insight-card is-empty">
-        <img class="insight-player-avatar" src="${escapeHtml(player && player.avatar ? player.avatar : '')}" alt="${escapeHtml(playerName)}" onerror="this.style.display='none';">
-        <div>
-          <h3>${escapeHtml(playerName)}</h3>
-          <p>Estadísticas pendientes de recuperar desde Riot.</p>
-          <div class="insight-role-summary"><span>Rol principal</span><strong>${mainRoleLabel}</strong></div>
-        </div>
-      </article>
-    `;
-  }
-
-  const championName = escapeHtml(champion.name || 'Unknown');
-  const positionLabel = POSITION_LABELS[position && position.position] || 'Sin datos';
-  return `
-    <article class="player-insight-card">
-      <img class="insight-champion-icon" src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${championName}.png" alt="${championName}" onerror="this.style.display='none';">
-      <div class="insight-content">
-        <div class="insight-heading">
-          <h3>${escapeHtml(playerName)}</h3>
-          <span>${championName}</span>
-        </div>
-        <div class="insight-metrics">
-          <div><span>Partidas</span><strong>${Number(champion.games) || 0}</strong></div>
-          <div><span>KDA</span><strong>${Number(champion.kda || 0).toFixed(2)}</strong></div>
-          <div><span>Winrate</span><strong>${Number(champion.winrate) || 0}%</strong></div>
-          <div><span>Rol principal</span><strong>${mainRoleLabel}</strong></div>
-          <div><span>Más jugada</span><strong>${positionLabel}</strong></div>
-        </div>
+  const champion = insight?.topChampion;
+  const playerName = player?.name || 'Jugador';
+  const riotId = `${playerName}#${player?.tag || 'EUW'}`;
+  const totals = insight?.totals;
+  const hasStats = Number(insight?.gamesAnalyzed) > 0 && totals;
+  const kda = hasStats ? (((Number(totals.kills) || 0) + (Number(totals.assists) || 0)) / Math.max(1, Number(totals.deaths) || 0)).toFixed(2) : '—';
+  const role = POSITION_LABELS[player?.mainRole] || 'Sin configurar';
+  return `<article class="player-insight-card${hasStats ? '' : ' is-empty'}">
+    ${player?.avatar ? `<img class="insight-player-avatar" src="${escapeHtml(player.avatar)}" alt="${escapeHtml(playerName)}" onerror="this.style.visibility='hidden';">` : '<span class="insight-player-avatar insight-avatar-placeholder" aria-hidden="true"><i class="fa-solid fa-user"></i></span>'}
+    <div class="insight-content">
+      <div class="insight-heading"><h3>${escapeHtml(riotId)}</h3></div>
+      <div class="insight-metrics participant-insight-metrics">
+        <div><span>KDA</span><strong>${kda}</strong></div>
+        <div><span>Rol principal</span><strong>${role}</strong></div>
+        <div><span>Campeón más jugado</span><strong>${escapeHtml(champion?.name || 'Sin datos')}</strong></div>
       </div>
-    </article>
-  `;
+    </div>
+  </article>`;
+}
+
+function renderParticipantCell(duo, playerKey) {
+  const player = duo[playerKey];
+  if (!player?.name) return '<span class="player-rank-pending">—</span>';
+  const name = player.displayName || player.name;
+  const twitch = participantTwitch(duo, playerKey);
+  return `<div class="participant-cell">
+    <strong class="participant-name">${escapeHtml(name)}</strong>
+    <div data-player-rank="${playerKey}">${renderPlayerRank(duo, playerKey)}</div>
+    ${twitch.url ? `<a class="twitch-link${twitch.live ? ' is-live' : ''}" href="${escapeHtml(twitch.url)}" target="_blank" rel="noopener noreferrer" aria-label="${twitch.live ? 'Ver en directo a' : 'Ver en Twitch a'} ${escapeHtml(name)}">
+      <i class="fa-brands fa-twitch" aria-hidden="true"></i>${twitch.live ? '<span class="live-dot" aria-hidden="true"></span> EN DIRECTO' : 'Ver en Twitch'}
+    </a>` : ''}
+  </div>`;
+}
+
+function renderPlayerRank(duo, playerKey) {
+  const player = duo[playerKey];
+  if (!player?.name) return '<span class="player-rank-pending">—</span>';
+  // Older saves have only the first participant's rank on the duo itself.
+  const rank = player.rank || (playerKey === 'player1' && !Object.prototype.hasOwnProperty.call(player, 'rank') ? duo : null);
+  if (!rank?.tier) return '<span class="player-rank-pending">Pendiente</span>';
+  const tier = String(rank.tier);
+  const isUnranked = tier.toUpperCase() === 'UNRANKED';
+  const hasDivision = !isUnranked && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier.toUpperCase());
+  const label = isUnranked ? 'Sin clasificar' : `${tier}${hasDivision && rank.division ? ' ' + rank.division : ''}`;
+  return `<div class="tier-pill player-rank-pill" title="${escapeHtml(player.name)}#${escapeHtml(player.tag || 'EUW')}">
+    <span style="color: ${getTierColor(tier)};">${escapeHtml(label)}</span>
+    ${isUnranked ? '' : `<span class="player-rank-lp">(${Number(rank.lp) || 0} LP)</span>`}
+  </div>`;
 }
 
 function renderLeaderboardTable() {
@@ -183,7 +200,8 @@ function renderLeaderboardTable() {
     const p2Name = duo.player2 ? duo.player2.name.toLowerCase() : '';
     const matchesName = duo.teamName.toLowerCase().includes(query) ||
                         p1Name.includes(query) ||
-                        p2Name.includes(query);
+                        p2Name.includes(query) ||
+                        [duo.player1, duo.player2].some(player => String(player?.displayName || '').toLowerCase().includes(query));
     const matchesTier = selectedTier === 'ALL' || duo.tier.toUpperCase() === selectedTier;
     return matchesName && matchesTier;
   });
@@ -207,7 +225,7 @@ function renderLeaderboardTable() {
   if (filtered.length === 0) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="6" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+        <td colspan="8" style="text-align: center; padding: 3rem; color: var(--text-muted);">
           <i class="fa-solid fa-search" style="font-size: 2rem; margin-bottom: 1rem; color: var(--cyan-primary);"></i>
           <p>No se encontraron registros con los filtros seleccionados.</p>
         </td>
@@ -239,8 +257,6 @@ function renderLeaderboardTable() {
     }
 
     const hasP2 = duo.player2 && duo.player2.name;
-    const twitchUrl = normalizeTwitchUrl(duo.twitchUrl);
-    const isTwitchLive = Boolean(twitchUrl && duo.twitchIsLive === true);
     const isExpanded = expandedDuoIds.has(duo.id);
     const accordionId = `duo-insights-${duo.id}`;
 
@@ -261,7 +277,7 @@ function renderLeaderboardTable() {
 
     tr.innerHTML = `
       <td>
-        <div class="${posClass}">${rankPos}</div>
+        <div class="${posClass}"><span class="rank-position-number">${rankPos}</span></div>
       </td>
       <td>
         <div class="team-name-cell">
@@ -269,21 +285,11 @@ function renderLeaderboardTable() {
             <i class="fa-solid fa-users text-cyan" aria-hidden="true"></i>
             <span>${escapeHtml(duo.teamName)}</span>
           </div>
-          ${twitchUrl ? `
-            <a class="twitch-link${isTwitchLive ? ' is-live' : ''}" href="${escapeHtml(twitchUrl)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" aria-label="Ver a ${escapeHtml(duo.teamName)} en Twitch${isTwitchLive ? ' — en directo' : ''}">
-              <i class="fa-brands fa-twitch" aria-hidden="true"></i>
-              ${isTwitchLive ? '<span class="live-dot" aria-hidden="true"></span> EN DIRECTO' : 'Ver en Twitch'}
-            </a>
-          ` : ''}
+
         </div>
       </td>
-      <td>
-        <div class="tier-pill">
-          <span style="color: ${getTierColor(duo.tier)};">${escapeHtml(duo.tier)} ${escapeHtml(duo.division)}</span>
-          <span style="color: var(--text-muted); font-size: 0.8rem;">(${escapeHtml(duo.lp)} LP)</span>
-          <span class="net-lp-label">${Number(duo.netLp) || 0} LP netos</span>
-        </div>
-      </td>
+      <td class="player-rank-cell">${renderParticipantCell(duo, 'player1')}</td>
+      <td class="player-rank-cell">${renderParticipantCell(duo, 'player2')}</td>
       <td>
         <div class="winrate-wrapper">
           <div class="winrate-text">
@@ -313,15 +319,17 @@ function renderLeaderboardTable() {
           </span>
         </div>
       </td>
-      <td>
-        <div class="leaderboard-actions">
-        <button type="button" class="btn-refresh" style="padding: 0.35rem 0.75rem; font-size: 0.75rem;" data-history-id="${escapeHtml(duo.id)}">
-          Ver Partidas <i class="fa-solid fa-chevron-right"></i>
+      <td class="leaderboard-expand-column">
+        <button type="button" class="duo-expand-button" aria-expanded="${isExpanded}" aria-controls="${escapeHtml(accordionId)}" aria-label="${isExpanded ? 'Plegar' : 'Desplegar'} ${escapeHtml(duo.teamName)}">
+          <i class="fa-solid fa-chevron-down accordion-chevron" aria-hidden="true"></i>
         </button>
-        <i class="fa-solid fa-chevron-down accordion-chevron" aria-hidden="true"></i>
-        </div>
       </td>
     `;
+    tr.querySelector('.duo-expand-button').onclick = event => {
+      event.stopPropagation();
+      toggleDuoAccordion(duo.id);
+      document.getElementById(accordionId)?.previousElementSibling?.querySelector('.duo-expand-button')?.focus({preventScroll: true});
+    };
     tbody.appendChild(tr);
 
     const detailsRow = document.createElement('tr');
@@ -329,16 +337,16 @@ function renderLeaderboardTable() {
     detailsRow.className = 'duo-insights-row';
     detailsRow.hidden = !isExpanded;
     const insights = duo.playerInsights || {};
-    const backfill = duo.statsBackfill || {};
-    const pendingText = Number(backfill.remaining) > 0
-      ? `<span class="insights-backfill"><i class="fa-solid fa-rotate"></i> Recuperando ${Number(backfill.remaining)} partidas pendientes</span>`
-      : '';
     detailsRow.innerHTML = `
-      <td colspan="7">
+      <td colspan="8">
         <section class="duo-insights-panel" aria-label="Estadísticas individuales de ${escapeHtml(duo.teamName)}">
           <div class="insights-panel-heading">
             <span>Estadísticas individuales · Solo/Duo desde el inicio del reto</span>
-            ${pendingText}
+            <div class="insights-panel-actions">
+              <button type="button" class="btn-refresh duo-history-button" data-history-id="${escapeHtml(duo.id)}">
+                Ver partidas <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+              </button>
+            </div>
           </div>
           ${renderCombinedDuoStats(duo)}
           ${renderEloChart(duo)}
@@ -369,12 +377,11 @@ function renderBestMatchesTable() {
     });
 
   if (ranked.length === 0) {
-    const pending = currentDuos.reduce((total, duo) => total + Number(duo.statsBackfill && duo.statsBackfill.remaining || 0), 0);
     tbody.innerHTML = `
       <tr>
         <td colspan="7" class="best-matches-empty">
           <i class="fa-solid fa-rotate"></i>
-          ${pending > 0 ? `Esperando las estadísticas de ${pending} partidas de Riot.` : 'Todavía no hay partidas completas para comparar.'}
+          Todavía no hay partidas completas para comparar.
         </td>
       </tr>
     `;
@@ -449,7 +456,7 @@ function renderFunStatistics() {
   ];
 
   if (!players.length) {
-    container.innerHTML = '<p class="fun-stats-empty"><i class="fa-solid fa-hourglass-half"></i> Recuperando estadísticas individuales desde Riot.</p>';
+    container.innerHTML = '<p class="fun-stats-empty"><i class="fa-solid fa-hourglass-half"></i> Todavía no hay estadísticas individuales.</p>';
     return;
   }
 
@@ -531,6 +538,7 @@ async function renderRecentAttacksTable() {
         <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
           <span style="font-size: 1.1rem;">${icon}</span>
           <span style="font-weight: 700; color: #ffffff;">${escapeHtml(penName)}</span>
+          ${penaltyAssignmentText(ev) ? `<span class="penalty-assignment">${escapeHtml(penaltyAssignmentText(ev))}</span>` : ''}
           ${penDesc ? `<span style="font-size: 0.8rem; color: var(--text-muted);">— ${escapeHtml(penDesc)}</span>` : ''}
         </div>
       </td>
@@ -654,84 +662,16 @@ async function openDuoModal(id, offset = 0) {
   if (request !== modalRequest) return;
   duo = {...duo, history: page.matches};
 
-  const totalGames = duo.wins + duo.losses;
-  const winrate = totalGames > 0 ? Math.round((duo.wins / totalGames) * 100) : 0;
-
-  let historyHtml = '';
-  if (duo.history && duo.history.length > 0) {
-    const parseDate = (dStr) => {
-      if (!dStr) return 0;
-      const parts = dStr.split(' ');
-      if (parts.length < 2) return 0;
-      const [d, m, y] = parts[0].split('/');
-      const [h, min] = parts[1].split(':');
-      return new Date(y, m - 1, d, h, min).getTime();
-    };
-
-    const sortedHistory = [...duo.history].sort((a, b) => {
-      const tA = parseDate(a.date);
-      const tB = parseDate(b.date);
-      if (tA !== tB) return tB - tA;
-      const numA = parseInt((a.matchId || '').replace(/\D/g, '')) || 0;
-      const numB = parseInt((b.matchId || '').replace(/\D/g, '')) || 0;
-      return numB - numA;
-    });
-
-    historyHtml = sortedHistory.slice(0, 30).map(m => `
-      <div class="match-item ${m.result === 'WIN' ? '' : 'defeat'}">
-        <div style="display: flex; align-items: center; gap: 1rem;">
-          <span class="match-result-badge ${m.result === 'WIN' ? 'win' : 'loss'}">${m.result === 'WIN' ? 'VICTORIA' : 'DERROTA'}</span>
-          ${m.pentaKill ? `<span class="match-result-badge" style="background: linear-gradient(135deg, #ff0055, #ffaa00); color: #fff; font-weight: 800; box-shadow: 0 0 10px rgba(255, 0, 85, 0.6);"><i class="fa-solid fa-fire"></i> PENTAKILL</span>` : ''}
-          <div style="display: flex; gap: 0.4rem;">
-            <img class="champ-icon" src="https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/${escapeHtml(m.championP1)}.png" title="${escapeHtml(m.championP1)}">
-            ${m.championP2 ? `<img class="champ-icon" src="https://ddragon.leagueoflegends.com/cdn/14.15.1/img/champion/${escapeHtml(m.championP2)}.png" title="${escapeHtml(m.championP2)}">` : ''}
-          </div>
-          <div>
-            <div style="font-size: 0.9rem; font-weight: 700;">Campeón: ${escapeHtml(m.championP1)} | KDA: ${escapeHtml(m.kda1)}${m.kda2 ? ` | ${escapeHtml(m.kda2)}` : ''}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">Duración: ${escapeHtml(m.duration)} • Ranked Solo/Duo${m.date ? ` • <i class="fa-regular fa-calendar"></i> ${escapeHtml(m.date)}` : ''}</div>
-          </div>
-        </div>
-        <div class="lp-gain ${m.result === 'WIN' ? 'lp-positive' : 'lp-negative'}">
-          ${escapeHtml(m.lpChange)}
-        </div>
-      </div>
-    `).join('');
-  } else {
-    historyHtml = `<p style="color: var(--text-muted); font-size: 0.9rem;">Sin partidas clasificatorias recientes.</p>`;
-  }
-
-  const hasP2 = duo.player2 && duo.player2.name;
-
+  const accounts = ['player1', 'player2'].filter(key => duo[key]?.name).map(key => `${duo[key].name}${duo[key].tag ? '#' + duo[key].tag : ''}`);
   modalContent.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
-      <div>
-        <h2 class="font-heading text-gradient-cyan" style="font-size: 1.8rem;">${escapeHtml(duo.player1.name)}#${escapeHtml(duo.player1.tag)}${hasP2 ? ` & ${escapeHtml(duo.player2.name)}#${escapeHtml(duo.player2.tag)}` : ''}</h2>
-        <p style="color: var(--text-muted); font-size: 0.95rem;">Estadísticas Reales del Invocador en EUW</p>
-      </div>
-      <div class="tier-pill" style="padding: 0.6rem 1.2rem; font-size: 1rem;">
-        <span>${escapeHtml(duo.tier)} ${escapeHtml(duo.division)}</span>
-        <span style="color: var(--gold-hextech); font-weight: 800;">${escapeHtml(duo.lp)} LP</span>
-      </div>
+    <div class="match-history-header">
+      <h2>Historial de ${escapeHtml(duo.teamName || accounts.join(' & '))}</h2>
+      <p>${accounts.map(escapeHtml).join(' & ')}</p>
     </div>
-
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-      <div class="stat-card">
-        <div class="stat-label">Winrate Global</div>
-        <div class="stat-value text-gradient-gold">${winrate}%</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Victorias / Derrotas</div>
-        <div class="stat-value" style="font-size: 1.3rem;">${escapeHtml(duo.wins)}W / ${escapeHtml(duo.losses)}L</div>
-      </div>
-    </div>
-
-    <h3 class="font-heading" style="font-size: 1.1rem; color: var(--cyan-primary); margin-bottom: 1rem;">
-      <i class="fa-solid fa-history"></i> Historial Reciente (Mostrando las ${page.matches.length} partidas desde la ${page.total ? offset + 1 : 0}, de ${page.total} registradas)
-    </h3>
-    <div style="max-height: 450px; overflow-y: auto; padding-right: 0.5rem;">
-      ${historyHtml}
-    </div>
+    <p class="match-history-count">Mostrando las ${page.matches.length} partidas desde la ${page.total ? offset + 1 : 0}, de ${page.total} registradas</p>
+    <div class="match-history-list"></div>
   `;
+  MatchHistory.mount(modalContent.querySelector('.match-history-list'), duo, page.matches);
 
   const navigation = document.createElement('div');
   navigation.className = 'history-navigation';
@@ -796,30 +736,55 @@ document.addEventListener('click', event => {
 
 
 function renderEloChart(duo) {
-  const points = (duo.eloHistory || []).filter(p => Number.isFinite(Number(p.totalLp)) && /^\d{4}-\d{2}-\d{2}$/.test(p.date));
-  if (!points.length) return '<div class="elo-chart"><h3>Evolución de ELO</h3><p>La gráfica aparecerá cuando se registre el primer dato de ELO.</p></div>';
+  const series = ['player1', 'player2'].filter(key => duo[key]?.name).map(key => {
+    const player = duo[key];
+    let history = player.eloHistory;
+    if (!Array.isArray(history)) {
+      history = key === 'player1' && player.rank !== null ? duo.eloHistory || [] : [];
+      if (!history.length && player.rank?.observedAt) {
+        const rank = player.rank;
+        const date = new Date(rank.observedAt * 1000);
+        history = [{...rank, date: `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`,
+          totalLp: calcTotalLpHelper(rank.tier, rank.division, rank.lp)}];
+      }
+    }
+    const points = [...new Map(history.filter(p => p && p.totalLp != null && Number.isFinite(Number(p.totalLp)) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(p.date) && Number.isFinite(Date.parse(p.date + 'T12:00:00Z')) &&
+      String(p.tier).toUpperCase() !== 'UNRANKED').map(p => [p.date, p])).values()].sort((a,b) => a.date.localeCompare(b.date));
+    return {key, name: `${player.name}${player.tag ? '#' + player.tag : ''}`, points};
+  });
+  const legend = `<div class="elo-chart-legend">${series.map(s => `<span class="elo-series-${s.key}"><i aria-hidden="true"></i>${escapeHtml(s.name)}${!s.points.length ? ' · Pendiente de rango' : s.points.length === 1 ? ' · Primer registro' : ''}</span>`).join('')}</div>`;
+  const allPoints = series.flatMap(s => s.points);
+  if (!allPoints.length) return `<div class="elo-chart"><h3>Evolución de ELO</h3>${legend}<p>La gráfica aparecerá cuando se registre el primer dato de ELO clasificatorio.</p></div>`;
   const width = 900, height = 230, left = 76, right = 18, top = 24, bottom = 36;
-  const values = points.map(p => Number(p.totalLp));
+  const values = allPoints.map(p => Number(p.totalLp));
   const min = Math.max(0, Math.min(...values) - 60), max = Math.max(...values) + 60;
-  const dates = points.map(p => Date.parse(p.date + 'T12:00:00Z'));
-  const x = i => points.length === 1 ? (width + left - right) / 2 : left + (dates[i] - dates[0]) / (dates.at(-1) - dates[0] || 1) * (width-left-right);
+  const days = [...new Set(allPoints.map(p => p.date))].sort();
+  const dates = days.map(day => Date.parse(day + 'T12:00:00Z'));
+  const x = day => days.length === 1 ? (width + left - right) / 2 : left + (Date.parse(day + 'T12:00:00Z') - dates[0]) / (dates.at(-1) - dates[0]) * (width-left-right);
   const y = value => top + (max-value)/(max-min || 1)*(height-top-bottom);
-  const label = p => {
+  const formatChartDate = date => `${date.slice(8, 10)}-${date.slice(5, 7)}`;
+  const label = (p, s) => {
     const games = Number(p.wins) + Number(p.losses);
-    return `${new Date(p.date + 'T12:00:00').toLocaleDateString('es-ES', {day:'2-digit',month:'short'})} · ${p.tier} ${p.division || ''} · ${p.lp} LP · ${p.wins}W / ${p.losses}L${games ? ' · ' + Math.round(Number(p.wins)/games*100) + '%' : ''}${p.source === 'initial' ? ' · Punto inicial: rango guardado' : ''}`;
+    const results = p.wins != null && p.losses != null ? ` · ${p.wins}W / ${p.losses}L${games ? ' · ' + Math.round(Number(p.wins)/games*100) + '%' : ''}` : '';
+    return `${s.name} · ${formatChartDate(p.date)} · ${p.tier} ${p.division || ''} · ${p.lp} LP${results}${p.source === 'initial' ? ' · Punto inicial: rango guardado' : ''}`;
   };
   const rankLabel = value => {
     const tiers = ['Iron','Bronze','Silver','Gold','Platinum','Emerald','Diamond'];
     const n = Math.max(0,Math.round(value));
     return n >= 2800 ? `Master+ ${n-2800} LP` : `${tiers[Math.floor(n/400)]} ${['IV','III','II','I'][Math.floor(n%400/100)]} ${n%100}`;
   };
-  const line = points.map((p,i) => `${i ? 'L' : 'M'}${x(i).toFixed(2)},${y(p.totalLp).toFixed(2)}`).join(' ');
   const ticks = [min,(min+max)/2,max].map(v => `<line x1="${left}" x2="${width-right}" y1="${y(v)}" y2="${y(v)}" class="elo-grid-line"/><text x="${left-8}" y="${y(v)+4}" text-anchor="end">${escapeHtml(rankLabel(v))}</text>`).join('');
-  const step = Math.max(1, Math.ceil(points.length/7));
-  return `<div class="elo-chart"><h3>Evolución de ELO</h3><div class="elo-chart-scroll"><svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Evolución diaria del ELO de ${escapeHtml(duo.teamName)}">
-    ${ticks}<path d="${line}" class="elo-line"/>
-    ${points.map((p,i) => `<circle cx="${x(i)}" cy="${y(p.totalLp)}" r="5" class="elo-point" tabindex="0" role="button" aria-label="${escapeHtml(label(p))}" data-elo-detail="${escapeHtml(label(p))}"><title>${escapeHtml(label(p))}</title></circle>${i%step===0 || i===points.length-1 ? `<text x="${x(i)}" y="${height-10}" text-anchor="middle">${escapeHtml(new Date(p.date+'T12:00:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short'}))}</text>` : ''}`).join('')}
-    </svg></div><p class="elo-chart-detail" aria-live="polite">${escapeHtml(label(points.at(-1)))}</p><p class="elo-chart-note">Último ELO registrado de cada día. ${points.length === 1 ? 'La curva aparecerá al registrar más días. ' : ''}Sin datos anteriores al inicio del registro. Pasa por un punto o tócalo para ver el detalle.</p></div>`;
+  const step = Math.max(1, Math.ceil(days.length/7));
+  const curves = series.map(s => {
+    if (!s.points.length) return '';
+    const line = s.points.map((p,i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(2)},${y(p.totalLp).toFixed(2)}`).join(' ');
+    return `<g class="elo-series-${s.key}" data-elo-player="${s.key}"><path d="${line}" class="elo-line"/>${s.points.map(p => `<circle cx="${x(p.date)}" cy="${y(p.totalLp)}" r="5" class="elo-point" tabindex="0" role="button" aria-label="${escapeHtml(label(p,s))}" data-elo-detail="${escapeHtml(label(p,s))}"><title>${escapeHtml(label(p,s))}</title></circle>`).join('')}</g>`;
+  }).join('');
+  const dateLabels = days.map((day,i) => i%step===0 || i===days.length-1 ? `<text x="${x(day)}" y="${height-10}" text-anchor="middle">${formatChartDate(day)}</text>` : '').join('');
+  return `<div class="elo-chart"><h3>Evolución de ELO</h3>${legend}<div class="elo-chart-scroll"><svg viewBox="0 0 ${width} ${height}" role="group" aria-label="Evolución diaria del ELO de ambos integrantes de ${escapeHtml(duo.teamName)}">
+    ${ticks}${curves}${dateLabels}
+    </svg></div><p class="elo-chart-detail" aria-live="polite">${escapeHtml(series.filter(s => s.points.length).map(s => label(s.points.at(-1),s)).join(' | '))}</p><p class="elo-chart-note">Pasa por un punto o tócalo para ver el ELO de ese día.</p></div>`;
 }
 
 for (const type of ['pointerover', 'focusin', 'click']) {
@@ -842,6 +807,6 @@ function renderCombinedDuoStats(duo) {
   return `<div class="duo-combined-stats" role="group" aria-label="KDA y estadísticas combinadas del dúo">
     <div class="duo-combined-kda"><strong>${kda}</strong><span>KDA combinado</span></div>
     <div class="duo-combined-totals"><div aria-label="${totals.kills} asesinatos, ${totals.deaths} muertes, ${totals.assists} asistencias"><strong class="combined-kills">${number(totals.kills)}</strong><span> / </span><strong class="combined-deaths">${number(totals.deaths)}</strong><span> / </span><strong class="combined-assists">${number(totals.assists)}</strong></div><span>Asesinatos / Muertes / Asistencias</span></div>
-    <span class="duo-combined-note">${players.length ? 'Totales de ambos integrantes' : 'Pendiente de estadísticas'}<small>${players.length ? 'Según las estadísticas disponibles' : 'Se actualizará al sincronizar'}</small></span>
+    <span class="duo-combined-note">${players.length === 2 ? 'Totales de ambos integrantes' : players.length ? 'Totales disponibles' : 'Sin estadísticas'}</span>
   </div>`;
 }

@@ -71,14 +71,6 @@ class ShellPenaltyTests(unittest.TestCase):
         self.assertEqual(snapshot["player1"], ["Ahri", "Lux"])
         self.assertEqual(snapshot["player2"], ["Lux"])
 
-    def test_boot_purchase_at_exactly_fifteen_is_allowed(self):
-        game = {"player1Stats": {"participantId": 1}, "player2Stats": {"participantId": 2}}
-        timeline = {"frames": [{"events": [
-            {"type": "ITEM_PURCHASED", "timestamp": 899999, "participantId": 1, "itemId": 3006},
-            {"type": "ITEM_PURCHASED", "timestamp": 900000, "participantId": 2, "itemId": 3006},
-        ]}]}
-        self.assertEqual(server.boots_compliance_from_timeline(timeline, game), {"player1": False, "player2": True})
-
     def test_player_insights_include_totals_and_ignore_test_matches(self):
         duo = {"history": [
             {"player1Stats": {"championName": "Ahri", "kills": 5, "deaths": 2, "assists": 7, "win": True},

@@ -8,17 +8,19 @@ Permite seguir en tiempo real la clasificación de varios dúos en Ranked Solo/D
 
 ## ✨ Características Principales
 
+- **⏳ Calendario oficial (hora de Madrid)**: inicio el 15/10/2026 a las 18:00 y cierre el 15/11/2026 a las 23:59. La cuenta atrás de portada cambia automáticamente de inicio a cierre y después muestra el torneo finalizado. Las fechas se guardan con zona horaria explícita, incluyendo el cambio de horario de octubre; el formulario de administración siempre muestra y recibe horas de Madrid.
+
 - **🎮 Sincronización en Tiempo Real con Riot API**: Seguimiento automático de Elo, Tier, División, LP, Victorias, Derrotas y Racha activa cada 5 minutos.
 - **🐢 Sistema de Caparazones Azules**:
-  - Cada bloque de 3 victorias consecutivas, pentakill, al menos 20 kills, al menos 30 asistencias o 0 muertes con más de 20 kills + asistencias otorga 1 caparazón. Los logros individuales no exigen victoria y no suman estadísticas entre jugadores.
+  - Cada bloque de 4 victorias consecutivas, pentakill, al menos 20 kills, al menos 30 asistencias o 0 muertes con más de 20 kills + asistencias otorga 1 caparazón. Los logros individuales no exigen victoria y no suman estadísticas entre jugadores.
   - Cada criterio se premia una vez por equipo y partida, con un máximo de 2 premios por partida (incluida la racha) y 5 caparazones en inventario. Los excedentes se pierden. Se priorizan racha, pentakill, kills, asistencias y KDA perfecto.
   - Los nuevos criterios se aplican a partidas incorporadas tras la migración; se conservan premios y marcas anteriores. El registro por partida evita duplicados al recalcular o completar estadísticas.
   - La tabla pública de requisitos utiliza las mismas constantes del servidor mediante `/api/config`.
-  - Los equipos pueden lanzar caparazones contra sus rivales para imponer castigos aleatorios (*Sin Botas*, *Sin Flash*, *Autofill*, etc.).
+  - Los equipos pueden lanzar caparazones contra sus rivales para imponer castigos aleatorios (*Sin Flash*, *Autofill*, etc.).
 - **📊 Historial de Partidas Ordenado Cronológicamente**: Muestra los campeones jugados, KDA, duración y ganancia/pérdida de LP de cada partida.
 - **🔐 Panel de Jugador & Panel de Administración**: Interfaz protegida para que los jugadores gestionen su inventario de caparazones y los administradores configuren el torneo.
 - **🖼️ Avatares de Invocador Dinámicos**: Carga de iconos oficiales de LoL mediante Data Dragon CDN (v15.3.1).
-- **🟣 Estado de Twitch**: Enlace por equipo y detección automática de emisiones en directo cada 5 minutos.
+- **🟣 Estado de Twitch**: Enlace individual por integrante y detección automática de emisiones en directo cada 5 minutos.
 
 ---
 
@@ -81,7 +83,7 @@ La aplicación sirve el frontend y la API desde el mismo origen. Solo los archiv
 - Los paneles conservan en memoria los últimos datos confirmados cuando falla una lectura, muestran la desconexión y no guardan modificaciones locales como si hubieran llegado al servidor.
 - `/api/duos` devuelve un resumen sin historial. `/api/duos/{id}/history?offset=0&limit=30` permite recorrerlo completo. Los eventos también admiten `offset` y `limit`; el límite máximo de página es 100.
 - Las consultas no conceden recompensas. Las sincronizaciones y el cálculo administrativo las guardan de forma persistente. Se mantienen las reglas actuales de recompensas y la importación basada en el jugador 1.
-- Los castigos necesitan evidencia válida y una partida iniciada después de su asignación. Si falta la cronología para las botas, se vuelve a intentar. Reabrir un castigo conserva la corrección y descarta la partida que lo había completado automáticamente.
+- Los castigos necesitan evidencia válida y una partida iniciada después de su asignación. Reabrir un castigo conserva la corrección y descarta la partida que lo había completado automáticamente.
 
 ### Avisos personales de caparazones
 
@@ -139,10 +141,113 @@ El panel público `torneo.html`, accesible como «Torneo y premios» desde la na
 
 ### Evolución de ELO
 
-El desplegable de cada dúo muestra `eloHistory`: último rango observado por día (fecha local del servidor), LP, victorias y derrotas. Se inicia con el rango guardado al activar la función y se actualiza tras lecturas confirmadas de Riot. No se reconstruyen LP anteriores a partir de victorias o derrotas. Cambiar la cuenta principal inicia un registro nuevo. La gráfica muestra detalles al pasar, enfocar o tocar cada punto.
+El desplegable de cada dúo muestra la evolución diaria del ELO de ambos integrantes: amarillo para `player1`, verde discontinuo para `player2`, con leyenda y detalles al pasar, enfocar o tocar cada punto. Cada jugador guarda su propio `eloHistory` y `eloHistoryAccount`, con el último rango observado de cada día (fecha local del servidor), LP y victorias/derrotas si están disponibles. El historial antiguo del dúo se conserva para el primer jugador; el segundo empieza con su primer rango confirmado. No se reconstruyen LP anteriores a partir de victorias o derrotas. Cambiar una cuenta reinicia solamente su historial. Con un solo registro se muestra un punto, no una curva inventada. El `eloHistory` antiguo del dúo sigue manteniéndose por compatibilidad.
 
-Docker incluye una copia inicial de `db.json` como `/app/seed-db.json`, inaccesible desde HTTP. Solo se usa si no existe la base de datos en `PEPES_DATA_DIR`; nunca sustituye datos existentes. Un disco persistente sigue siendo necesario para conservar modificaciones entre despliegues.
+Docker incluye `seed-db.json`, una semilla vacía sin equipos ni credenciales, inaccesible desde HTTP. Solo se usa si no existe la base de datos local en `PEPES_DATA_DIR`; nunca sustituye datos existentes. `db.json` y `secrets.json` contienen los datos privados locales y no se versionan. En modo local se necesita almacenamiento persistente para conservar modificaciones entre despliegues; en producción esa persistencia la proporciona Neon.
 
 ### Neon (PostgreSQL)
 
 Producción puede usar `PEPES_STORAGE=neon` y `DATABASE_URL` como variable privada de Render. El estado JSON se guarda en `tournament_state` con control de revisión y copia anterior; un conflicto nunca sobrescribe otra operación. No hay restauración automática de seed-db.json cuando Neon falla. El modo local continúa usando db.json. Consulta `NEON_SETUP.md` para importar una copia validada y cambiar el servicio sin perder avances.
+
+
+### Clips semanales y likes por equipo
+
+`clips.html` muestra vídeos grandes con ordenación por likes o fecha. Las publicaciones y los votos se guardan en el campo `clips` de la base existente: `db.json` en local y Neon en producción. No se almacenan vídeos, solo enlaces de clips de Twitch.
+
+Los clips se pueden consultar sin sesión. Para votar se utiliza la sesión de «Mi Panel», guardada en `sessionStorage` y enviada en la cabecera `Authorization: Bearer`. El servidor obtiene el equipo de esa sesión; nunca confía en un `teamId` enviado para votar. La cookie `pepes_clips_visitor` identifica el navegador (`HttpOnly`, `SameSite=Lax`, un año; `Secure` detrás de HTTPS). Su hash se guarda en `teamVotes: {teamId: [browserHash, ...]}` por publicación.
+
+`POST /api/clips/like` recibe `clipId` y el estado booleano `liked`. Un clic añade el like del navegador y otro lo retira; repetir la misma petición es idempotente. El servidor admite un voto por navegador y clip, y como máximo dos votos por equipo y clip entre todos sus navegadores. Cambiar de equipo en el mismo navegador no duplica el voto. Retirar un like solo afecta al voto identificado por esa cookie. Sin sesión válida no se pueden modificar likes. La API devuelve el total, el estado del like del navegador y el equipo autenticado; no publica los identificadores ni el contador de votos del equipo. La interfaz no muestra el límite interno ni botones adicionales. Los errores de almacenamiento no se presentan como votos confirmados y se consultan los totales cada cinco segundos mientras la pestaña está visible.
+
+Los votos anónimos anteriores se conservan hasta cerrar y renovar su semana. Los contadores compartidos anteriores sin identidad de navegador mantienen sus votos reservados; los primeros navegadores del equipo que votan los reclaman sin incrementar el total. `clip_votes.py` calcula un único total para la interfaz, el premio y el resumen semanal. Al reiniciar el servidor hay que volver a iniciar sesión, pero los votos persistidos y la cookie se mantienen. Publicar clips y marcar vistos siguen disponibles sin sesión; los vistos permanecen exclusivamente en `localStorage`.
+
+El listado muestra como máximo 15 clips por página, con controles anterior/siguiente arriba y abajo. Cambiar de filtro o publicar vuelve a la primera página; las actualizaciones mantienen la página actual mientras siga existiendo. El orden se calcula al cargar, cambiar de filtro o publicar. Dar/quitar likes y las consultas automáticas actualizan los contadores conservando las posiciones y los reproductores. Los clips nuevos recibidos durante una consulta automática se añaden al final hasta la siguiente ordenación.
+
+El ojo en la esquina superior derecha marca o desmarca un clip como visto, sin requerir sesión ni enviar cambios al servidor. La pestaña «No vistos» filtra los pendientes y los ordena del más reciente al más antiguo. Las marcas se guardan en `localStorage` bajo `pepes_clips_seen`, para este navegador y la semana actual. Se conservan al cerrar/reabrir, se actualizan entre pestañas y se descartan para una nueva semana. Los clips vistos siguen disponibles en «Recientes» y «Más votados»; reproducir un vídeo no lo marca automáticamente. `test_clips_frontend.cjs` verifica paginación, persistencia, filtros, reducción de páginas y compatibilidad con likes/publicaciones.
+
+La semana empieza el lunes a las 00:00 en `Europe/Madrid`, incluidos los cambios de horario de verano. Los clips y votos anteriores se eliminan al cambiar de semana, mediante el programador o al recibir una consulta/publicación, incluso después de que Render haya estado dormido. Antes se liquida cualquier premio pendiente. `PEPES_CLIPS_PREVIEW=1` habilita tres publicaciones de ejemplo con contadores reales que empiezan en cero, únicamente con almacenamiento local. Producción no crea ejemplos.
+
+Cada publicación exige `teamId`, elegido en el formulario entre equipos existentes. El servidor guarda ese ID y el nombre del equipo, sin aceptar un nombre arbitrario enviado por el navegador. Los clips antiguos sin equipo y los ejemplos siguen visibles, pero no compiten por premios.
+
+La votación cierra el domingo a las 23:59:00, hora de Madrid; durante el último minuto no se puede publicar ni cambiar likes. El clip elegible con más likes recibe un premio de 3 caparazones para su equipo; los empates se resuelven por fecha de publicación más antigua y, si también coincide, por ID. Hace falta al menos un like y un equipo existente. Este premio incrementa directamente `blueShells` y puede superar el límite normal de 5; las recompensas de partidas mantienen su límite y no recortan inventarios mayores.
+
+`clipWeeklyRewards`, indexado por lunes de la semana, guarda ganador, equipo, votos, fecha prevista de cierre, fecha real de liquidación y cantidad. Inventario, resultado y evento se guardan juntos en la misma operación de almacenamiento. El programador calcula el siguiente cierre, y el arranque y las lecturas recuperan premios vencidos antes de limpiar clips. Si el servicio está dormido, la entrega física se realiza al reactivarse; los votos posteriores al cierre se rechazan. El registro por semana impide duplicados por reinicios, peticiones simultáneas o reintentos. La página muestra el resultado actual y el de la semana anterior sin exponer los identificadores de votantes.
+
+
+### Ruleta en ventana para stream
+
+Al pulsar «Girar ruleta» en el panel del jugador se solicita una ventana emergente de 680 × 460 con la ruleta, el equipo y el resultado. El panel mantiene su ruleta y la espera de 13,5 segundos tras revelar el castigo. La ventana conserva el resultado hasta el siguiente giro y puede moverse o redimensionarse para capturarla en OBS.
+
+Ambas vistas animan el único resultado devuelto por `/api/player/spin-shell`, con el mismo instante de inicio. La ventana de stream no llama a la API ni necesita sesión de equipo. Los mensajes verifican origen, ventana emisora y canal; al cargar o reabrir se recupera el estado actual sin sortear otra vez. Una vez cargada, puede terminar la animación aunque se cierre el panel.
+
+Si el navegador bloquea la apertura, la ruleta del panel continúa y aparece «Abrir ruleta para stream» para reintentarlo tras permitir ventanas emergentes. La ventana se reutiliza en los siguientes giros. `test_roulette_frontend.cjs` verifica estos casos con Playwright y Chrome, incluido el tiempo de revelación y la espera del resultado.
+
+
+### Rango de cada integrante en la clasificación
+
+La tabla principal muestra «Integrante 1» e «Integrante 2» con su rango Solo/Duo y LP actuales, sin LP netos en la fila. Riot confirma cada rango por separado y se guarda en `player1.rank` y `player2.rank` (`tier`, `division`, `lp`, `observedAt`). Los errores conservan el último rango confirmado; una respuesta correcta sin entrada Solo/Duo muestra «Sin clasificar». Hasta la primera consulta del segundo integrante se muestra «Pendiente». Las bases anteriores reutilizan el rango del dúo únicamente para el primer integrante. Cambiar la cuenta en administración invalida su rango individual.
+
+La clasificación, winrate y evolución de ELO del dúo mantienen el cálculo existente a partir del jugador 1. En pantallas estrechas la tabla permite desplazamiento horizontal para consultar ambos integrantes.
+
+### Nombres y Twitch de los participantes
+
+Cada integrante guarda `displayName` (nombre visible, independiente del Riot ID), `twitchUrl` (opcional) y `twitchIsLive` (confirmado por Twitch). Administración permite introducirlos al crear un dúo y editar ambos perfiles en los equipos existentes. En la clasificación se muestra el nombre encima de su rango y su enlace de Twitch debajo; el botón rojo indica que ese integrante está en directo. El contador de equipos en directo cuenta un equipo si al menos uno de sus integrantes emite.
+
+Los enlaces antiguos del equipo se reutilizan únicamente para el primer integrante hasta que se editen. Guardar un enlace individual vacío elimina su botón, incluso si existe un enlace antiguo. La sincronización consulta los dos canales y conserva el estado confirmado cuando Twitch falla. Cambiar estos perfiles no borra los rangos, historiales de ELO, partidas, castigos ni caparazones.
+
+Las tarjetas inferiores muestran el Riot ID, KDA global individual `(asesinatos + asistencias) / max(1, muertes)`, rol principal configurado y campeón más jugado de las partidas registradas. Si faltan estadísticas se muestra «—» en KDA y «Sin datos» en el campeón.
+
+### Castigos individuales: destinatario 50/50
+
+Al abrir un nuevo castigo con `scope: ONE`, el servidor sortea una sola vez entre `player1` y `player2`, con igual probabilidad e independientemente del sorteo del castigo. `requirements.assignedPlayer` guarda el integrante; `assignedAccount` conserva su nombre visible, Riot ID y PUUID conocido. El campeón aleatorio, cuando corresponde, se sortea para ese mismo integrante. La asignación se guarda junto al castigo, el ataque y el evento de apertura, y se muestra en ambas ruletas, Mi Panel, administración e historial público.
+
+La evaluación de Polivalente, Sin campeón favorito, Campeón aleatorio, Sin Flash exige que el integrante asignado cumpla su condición. Las estadísticas de Riot conservan el PUUID para verificar la cuenta. Si todavía no se conoce, se vincula al Riot ID configurado y se verifica su PUUID cuando se sincroniza. Los datos incompletos, las partidas de prueba y las partidas iniciadas antes de la asignación no acreditan cumplimiento. El castigo y la evidencia guardan quién debía cumplirlo y la partida que lo acreditó. Recargar, reiniciar o reabrir el castigo no cambia el integrante elegido.
+
+Los castigos que ya estaban abiertos sin destinatario conservan la regla anterior (puede cumplirlos cualquiera); las asignaciones anteriores de campeón aleatorio también se conservan. Los castigos de AMBOS siguen exigiendo a ambos. `test_penalty_assignments.py` verifica todos los tipos, ambos destinatarios, persistencia, compatibilidad y una sincronización completa con respuestas de Riot simuladas.
+
+### Caparazón reverso
+
+«Devuelve el caparazón» crea un ataque `PENDING_SPIN` en la bandeja del equipo que lo lanzó. El receptor original devuelve el ataque sin gastar inventario y el atacante original debe girar su propia ruleta para recibir el castigo. No se devuelve una unidad al inventario; tener cero caparazones o el inventario lleno no impide recibirlo. El nuevo ataque activa las mismas notificaciones personales y aparece como «Caparazón devuelto por…» en Mi Panel.
+
+El ataque inicial queda `RETURNED` y apunta al nuevo mediante `returnedAttackId`; el nuevo guarda `returnedFromAttackId`, `rootShellId` y `reflectionCount`. Conserva los porcentajes de la ruleta original. Si vuelve a salir reverso, rebota de nuevo, una sola vez por giro. Al salir un castigo, se asigna al equipo que acaba de girar y, si es de UNO, se aplica el sorteo de integrante 50/50. Los reversos históricos ya registrados conservan su resultado anterior.
+
+
+### Sincronización incremental de Riot
+
+La primera consulta del historial de cada cuenta conserva el recorrido completo con los mismos filtros existentes (Solo/Duo y desde 2026). Guarda `riotMatchDiscovery` como metadato interno del equipo: cuenta consultada, último ID descubierto y cola de partidas pendientes. Las siguientes sincronizaciones recorren únicamente las páginas recientes hasta alcanzar ese ID. Los detalles fallidos y las partidas que exceden el lote de 40 permanecen en la cola, incluso después de reiniciar el servidor. Si cambia la cuenta o no aparece el ID de referencia, se vuelve a recorrer el listado completo. Un fallo de paginación no adelanta la referencia.
+
+Cada sincronización reutiliza las respuestas correctas de una misma URL de Riot para evitar repetir consultas compartidas entre equipos, iconos e historial. Esta caché dura únicamente ese trabajo; las respuestas fallidas no se cachean y los rangos se vuelven a consultar en la siguiente ejecución. La recuperación de estadísticas antiguas y las reglas de castigos y recompensas se conservan.
+
+
+Si «Sin campeón favorito» se abre antes de disponer de estadísticas del integrante afectado, su referencia queda pendiente. Cada incorporación o recuperación de partidas recalcula los campeones más jugados y rellena las referencias vacías de los castigos activos. Se conserva el criterio de empates: todos los campeones empatados como más jugados quedan incluidos. Una vez establecida la referencia de cada integrante, permanece fija para ese castigo; los siguientes lanzamientos usan el historial actualizado. Esto también recupera castigos anteriores con listas vacías, sin volver a sortear quién debe cumplirlos. Las partidas de prueba y los campeones desconocidos no construyen favoritos.
+
+El historial del modal usa un resumen desplegable por partida y dos filas de detalles. La importación conserva el Riot ID, campeón, nivel, rol, hechizos, K/D/A, CS de línea y jungla, oro, visión, los siete huecos de objetos finales y los asesinatos del equipo correspondiente a cada integrante. El KDA, CS/min y participación se calculan al mostrar la partida; la participación usa los asesinatos de todo su equipo, no solamente los del dúo. Una partida sin muertes muestra «Perfecto» y los datos ausentes aparecen como «—». No se almacena el resultado completo de Riot ni una puntuación OP Score.
+
+`matchDetailsVersion` y `matchDetailsBackfill` permiten recuperar progresivamente los detalles de partidas antiguas en el lote existente de 40 por equipo, manteniendo el descubrimiento incremental y los marcadores de recompensas. Las partidas de prueba no se recuperan. Una cuenta identificada que no aparece entre los participantes se muestra como «No participó»; un fallo al identificar la segunda cuenta deja los detalles pendientes para reintentar. El parche (`gameVersion`) y la duración numérica quedan guardados por partida. Los nombres en español e iconos de objetos y hechizos proceden de Data Dragon, con caché por parche en el navegador; su carga no realiza consultas nuevas a la API de Riot ni guarda imágenes en la base de datos. Si esos recursos fallan, los datos siguen visibles y los objetos conservan su ID como etiqueta.
+
+### Resumen semanal
+
+Los avisos técnicos se muestran exclusivamente en la sección «Estado de los datos y sincronización» de administración, tras acceder con PIN. Incluye el estado de Riot/Twitch, conexión, partidas por importar, estadísticas y detalles pendientes, y logros sin registro de ingreso al inventario. El estado del archivo semanal y las explicaciones de recuperación, observaciones de ELO y almacenamiento de likes también quedan allí. Las pestañas públicas mantienen las reglas, información necesaria para interpretar sus datos y errores de acciones del participante, sin banners de sincronización ni contadores de recuperación. El refresco automático sigue funcionando.
+
+`resumen.html` añade una pestaña pública con vista general, selección de equipo y archivo de semanas. La semana actual se actualiza desde la base; por defecto se abre la última archivada, si existe. Los informes de lunes a domingo usan `Europe/Madrid`, incluyendo los cambios de horario. El lunes a las 00:00 se guarda el resumen en `weeklySummaries`, junto con los totales y el ganador de clips, antes de renovar la lista de clips en la misma operación de persistencia. El premio de clips mantiene su cierre del domingo a las 23:59 y su registro independiente para evitar duplicados.
+
+El scheduler existente realiza el cierre y recupera semanas pendientes al despertar; las lecturas también recuperan un archivo que no pudo guardarse. Se archiva desde la semana en que se habilita la función (o la semana del tablero de clips aún conservado), sin inventar archivos anteriores. Las sincronizaciones de Riot actualizan archivos si incorporan partidas atrasadas, y las correcciones administrativas recalculan los cumplimientos. Se conservan las etiquetas y resultados de cuentas sustituidas o equipos eliminados. Los resúmenes permanecen cuando se renueva la lista de clips.
+
+Las partidas se asignan por `gameEndTimestamp`, excluyendo `isTest`, y se deduplican por `matchId` en el total general. Las estadísticas individuales usan únicamente los datos disponibles de cada participante; el KDA combinado se calcula con la suma de K/D/A y la mejor partida exige detalles de ambos. Los rangos comparan observaciones reales con sus fechas: las referencias incompletas se señalan como parciales y no participan en los destacados de subida/bajada. Los castigos automáticos se cuentan por la fecha de la partida que los acredita, separados de los marcados por administración. Los lanzamientos normales se distinguen de las devoluciones. `shellRewardCredits` registra desde esta versión qué logros ingresaron al inventario y cuáles toparon con el límite; los anteriores aparecen sin registro, no como cero inventado. No se añaden llamadas a Riot ni se cambian las reglas del torneo o de las recompensas.
+
+`GET /api/weekly-summary?week=YYYY-MM-DD` devuelve únicamente el resumen público y las semanas disponibles; no expone credenciales, PUUID, identidades de votantes ni requisitos privados. Sin `week`, devuelve la semana actual. La página refresca cada minuto conservando la selección; los datos de un clip ganador permiten reproducirlo desde Twitch incluso después de limpiar la semana.
+
+### Mis castigos en el panel del equipo
+
+En «Mi Panel», las pestañas «Caparazones» y «Mis castigos» separan los lanzamientos y giros de la consulta de castigos. Los pendientes se agrupan por integrante y por ambos; los castigos individuales antiguos que podía cumplir cualquiera conservan su propio grupo. Las asignaciones a cuentas anteriores se distinguen de las del perfil actual. Se muestran todos los pendientes, mientras que «Historial» pagina los cumplidos y retirados en bloques de 20. Las actualizaciones automáticas conservan la pestaña, el filtro y la página abiertos. Esta vista usa los datos existentes de la base y no añade llamadas a Riot ni cambia las reglas de cumplimiento.
+
+### Retirada del castigo de botas
+
+Las variantes de UNO y AMBOS ya no participan en la ruleta. Al cargar la base se retiran sus pesos de la configuración y de los caparazones pendientes, conservando los pesos relativos del resto. Si una ruleta antigua solo tenía botas activas, se recupera con los pesos predeterminados vigentes. Los castigos de botas pendientes quedan `CANCELLED` (Retirado), sin fabricar cumplimiento ni borrar el historial; los cumplidos conservan su evidencia. Administración no puede reabrirlos. Ya no se consulta la timeline de Riot para este castigo. Los objetos finales de las partidas, incluidas las botas, siguen mostrándose.
+
+### Flash al otro lado
+
+`swap_flash_one` y `swap_flash_both` exigen Flash en el slot contrario al cómodo (D/F por defecto), dejando libre el otro hechizo. Pesos predeterminados: 12 para UNO y 6 para AMBOS, editables en administración. Al introducirlos se ajustan proporcionalmente los pesos restantes si la suma supera o no alcanza 100, respetando los castigos desactivados y sin volver a ajustar posteriores cambios administrativos. Los caparazones ya lanzados conservan su snapshot anterior. UNO usa el sorteo de integrante 50/50 existente; AMBOS exige cumplimiento de ambos en la misma partida.
+
+La primera partida importada correctamente con dos hechizos válidos y Flash fija `player1.flashBaseline` o `player2.flashBaseline`, independientemente por cuenta. Se registra el slot original, la partida, su inicio y la identidad de Riot. No se infiere de las partidas ya guardadas al arrancar, ni cambia con posteriores sincronizaciones o partidas antiguas recuperadas. Partidas de prueba, sin Flash o incompletas no fijan referencia. Si el castigo se abre antes de conocerla, queda pendiente hasta que entre esa primera partida; esa partida únicamente establece la referencia y nunca acredita cumplimiento.
+
+Los requisitos congelan las referencias e identidades al asignarlos o al completar las referencias pendientes. La partida válida debe comenzar después de la asignación y de la partida de referencia, corresponder a la cuenta afectada y contener Flash una sola vez en el slot opuesto. Cambiar la cuenta en administración descarta su referencia cómoda para futuras asignaciones y no transfiere un castigo anterior a la cuenta nueva. Los requisitos y la evidencia se guardan en la base, y el texto específico se muestra en las ruletas, Mi Panel, administración e historial. Se reutilizan `summoner1Id`/`summoner2Id` de Match v5; no hay llamadas adicionales. La API permite comprobar slots, pero no las teclas personalizadas del jugador.

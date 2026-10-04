@@ -53,13 +53,6 @@ class StorageTests(unittest.TestCase):
 
 
 class PenaltyRegressionTests(unittest.TestCase):
-    def test_missing_timeline_never_completes_either_scope(self):
-        for scope in ("ONE", "BOTH"):
-            for timeline in (None, {}, {"frames": []}):
-                duo = {"activeDebuffs": [fixtures.penalty("basic_boots_15", scope)]}
-                game = fixtures.match({"participantId": 1}, {"participantId": 2})
-                self.assertEqual(server.evaluate_active_penalties(duo, game, timeline), 0)
-
     def test_match_started_before_assignment_and_missing_start_are_ignored(self):
         for start in (None, 900):
             duo = {"activeDebuffs": [fixtures.penalty("no_flash")]}
@@ -71,10 +64,6 @@ class PenaltyRegressionTests(unittest.TestCase):
         duo = {"activeDebuffs": [fixtures.penalty("no_flash", "BOTH")]}
         game = fixtures.match({"summonerSpellIds": []}, {"summonerSpellIds": [0, 0]})
         self.assertEqual(server.evaluate_active_penalties(duo, game), 0)
-
-    def test_partial_timeline_without_participant_ids_is_not_proof(self):
-        self.assertEqual(server.boots_compliance_from_timeline({"frames": [{"events": []}]}, {}), {})
-
 
 class EndpointRegressionTests(unittest.TestCase):
     setUp = fixtures.ShellEndpointTests.setUp
@@ -111,12 +100,12 @@ class EndpointRegressionTests(unittest.TestCase):
 
     def test_public_reads_do_not_grant_shells_or_expose_credentials(self):
         db = server.load_db()
-        db["duos"][0]["history"] = [{"matchId": str(i), "result": "WIN"} for i in range(3)]
+        db["duos"][0]["history"] = [{"matchId": str(i), "result": "WIN"} for i in range(4)]
         server.save_db(db)
         before = Path(server.DB_FILE).read_bytes()
         summary = json.loads(self.get("/api/duos"))[0]
         self.assertEqual(summary["blueShells"], 1)
-        self.assertEqual(summary["historyCount"], 3)
+        self.assertEqual(summary["historyCount"], 4)
         self.assertNotIn("history", summary)
         self.assertNotIn("passwordHash", summary)
         self.assertEqual(before, Path(server.DB_FILE).read_bytes())
@@ -168,7 +157,7 @@ class EndpointRegressionTests(unittest.TestCase):
     def test_sync_merge_preserves_attack_and_is_idempotent(self):
         original = server.load_db()
         scanned = copy.deepcopy(original)
-        scanned["duos"][0]["history"] = [{"matchId": f"EUW1_{i}", "result": "WIN"} for i in range(3)]
+        scanned["duos"][0]["history"] = [{"matchId": f"EUW1_{i}", "result": "WIN"} for i in range(4)]
         login = self.post("/api/player/login", {"teamId": "a", "password": "a-pass"})
         self.post("/api/player/launch-shell", {"sessionToken": login["sessionToken"], "targetId": "b"})
         server.merge_riot_result(original, scanned)
@@ -179,7 +168,7 @@ class EndpointRegressionTests(unittest.TestCase):
         self.assertEqual(db["duos"][0]["shellsUsed"], 1)
         self.assertEqual(db["duos"][0]["shellsEarnedTotal"], 1)
 
-    def test_returned_shell_respects_inventory_cap(self):
+    def test_returned_shell_creates_pending_attack_even_at_inventory_cap(self):
         db = server.load_db()
         db["duos"][0]["blueShells"] = 5
         db["shellAttacks"] = [{"id": "return", "targetTeamId": "b", "attackerTeamId": "a", "status": "PENDING_SPIN", "wheelSnapshot": {"return_shell": 100}}]
@@ -187,6 +176,10 @@ class EndpointRegressionTests(unittest.TestCase):
         login = self.post("/api/player/login", {"teamId": "b", "password": "b-pass"})
         self.post("/api/player/spin-shell", {"sessionToken": login["sessionToken"], "attackId": "return"})
         self.assertEqual(server.load_db()["duos"][0]["blueShells"], 5)
+        pending = [attack for attack in server.load_db()["shellAttacks"] if attack["status"] == "PENDING_SPIN"]
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["targetTeamId"], "a")
+        self.assertEqual(pending[0]["returnedFromAttackId"], "return")
 
     def test_sync_endpoint_queues_without_blocking_and_keeps_last_success(self):
         jobs = SyncJobs()
@@ -262,46 +255,6 @@ class EndpointRegressionTests(unittest.TestCase):
         self.assertEqual(server.evaluate_active_penalties(current['duos'][0], game), 0)
         self.assertEqual(current['duos'][0]['activeDebuffs'][0]['resolutionHistory'][0]['note'], 'Revisión')
         self.assertEqual(current['events'][0]['penaltyInstanceId'], debuff['id'])
-
-
-    def test_timeline_failure_is_retried_after_stats_are_enriched(self):
-        db = server.load_db()
-        duo = db["duos"][0]
-        db["duos"] = [duo]
-        duo.update(tier="Iron", division="IV", lp=0, wins=0, losses=0)
-        for key in ("player1", "player2"):
-            duo[key]["avatar"] = "custom.png"
-        game = fixtures.match({"participantId": 1}, {"participantId": 2}, end_ms=1800000100000)
-        game.update(matchId="EUW1_1", gameStartTimestamp=1800000000000, statsVersion=2)
-        duo["history"] = [game]
-        duo["activeDebuffs"] = [fixtures.penalty("basic_boots_15", "BOTH")]
-        server.save_db(db)
-        participants = [{"puuid": key, "participantId": i, "championName": "Ahri", "summoner1Id": 4, "summoner2Id": 12} for i, key in enumerate(("p1", "p2"), 1)]
-        timeline_calls = []
-        def response(request, **kwargs):
-            url = request.full_url
-            if '/accounts/' in url:
-                payload = {"puuid": "p1" if 'A1' in url else 'p2'}
-            elif '/entries/' in url:
-                payload = []
-            elif '/ids?' in url:
-                payload = ["EUW1_1"]
-            elif url.endswith('/timeline'):
-                timeline_calls.append(url)
-                if len(timeline_calls) == 1:
-                    raise urllib.error.URLError('Temporary failure')
-                payload = {"info": {"frames": [{"events": []}]}}
-            else:
-                payload = {"info": {"participants": participants, "gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800000100000, "gameDuration": 100}}
-            return io.BytesIO(json.dumps(payload).encode())
-        with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server.urllib.request, "urlopen", side_effect=response), patch.object(server.time, "sleep"):
-            first = server.sync_riot_data()
-            self.assertFalse(first["success"])
-            self.assertEqual(server.load_db()["duos"][0]["activeDebuffs"][0]["status"], "ACTIVE")
-            second = server.sync_riot_data()
-            self.assertTrue(second["success"])
-            self.assertEqual(server.load_db()["duos"][0]["activeDebuffs"][0]["status"], "COMPLETED")
-            self.assertEqual(len(timeline_calls), 2)
 
 
 if __name__ == "__main__":

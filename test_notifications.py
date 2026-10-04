@@ -23,6 +23,33 @@ class NotificationTests(unittest.TestCase):
                 return ''.join(lines)
             lines.append(line)
 
+    def test_reverse_notifies_the_original_sender_as_new_receiver(self):
+        db = server.load_db()
+        db['config']['penaltyWeights'] = {item['id']:0 for item in server.PENALTY_CATALOG}
+        db['config']['penaltyWeights']['return_shell'] = 100
+        server.save_db(db)
+        sender = self.post('/api/player/login', {'teamId':'a','password':'a-pass'})['sessionToken']
+        receiver = self.post('/api/player/login', {'teamId':'b','password':'b-pass'})['sessionToken']
+        own_stream = self.open_stream(sender)
+        target_stream = self.open_stream(receiver)
+        try:
+            self.frame(own_stream)
+            self.frame(target_stream)
+            original = self.post('/api/player/launch-shell', {'targetId':'b','sessionToken':sender})['attack']
+            self.assertTrue(self.frame(own_stream).startswith(': heartbeat'))
+            self.assertEqual(json.loads(self.frame(target_stream).removeprefix('data: '))['attacks'][0]['id'], original['id'])
+            returned = self.post('/api/player/spin-shell', {'attackId':original['id'],'sessionToken':receiver})['returnedAttack']
+            message = json.loads(self.frame(own_stream).removeprefix('data: '))
+            self.assertEqual(message['team']['id'], 'a')
+            self.assertEqual(message['attacks'][0]['id'], returned['id'])
+            self.assertEqual(message['attacks'][0]['attackerName'], 'Receptor')
+            self.assertEqual(json.loads(self.frame(target_stream).removeprefix('data: '))['attacks'], [])
+        finally:
+            server.player_sessions.clear()
+            server.notify_shell_receivers()
+            own_stream.close()
+            target_stream.close()
+
     def test_notifications_are_private_immediate_and_session_bound(self):
         with self.assertRaises(urllib.error.HTTPError) as error:
             self.open_stream('invalid')
