@@ -243,6 +243,12 @@ const path = require('node:path');
     await page.evaluate(() => DataStore.refreshSyncStatus());
     assert.equal(await page.locator('#admin-diagnostics').isVisible(), true);
     assert.match(await page.locator('#connection-status').textContent(), /Riot: última llamada API OK 4\/10\/2026, 16:44:00 \(Madrid\)/);
+    await page.evaluate(() => {
+      latestSyncStatus.discord = {configured:true, lastSentAt:'2026-10-05T10:00:00+00:00', error:'Discord respondió HTTP 429.'};
+      renderConnectionStatus();
+    });
+    assert.match(await page.locator('#connection-status').textContent(), /Discord: último aviso enviado 5\/10\/2026, 12:00:00 \(Madrid\)/);
+    assert.match(await page.locator('#connection-status').textContent(), /Discord: Discord respondió HTTP 429/);
     await page.evaluate(() => { latestSyncStatus.riot.lastApiSuccessAt = null; renderConnectionStatus(); });
     assert.match(await page.locator('#connection-status').textContent(), /Riot: todavía no hay llamadas a la API confirmadas/);
     assert.doesNotMatch(await page.locator('#connection-status').textContent(), /Riot: última sincronización correcta/);

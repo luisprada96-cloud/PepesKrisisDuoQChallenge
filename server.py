@@ -21,6 +21,7 @@ import copy
 import re
 import clips_service
 import weekly_summary
+import discord_live
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
 from storage import read_json, write_json, StorageError
@@ -814,6 +815,51 @@ def single_sync(lock):
     return decorate
 
 
+def sync_discord_live_alerts(live_streams, owners):
+    raw_url = os.environ.get("DISCORD_LIVE_WEBHOOK_URL", "").strip()
+    if not raw_url:
+        return {"configured": False, "sent": 0}
+    url = discord_live.webhook_url(raw_url)
+    if not url:
+        return {"configured": True, "sent": 0, "error": "DISCORD_LIVE_WEBHOOK_URL no es un webhook válido de Discord."}
+    try:
+        with db_lock:
+            current = load_db()
+            if discord_live.prepare(current, live_streams, owners):
+                save_db(current)
+            queued = discord_live.pending(current, live_streams, owners)
+            status = current.get("discordLiveStatus", {})
+            if time.time() < status.get("retryAt", 0):
+                return {"configured": True, "sent": 0, "pending": len(queued), "error": status.get("error")}
+        sent = 0
+        # Bound network work; additional live alerts wait for the next regular cycle.
+        for alert in queued[:5]:
+            with db_lock:
+                current = load_db()
+                duo = next((d for d in current.get("duos", []) if d.get("id") == alert["teamId"]), None)
+                if not duo or participant_twitch_channel(duo, alert["playerKey"]) != alert["channel"]:
+                    continue
+            # Never hold the database lock while waiting for Discord.
+            result = discord_live.send(url, alert)
+            with db_lock:
+                current = load_db()
+                record = current.get("discordLiveNotifications", {}).get(alert["channel"], {})
+                status = current.setdefault("discordLiveStatus", {})
+                if result["success"]:
+                    if record.get("streamId") == alert["streamId"]:
+                        record.update(status="sent", messageId=result["messageId"], sentAt=utc_now())
+                    status.update(lastSentAt=utc_now(), error=None, retryAt=0)
+                    sent += 1
+                else:
+                    status.update(error=result["error"], retryAt=time.time() + result["retryAfter"])
+                save_db(current)
+            if not result["success"]:
+                return {"configured": True, "sent": sent, "pending": len(queued) - sent, "error": result["error"]}
+        return {"configured": True, "sent": sent, "pending": max(0, len(queued) - sent)}
+    except StorageError:
+        return {"configured": True, "error": "No se pudo guardar el estado de los avisos de Discord."}
+
+
 @single_sync(twitch_sync_lock)
 def sync_twitch_live_status():
     db = load_db()
@@ -821,6 +867,7 @@ def sync_twitch_live_status():
                  for duo in db.get("duos", []) for key in ("player1", "player2")}
     channels = sorted({channel for channel in requested.values() if channel})
     live_channels = set()
+    live_streams = {}
     try:
         if channels:
             client_id, client_secret = get_twitch_credentials(db)
@@ -841,10 +888,14 @@ def sync_twitch_live_status():
                 live_channels.update(str(stream.get("user_login", "")).lower()
                                      for stream in stream_data["data"]
                                      if stream.get("type") == "live" and str(stream.get("user_login", "")).lower() in batch)
+                live_streams.update({str(stream.get("user_login", "")).lower(): stream
+                                     for stream in stream_data["data"]
+                                     if stream.get("type") == "live" and str(stream.get("user_login", "")).lower() in batch})
 
         with db_lock:
             current = load_db()
             changed = False
+            owners = {}
             for duo in current.get("duos", []):
                 for key in ("player1", "player2"):
                     channel = participant_twitch_channel(duo, key)
@@ -852,6 +903,10 @@ def sync_twitch_live_status():
                     if (duo["id"], key) not in requested or requested[(duo["id"], key)] != channel:
                         continue
                     player = duo.get(key)
+                    if channel and isinstance(player, dict):
+                        owners.setdefault(channel, {"teamId": duo["id"], "playerKey": key,
+                                                   "teamName": duo.get("teamName", ""),
+                                                   "name": player.get("displayName") or player.get("name") or channel})
                     if isinstance(player, dict) and player.get("twitchIsLive") is not (channel in live_channels):
                         player["twitchIsLive"] = channel in live_channels
                         changed = True
@@ -861,8 +916,9 @@ def sync_twitch_live_status():
                     changed = True
             if changed:
                 save_db(current)
+        discord_result = sync_discord_live_alerts(live_streams, owners)
         safe_print(f"[Twitch Sync] {len(channels)} canal(es) comprobados; {len(live_channels)} en directo.")
-        return {"success": True, "checked": len(channels), "live": len(live_channels)}
+        return {"success": True, "checked": len(channels), "live": len(live_channels), "discord": discord_result}
     except urllib.error.HTTPError as error:
         if error.code == 401:
             clear_twitch_token_cache()
@@ -1863,7 +1919,12 @@ class CustomHandler(BaseHTTPRequestHandler):
             return
         elif path == '/api/sync/status':
             status = sync_jobs.snapshot()
-            status.setdefault("riot", {})["lastApiSuccessAt"] = load_db().get("lastRiotApiSuccessAt")
+            db = load_db()
+            status.setdefault("riot", {})["lastApiSuccessAt"] = db.get("lastRiotApiSuccessAt")
+            raw_webhook = os.environ.get("DISCORD_LIVE_WEBHOOK_URL", "").strip()
+            status["discord"] = {"configured": bool(raw_webhook), **db.get("discordLiveStatus", {})}
+            if raw_webhook and not discord_live.webhook_url(raw_webhook):
+                status["discord"]["error"] = "DISCORD_LIVE_WEBHOOK_URL no es un webhook válido de Discord."
             self._send_json(status)
             return
         elif path.startswith('/api/duos/') and path.endswith('/history'):

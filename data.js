@@ -151,9 +151,16 @@ function renderConnectionStatus() {
     } else if (state.lastSuccessAt) messages.push(`${label}: última sincronización correcta ${new Date(state.lastSuccessAt).toLocaleString()}.`);
     if (state.pending) messages.push(`${state.pending} partidas pendientes de completar.`);
   }
+  const discord = latestSyncStatus.discord || {};
+  if (discord.configured) {
+    messages.push(discord.lastSentAt
+      ? `Discord: último aviso enviado ${new Date(discord.lastSentAt).toLocaleString('es-ES', {timeZone: 'Europe/Madrid'})} (Madrid).`
+      : 'Discord: avisos de directos configurados; todavía no hay envíos confirmados.');
+    if (discord.error) messages.push(`Discord: ${discord.error}`);
+  }
   element.textContent = messages.join(' ');
   element.hidden = messages.length === 0;
-  element.classList.toggle('connection-warning', unavailableReads.size > 0 || visibleJobs.some(name => latestSyncStatus[name]?.error));
+  element.classList.toggle('connection-warning', unavailableReads.size > 0 || visibleJobs.some(name => latestSyncStatus[name]?.error) || !!(discord.configured && discord.error));
 }
 
 async function apiRequest(path, payload, method = 'POST') {

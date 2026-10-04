@@ -61,6 +61,16 @@ Permite seguir en tiempo real la clasificación de varios dúos en Ranked Solo/D
 
 El Client Secret se almacena localmente en `secrets.json`, un archivo ignorado por Git. En despliegues se recomienda configurar las variables de entorno `TWITCH_CLIENT_ID` y `TWITCH_CLIENT_SECRET`.
 
+### Avisos de directos en Discord
+
+En el canal de texto elegido, abre **Editar canal → Integraciones → Webhooks → Nuevo webhook** y copia su URL. Configura `DISCORD_LIVE_WEBHOOK_URL` como variable privada de Render (o del proceso local). No se introduce en el código ni en la configuración pública. Sin esa variable, los avisos están desactivados.
+
+La sincronización existente de Twitch, cada cinco minutos mientras el servidor está activo, reutiliza la respuesta de Get Streams y envía nombre del integrante, equipo, título y enlace del canal. No añade consultas a Twitch. Si Render gratuito está dormido, al abrir la web se reanudan las comprobaciones; no se pueden detectar directos que hayan terminado entre comprobaciones. La primera comprobación con el webhook configurado también anuncia los directos que ya estén activos.
+
+`discordLiveNotifications` guarda en la misma base (Neon en producción) el último identificador de directo y estado de envío por canal. Dos integrantes con canales distintos generan avisos independientes; compartir un canal no duplica el mensaje. Un directo confirmado no vuelve a anunciarse tras un reinicio o una interrupción de Twitch. Se procesan hasta cinco avisos por ciclo. Los errores de Discord no afectan al estado de Twitch: los pendientes se reintentan en ciclos posteriores respetando el tiempo de espera, solo mientras ese directo siga activo y su canal siga vinculado al equipo. Si se pierde una respuesta después de que Discord publique el mensaje, un reintento puede duplicarlo: el webhook no ofrece entrega exactamente una vez.
+
+El panel de administración muestra el último envío confirmado y los errores, sin mostrar la URL privada. Los mensajes desactivan las menciones automáticas, incluido `@everyone`. No hace falta bot, EventSub ni otro proveedor de alojamiento.
+
 ## 🔐 Credenciales de producción
 
 El PIN de administración y las contraseñas de los equipos se almacenan como hashes PBKDF2. Las claves de API no se guardan en `db.json`.

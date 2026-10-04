@@ -1,6 +1,7 @@
 *
 !Dockerfile
 !server.py
+!discord_live.py
 !storage.py
 !sync_jobs.py
 !index.html
