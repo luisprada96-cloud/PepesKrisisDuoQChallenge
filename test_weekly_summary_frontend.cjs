@@ -12,11 +12,11 @@ const path=require('node:path');
     const weeks=['2026-10-05','2026-09-28'];
     const elo={start:{tier:'Emerald',division:'IV',lp:61,observedAt:1790546400},end:{tier:'Emerald',division:'III',lp:47,observedAt:1791150000},delta:86,partial:false};
     const totals={kills:145,deaths:121,assists:269};
-    const players=[{key:'player1',name:'Ana',riotId:'Uno#EUW',games:28,totals,kda:3.42,mainRole:'TOP',favorite:{name:'Gnar',games:10},elo,penaltiesCompleted:3},
+    const players=[{key:'player1',name:'Ana',riotId:'Uno#EUW',games:28,totals,kda:3.42,mainRole:'TOP',favorite:{name:'MonkeyKing',games:10},elo,penaltiesCompleted:3},
       {key:'player2',name:'Luis',riotId:'Dos#EUW',games:25,totals,kda:3.42,mainRole:'UTILITY',favorite:null,elo:{start:null,end:null,delta:null,partial:true},penaltiesCompleted:0}];
     const team={id:'a',name:'krisis',games:28,wins:17,losses:11,winrate:61,bestStreak:5,totals,kda:3.42,detailGames:25,players,
       shells:{launched:3,received:4,returned:1,achievements:5,credited:2,blocked:1,creditUnknown:2,clipPrize:3},
-      penalties:{received:4,completed:3,manual:1,pending:2},bestMatch:{champions:['Gnar','Lulu'],totals:{kills:24,deaths:5,assists:31},kda:11,at:1791000000}};
+      penalties:{received:4,completed:3,manual:1,pending:2},bestMatch:{champions:['MonkeyKing','Lulu'],totals:{kills:24,deaths:5,assists:31},kda:11,at:1791000000}};
     const archived={week:weeks[1],startsAt:1790546400,endsAt:1791151200,updatedAt:1791151202,status:'ARCHIVED',teams:[team],
       totals:{games:84,shellsLaunched:12,penaltiesCompleted:9,penaltiesManual:1},
       highlights:{rising:{...players[0],teamName:'krisis'},falling:null,attacker:team,completed:{...players[0],teamName:'krisis'}},
@@ -47,6 +47,9 @@ const path=require('node:path');
     assert.match(src,/clip=Winner/);assert.match(src,/parent=pepes.test/);
     await page.locator('[data-weekly-view=team]').click();
     assert.match(await page.locator('#weekly-content').textContent(),/Sin datos suficientes/);
+    assert.match(await page.locator('#weekly-content').textContent(),/Wukong \(10\)/);
+    assert.match(await page.locator('#weekly-content').textContent(),/Wukong \+ Lulu/);
+    assert.doesNotMatch(await page.locator('#weekly-content').textContent(),/MonkeyKing/);
     assert.match(await page.locator('#weekly-content').textContent(),/marcados por administración/);
     assert.doesNotMatch(await page.locator('#weekly-content').textContent(),/sin registro|sin sumar por el límite/);
     assert.equal(await page.locator('#connection-status').count(),0);

@@ -67,7 +67,7 @@
         <p class="weekly-delta ${elo.delta < 0 ? 'is-negative' : ''}">${escape(delta)}</p>
         <p>${elo.start ? `Inicio observado: ${escape(date(elo.start.observedAt, true))}` : ''}${elo.end ? `<br>Final observado: ${escape(date(elo.end.observedAt, true))}` : ''}</p>
         <p>KDA: ${escape(kda(player.totals, player.kda))} · ${player.games} partidas con estadísticas</p>
-        <p>Rol principal: ${escape(roles[player.mainRole] || 'Sin configurar')}<br>Más jugado: ${escape(player.favorite ? `${player.favorite.name} (${player.favorite.games})` : '—')}</p></article>`;
+        <p>Rol principal: ${escape(roles[player.mainRole] || 'Sin configurar')}<br>Más jugado: ${escape(player.favorite ? `${championDisplayName(player.favorite.name)} (${player.favorite.games})` : '—')}</p></article>`;
     }).join('');
     const p = team.penalties, s = team.shells;
     const best = team.bestMatch;
@@ -76,7 +76,7 @@
       <div class="weekly-players">${players}</div><div class="weekly-team-details">
       <article class="weekly-card"><span>⚡ Castigos</span><ul><li>${p.received} recibidos esta semana</li><li>${p.completed} cumplidos automáticamente</li><li>${p.manual} marcados por administración</li><li>${p.pending} pendientes ${summary.status === 'CURRENT' ? 'actualmente' : 'al cierre'}</li></ul></article>
       <article class="weekly-card"><span>🐢 Caparazones</span><ul><li>${s.launched} lanzados · ${s.received} recibidos · ${s.returned} devueltos</li><li>${s.achievements} logros por partidas</li>${s.creditUnknown ? '' : `<li>${s.credited} añadidos al inventario · ${s.blocked} sin sumar por el límite</li>`}<li>+${s.clipPrize} por el premio de clips</li></ul></article>
-      </div>${best ? `<article class="weekly-card" style="margin-top:1rem"><span>🏅 Mejor partida del dúo</span><h3>${best.totals.kills} / ${best.totals.deaths} / ${best.totals.assists} · KDA ${escape(kda(best.totals, best.kda))}</h3><p>${escape(best.champions.join(' + '))} · ${escape(date(best.at, true))}</p></article>` : ''}`;
+      </div>${best ? `<article class="weekly-card" style="margin-top:1rem"><span>🏅 Mejor partida del dúo</span><h3>${best.totals.kills} / ${best.totals.deaths} / ${best.totals.assists} · KDA ${escape(kda(best.totals, best.kda))}</h3><p>${escape(best.champions.map(championDisplayName).join(' + '))} · ${escape(date(best.at, true))}</p></article>` : ''}`;
   }
 
   function renderContent() {

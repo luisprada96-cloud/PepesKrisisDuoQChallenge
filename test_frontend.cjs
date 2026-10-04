@@ -48,7 +48,7 @@ const path = require('node:path');
     Object.assign(duos[1].player1, {displayName:'Luis', twitchUrl:'https://twitch.tv/luis_stream', twitchIsLive:false});
     Object.assign(duos[1].player2, {displayName:'Pepe', twitchUrl:'https://twitch.tv/pepe_stream', twitchIsLive:true});
     duos[1].playerInsights = {
-      player1: {gamesAnalyzed:10, totals:{kills:30,deaths:10,assists:20}, topChampion:{name:'Ahri',kda:'1.20'}, mostPlayedPosition:'MIDDLE'},
+      player1: {gamesAnalyzed:10, totals:{kills:30,deaths:10,assists:20}, topChampion:{name:'MonkeyKing',kda:'1.20'}, mostPlayedPosition:'MIDDLE'},
       player2: {gamesAnalyzed:4, totals:{kills:5,deaths:0,assists:10}, topChampion:{name:'LeeSin',kda:'2.10'}, mostPlayedPosition:'TOP'}
     };
     duos[0].twitchUrl = 'https://twitch.tv/legacy_channel';
@@ -63,6 +63,7 @@ const path = require('node:path');
     duos[2].player2.rank = {tier: 'Unranked', division: '', lp: 0};
     duos[1].eloHistory = [1200,1250,1210,1300].map((totalLp,i)=>({date:`2026-09-0${i+1}`,totalLp,tier:'Gold',division:'IV',lp:totalLp-1200,wins:10+i,losses:5}));
     duos[1].player2.eloHistory = [1700,1750,1720].map((totalLp,i)=>({date:`2026-09-0${i+2}`,totalLp,tier:'Platinum',division:'III',lp:totalLp-1700,wins:20+i,losses:10}));
+    duos[1].bestCombinedKdaMatch = {player1:{championName:'MonkeyKing',position:'TOP',kda:'5/2/7'},player2:{championName:'LeeSin',position:'JUNGLE',kda:'2/1/10'},combinedKda:8,kills:7,deaths:3,assists:17,result:'WIN',date:'04/10/2026 19:00'};
     const historyOffsets = [];
     let failReads = false;
     let failWrites = false;
@@ -108,6 +109,15 @@ const path = require('node:path');
     });
     await page.goto('http://pepes.test/');
     await page.waitForSelector('#leaderboard-tbody .duo-row');
+    const bestChampions = page.locator('.best-champions').first();
+    assert.match(await bestChampions.textContent(), /Wukong/);
+    assert.doesNotMatch(await bestChampions.textContent(), /MonkeyKing/);
+    assert.match(await bestChampions.getByAltText('Wukong').getAttribute('src'), /\/MonkeyKing\.png$/);
+    const mapped = await page.evaluate(() => ['MonkeyKing', 'Kaisa', 'Chogath', 'AurelionSol', 'Ahri', 'NewChampion'].map(championDisplayName));
+    assert.deepEqual(mapped, ['Wukong', "Kai'Sa", "Cho'Gath", 'Aurelion Sol', 'Ahri', 'NewChampion']);
+    const assignment = await page.evaluate(() => { const req = {assignedPlayer:'player1', randomChampions:{player1:'MonkeyKing'}}; return {text:penaltyAssignmentText({scope:'ONE',requirements:req}), id:req.randomChampions.player1}; });
+    assert.match(assignment.text, /Campeón: Wukong/);
+    assert.equal(assignment.id, 'MonkeyKing');
     assert.equal(await page.locator('#personal-alert-bar').isVisible(), false);
     assert.equal(await page.locator('#leaderboard-tbody .duo-row').first().getAttribute('data-id'), 'Primero');
     assert.equal(await page.locator('#stat-top-duo').textContent(), 'Primero');
@@ -161,8 +171,8 @@ const path = require('node:path');
     if (process.env.ELO_SCREENSHOT) await chart.screenshot({path: process.env.ELO_SCREENSHOT});
     const cards = page.locator('#duo-insights-Primero .player-insight-card');
     assert.deepEqual(await cards.locator('h3').allTextContents(), ['Jugador 1#EUW','Jugador 2#EUW']);
-    assert.deepEqual(await cards.nth(0).locator('.insight-metrics strong').allTextContents(), ['5.00','Top','Ahri']);
-    assert.deepEqual(await cards.nth(1).locator('.insight-metrics strong').allTextContents(), ['15.00','Jungla','LeeSin']);
+    assert.deepEqual(await cards.nth(0).locator('.insight-metrics strong').allTextContents(), ['5.00','Top','Wukong']);
+    assert.deepEqual(await cards.nth(1).locator('.insight-metrics strong').allTextContents(), ['15.00','Jungla','Lee Sin']);
     assert.match(await page.evaluate(() => renderPlayerInsightCard({name:'NoStats',mainRole:'UTILITY'}, null)), /Sin datos/);
     const unsafeProfile = await page.evaluate(() => renderParticipantCell({player1:{name:'safe',displayName:'<img src=x onerror=alert(1)>',twitchUrl:'javascript:alert(1)'}}, 'player1'));
     assert.doesNotMatch(unsafeProfile, /<img|javascript:/);

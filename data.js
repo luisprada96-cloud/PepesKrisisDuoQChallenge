@@ -4,6 +4,23 @@
 
 const API_BASE_URL = window.PEPES_API_URL || '/api';
 
+// Visible es_ES names from Riot Data Dragon 16.19.1. Keep IDs in stored data
+// and icon URLs; only presentation uses these names, without extra API calls.
+const CHAMPION_DISPLAY_NAMES = Object.freeze({
+  AurelionSol: 'Aurelion Sol', Bard: 'Bardo', Belveth: "Bel'Veth",
+  Chogath: "Cho'Gath", DrMundo: 'Dr. Mundo', JarvanIV: 'Jarvan IV',
+  KSante: "K'Sante", Kaisa: "Kai'Sa", Khazix: "Kha'Zix", KogMaw: "Kog'Maw",
+  Leblanc: 'LeBlanc', LeeSin: 'Lee Sin', Locke: 'Vex', MasterYi: 'Maestro Yi',
+  MissFortune: 'Miss Fortune', MonkeyKing: 'Wukong', Nunu: 'Nunu y Willump',
+  RekSai: "Rek'Sai", Renata: 'Renata Glasc', TahmKench: 'Tahm Kench',
+  TwistedFate: 'Twisted Fate', Velkoz: "Vel'Koz", XinZhao: 'Xin Zhao'
+});
+
+function championDisplayName(value) {
+  const id = String(value || '');
+  return Object.prototype.hasOwnProperty.call(CHAMPION_DISPLAY_NAMES, id) ? CHAMPION_DISPLAY_NAMES[id] : id;
+}
+
 function normalizeTwitchUrl(value) {
   const rawValue = String(value || '').trim();
   if (!rawValue) return '';
@@ -51,11 +68,11 @@ function penaltyAssignmentText(instance, duo = {}) {
   if (scope === 'ONE') {
     const key = req.assignedPlayer;
     if (key !== 'player1' && key !== 'player2') return req.assignmentVersion >= 2 ? 'Asignación pendiente' : 'Puede cumplirlo cualquiera de los dos (castigo anterior).';
-    return `Debe cumplirlo: ${label(key, req.assignedAccount)}${req.randomChampions?.[key] ? ` · Campeón: ${req.randomChampions[key]}` : ''}${flashInstruction(key) ? ` · ${flashInstruction(key)}` : ''}`;
+    return `Debe cumplirlo: ${label(key, req.assignedAccount)}${req.randomChampions?.[key] ? ` · Campeón: ${championDisplayName(req.randomChampions[key])}` : ''}${flashInstruction(key) ? ` · ${flashInstruction(key)}` : ''}`;
   }
   if (scope === 'BOTH') {
     const champions = ['player1', 'player2'].filter(key => req.randomChampions?.[key])
-      .map(key => `${label(key)}: ${req.randomChampions[key]}`);
+      .map(key => `${label(key)}: ${championDisplayName(req.randomChampions[key])}`);
     const flash = instance?.penalty?.baseId === 'swap_flash' ? ['player1','player2'].map(key => `${label(key, req.flashAccounts?.[key])}: ${flashInstruction(key)}`) : [];
     return `Lo cumplen ambos integrantes.${champions.length ? ' ' + champions.join(' · ') : ''}${flash.length ? ' ' + flash.join(' · ') : ''}`;
   }

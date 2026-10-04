@@ -147,7 +147,7 @@ function renderPlayerInsightCard(player, insight) {
       <div class="insight-metrics participant-insight-metrics">
         <div><span>KDA</span><strong>${kda}</strong></div>
         <div><span>Rol principal</span><strong>${role}</strong></div>
-        <div><span>Campeón más jugado</span><strong>${escapeHtml(champion?.name || 'Sin datos')}</strong></div>
+        <div><span>Campeón más jugado</span><strong>${escapeHtml(championDisplayName(champion?.name) || 'Sin datos')}</strong></div>
       </div>
     </div>
   </article>`;
@@ -405,6 +405,8 @@ function renderBestMatchesTable() {
     const p2 = match.player2;
     const p1Champion = escapeHtml(p1.championName || 'Unknown');
     const p2Champion = escapeHtml(p2.championName || 'Unknown');
+    const p1Name = escapeHtml(championDisplayName(p1.championName) || 'Unknown');
+    const p2Name = escapeHtml(championDisplayName(p2.championName) || 'Unknown');
     const p1Position = POSITION_LABELS[p1.position] || 'Sin datos';
     const p2Position = POSITION_LABELS[p2.position] || 'Sin datos';
     const resultClass = match.result === 'WIN' ? 'best-result-win' : 'best-result-loss';
@@ -416,8 +418,8 @@ function renderBestMatchesTable() {
         <td><strong class="best-match-team">${escapeHtml(duo.teamName)}</strong><span class="best-match-date">${escapeHtml(match.date || '')}</span></td>
         <td>
           <div class="best-champions">
-            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p1Champion}.png" alt="${p1Champion}"> ${p1Champion}</span>
-            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p2Champion}.png" alt="${p2Champion}"> ${p2Champion}</span>
+            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p1Champion}.png" alt="${p1Name}"> ${p1Name}</span>
+            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p2Champion}.png" alt="${p2Name}"> ${p2Name}</span>
           </div>
         </td>
         <td><span class="best-lines">${p1Position} <i class="fa-solid fa-plus"></i> ${p2Position}</span></td>
