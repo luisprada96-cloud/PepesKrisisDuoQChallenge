@@ -35,9 +35,13 @@ class NoRedirects(urllib.request.HTTPRedirectHandler):
 
 
 def send(url, alert):
+    return send_payload(url, message(alert))
+
+
+def send_payload(url, payload):
     """Return only safe diagnostics; the webhook URL contains a secret token."""
     request = urllib.request.Request(
-        url + "?wait=true", data=json.dumps(message(alert), ensure_ascii=False).encode("utf-8"),
+        url + "?wait=true", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "User-Agent": "PepesKrisis-LiveAlerts/1.0"}, method="POST")
     try:
         with urllib.request.build_opener(NoRedirects()).open(request, timeout=10) as response:

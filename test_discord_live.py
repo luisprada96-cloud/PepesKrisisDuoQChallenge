@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 import discord_live
 import server
+import test_shell_penalties as fixtures
 
 
 URL = 'https://discord.com/api/webhooks/123456/test_token_not_real'
@@ -151,6 +152,39 @@ class DiscordLiveTests(unittest.TestCase):
             self.assertFalse(result['success'])
             self.assertEqual(result['retryAfter'], delay)
             self.assertNotIn('test_token', result['error'])
+
+
+class DiscordTestEndpointTests(unittest.TestCase):
+    setUp = fixtures.ShellEndpointTests.setUp
+    tearDown = fixtures.ShellEndpointTests.tearDown
+    post = fixtures.ShellEndpointTests.post
+
+    def test_requires_admin_before_calling_discord(self):
+        with patch.dict(os.environ, {'DISCORD_LIVE_WEBHOOK_URL': URL}), patch.object(discord_live, 'send_payload') as send:
+            self.post('/api/discord/test', {'authPin': 'wrong'}, expected=401)
+        send.assert_not_called()
+
+    def test_missing_webhook_does_not_send(self):
+        with patch.dict(os.environ, {'DISCORD_LIVE_WEBHOOK_URL': ''}), patch.object(discord_live, 'send_payload') as send:
+            self.post('/api/discord/test', {'authPin': '9999'}, expected=400)
+        send.assert_not_called()
+
+    def test_one_fixed_test_message_without_changing_tournament(self):
+        before = copy.deepcopy(server.load_db())
+        with patch.dict(os.environ, {'DISCORD_LIVE_WEBHOOK_URL': URL}), patch.object(discord_live, 'send_payload', return_value={'success': True, 'messageId': 'test'}) as send:
+            result = self.post('/api/discord/test', {'authPin': '9999', 'content': '@everyone fake'}, expected=200)
+        self.assertTrue(result['success'])
+        send.assert_called_once()
+        payload = send.call_args.args[1]
+        self.assertIn('Mensaje de prueba', payload['content'])
+        self.assertNotIn('fake', payload['content'])
+        self.assertEqual(payload['allowed_mentions'], {'parse': []})
+        self.assertEqual(server.load_db(), before)
+
+    def test_failed_delivery_reports_safe_error(self):
+        with patch.dict(os.environ, {'DISCORD_LIVE_WEBHOOK_URL': URL}), patch.object(discord_live, 'send_payload', return_value={'success': False, 'error': 'Discord respondió HTTP 404.'}):
+            result = self.post('/api/discord/test', {'authPin': '9999'}, expected=502)
+        self.assertEqual(result['error'], 'Discord respondió HTTP 404.')
 
 
 if __name__ == '__main__':

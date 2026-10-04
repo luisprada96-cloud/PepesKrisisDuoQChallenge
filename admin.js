@@ -388,6 +388,17 @@ function setupAdminListeners() {
   const btnReset = document.getElementById('btn-reset-data');
   const btnExport = document.getElementById('btn-export-data');
   const btnSyncTwitch = document.getElementById('btn-sync-twitch-admin');
+  const btnTestDiscord = document.getElementById('btn-test-discord-admin');
+  if (btnTestDiscord) {
+    btnTestDiscord.addEventListener('click', async () => {
+      btnTestDiscord.disabled = true;
+      try {
+        const result = await DataStore.testDiscord(adminSessionPin);
+        if (result.success) showToast('Mensaje de prueba enviado a Discord.');
+        else alert(result.error || 'No se pudo enviar la prueba de Discord.');
+      } finally { btnTestDiscord.disabled = false; }
+    });
+  }
   const btnSavePenaltyWeights = document.getElementById('btn-save-penalty-weights');
 
   if (addForm) {

@@ -223,6 +223,7 @@ const DataStore = {
   saveConfig: (config, authPin) => mutation('/config', {config, authPin}),
   triggerRiotSync: authPin => mutation('/sync', {authPin}),
   triggerTwitchSync: authPin => mutation('/twitch/sync', {authPin}),
+  testDiscord: authPin => mutation('/discord/test', {authPin}),
   calculateShells: authPin => mutation('/calculate-shells', {authPin}),
   loginPlayer: (teamId, password) => mutation('/player/login', {teamId, password}),
   logoutPlayer: sessionToken => mutation('/player/logout', {sessionToken}),

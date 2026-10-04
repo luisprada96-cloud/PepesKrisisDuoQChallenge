@@ -2359,6 +2359,21 @@ class CustomHandler(BaseHTTPRequestHandler):
             save_db(db)
             self._send_json({"success": True, "newShells": total_new_shells, "duos": safe_duos(duos)})
 
+        elif parsed.path == '/api/discord/test':
+            if not verify_admin_pin(db, data.get("authPin", "")):
+                self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
+                return
+            url = discord_live.webhook_url(os.environ.get("DISCORD_LIVE_WEBHOOK_URL", ""))
+            if not url:
+                self._send_json({"success": False, "error": "Configura un webhook válido en DISCORD_LIVE_WEBHOOK_URL."}, 400)
+                return
+            result = discord_live.send_payload(url, {
+                "content": "🔔 **Mensaje de prueba · Pepes Krisis Duo Q**\nLa conexión de la web con este canal de Discord funciona.\nEsto es una prueba; no anuncia ningún directo real.",
+                "allowed_mentions": {"parse": []}
+            })
+            self._send_json({"success": True} if result["success"] else {"success": False, "error": result["error"]},
+                            200 if result["success"] else 502)
+
         elif parsed.path in ('/api/sync', '/api/twitch/sync'):
             if not verify_admin_pin(db, data.get("authPin", "")):
                 self._send_json({"success": False, "error": "PIN incorrecto"}, 401)

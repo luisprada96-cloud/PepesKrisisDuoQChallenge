@@ -3,6 +3,7 @@ const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const discordTestRequests = [];
 
 (async () => {
   const browser = await chromium.launch({headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? {channel: process.env.PLAYWRIGHT_CHANNEL} : {})});
@@ -97,6 +98,7 @@ const path = require('node:path');
         else if (url.pathname === '/api/sync/status') result = {riot:{lastSuccessAt:1791100000000,lastApiSuccessAt:'2026-10-04T14:44:00+00:00',pending:2},twitch:{lastSuccessAt:1791100000000,error:'Fallo técnico de Twitch'}};
         else if (url.pathname === '/api/admin/login') result = {success: true, duos, config: {penaltyWeights: {}}, penaltyCatalog: []};
         else if (url.pathname === '/api/sync') { syncCount++; result = {success: true, job: {running: true}}; }
+        else if (url.pathname === '/api/discord/test') { discordTestRequests.push(request.postDataJSON()); result = {success:true}; }
         else if (url.pathname === '/api/player/login') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}, sessionToken: 'fake'};
         else if (url.pathname === '/api/player/spin-shell') { spins.push(request.postDataJSON()); result = {success: true, penalty: {name: 'Sin Flash', desc: 'Prueba', icon: 'X'}, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}}; }
         else if (url.pathname === '/api/player/state') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}};
@@ -238,6 +240,9 @@ const path = require('node:path');
     await page.locator('#admin-pin-input').fill('9999');
     await page.locator('#admin-pin-form button[type="submit"]').click();
     await page.waitForFunction(() => document.getElementById('admin-pin-overlay').style.display === 'none');
+    await page.locator('#btn-test-discord-admin').click();
+    await page.waitForFunction(() => document.getElementById('toast-notification')?.textContent.includes('Mensaje de prueba enviado'));
+    assert.deepEqual(discordTestRequests, [{authPin:'9999'}]);
 
 
     await page.evaluate(() => DataStore.refreshSyncStatus());

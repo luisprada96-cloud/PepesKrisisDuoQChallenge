@@ -71,6 +71,8 @@ La sincronización existente de Twitch, cada cinco minutos mientras el servidor 
 
 El panel de administración muestra el último envío confirmado y los errores, sin mostrar la URL privada. Los mensajes desactivan las menciones automáticas, incluido `@everyone`. No hace falta bot, EventSub ni otro proveedor de alojamiento.
 
+**Probar aviso de Discord**, en administración, envía un mensaje identificado como prueba mediante `POST /api/discord/test`, protegido con el PIN administrativo. No simula un directo ni cambia el registro de notificaciones del torneo.
+
 ## 🔐 Credenciales de producción
 
 El PIN de administración y las contraseñas de los equipos se almacenan como hashes PBKDF2. Las claves de API no se guardan en `db.json`.
