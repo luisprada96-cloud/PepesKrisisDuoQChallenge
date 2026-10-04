@@ -203,7 +203,11 @@ class IncrementalSyncTests(unittest.TestCase):
         server.save_db(db)
         error = urllib.error.HTTPError('https://riot.invalid', 403, 'Forbidden', {}, None)
         with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open", side_effect=error):
-            self.assertFalse(server.sync_riot_data()["success"])
+            result = server.sync_riot_data()
+            self.assertFalse(result["success"])
+        self.assertIn("Sincronización fallida", result["error"])
+        self.assertIn("HTTP 403:", result["error"])
+        self.assertNotIn("riot.invalid", result["error"])
         self.assertEqual(server.load_db()["lastRiotApiSuccessAt"], db["lastRiotApiSuccessAt"])
 
     def test_partial_sync_still_records_successful_api_responses(self):
@@ -212,6 +216,8 @@ class IncrementalSyncTests(unittest.TestCase):
         with patch.object(server, "utc_now", return_value=stamp):
             result = self.sync(['EUW1_FAILED'], [], fail_once={'EUW1_FAILED'})
         self.assertFalse(result["success"])
+        self.assertIn("Sincronización parcial", result["error"])
+        self.assertIn("error de conexión: 1", result["error"])
         self.assertEqual(server.load_db()["lastRiotApiSuccessAt"], stamp)
 
     def test_500_game_history_needs_one_list_request_after_first_scan(self):

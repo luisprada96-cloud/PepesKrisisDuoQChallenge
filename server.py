@@ -1389,6 +1389,7 @@ def sync_riot_data():
     db = load_db()
     original = copy.deepcopy(db)
     failures = 0
+    failure_reasons = {}
     pending_imports = 0
     api_key = get_riot_api_key()
     if not api_key:
@@ -1401,6 +1402,17 @@ def sync_riot_data():
     }
     updated = False
     response_cache = {}
+
+    def record_failure(error):
+        nonlocal failures
+        failures += 1
+        if isinstance(error, urllib.error.HTTPError):
+            reason = f"HTTP {error.code}"
+        elif isinstance(error, (urllib.error.URLError, TimeoutError)):
+            reason = "error de conexión"
+        else:
+            reason = "respuesta o datos no válidos"
+        failure_reasons[reason] = failure_reasons.get(reason, 0) + 1
 
     def fetch_json(url):
         # Shared matches/profiles are requested once per job, never across jobs.
@@ -1430,7 +1442,7 @@ def sync_riot_data():
                         duo["player1"]["puuid"] = puuid1
                         updated = True
                 except Exception as ex_p1:
-                    failures += 1
+                    record_failure(ex_p1)
                     safe_print(f"[Riot Sync PUUID P1 Error] {p1_name}: {ex_p1}")
 
             if duo.get("player2") and duo["player2"].get("name"):
@@ -1444,7 +1456,7 @@ def sync_riot_data():
                         duo["player2"]["puuid"] = puuid2
                         updated = True
                 except Exception as ex_p2:
-                    failures += 1
+                    record_failure(ex_p2)
                     safe_print(f"[Riot Sync PUUID P2 Error] {ex_p2}")
 
             # Each participant has an independent Solo/Duo rank for the public table.
@@ -1455,7 +1467,7 @@ def sync_riot_data():
                     duo["player2"]["rank"] = solo_rank_snapshot(entries2)
                     updated = True
                 except Exception as error:
-                    failures += 1
+                    record_failure(error)
                     safe_print(f"[Riot Sync League P2 Error] {error}")
 
             if not puuid1:
@@ -1514,7 +1526,7 @@ def sync_riot_data():
                         duo["netLp"] = current_total_lp - initial_total
                         updated = True
             except Exception as e:
-                failures += 1
+                record_failure(e)
                 safe_print(f"[Riot Sync League Error] {e}")
 
             # 4. Incremental Match-V5 fetch + progressive legacy backfill.
@@ -1594,7 +1606,7 @@ def sync_riot_data():
                         enriched_count += 1
                     updated = True
                 except Exception as ex_m:
-                    failures += 1
+                    record_failure(ex_m)
                     safe_print(f"[Riot Sync Match Detail Error] {mid}: {ex_m}")
 
             discovery["pendingMatchIds"] = [mid for mid in new_match_ids if mid not in existing_by_id]
@@ -1614,14 +1626,20 @@ def sync_riot_data():
             safe_print(f"[Riot Sync Success] Updated {p1_name}#{p1_tag}: {duo['tier']} {duo['division']} ({duo['lp']} LP), History: {len(duo.get('history',[]))} matches, Shells: {duo.get('blueShells', 0)}")
 
         except Exception as e:
-            failures += 1
+            record_failure(e)
             safe_print(f"[Riot API Sync Error] {e}")
 
     confirmed_api_call = db.get("lastRiotApiSuccessAt") != original.get("lastRiotApiSuccessAt")
     pending = merge_riot_result(original, db) if updated or confirmed_api_call else 0
     pending += pending_imports
+    error = None
+    if failures:
+        outcome = "parcial" if confirmed_api_call else "fallida"
+        reasons = "; ".join(f"{reason}: {count}" for reason, count in sorted(failure_reasons.items()))
+        error = (f"Sincronización {outcome}: {failures} consulta(s) fallida(s) ({reasons}). "
+                 "Se conservan los últimos datos disponibles.")
     return {"success": failures == 0, "pending": pending,
-            "error": f"Sincronización parcial: {failures} consulta(s) fallida(s). Se conservan los últimos datos disponibles." if failures else None}
+            "error": error}
 
 def public_trophies():
     with db_lock:
