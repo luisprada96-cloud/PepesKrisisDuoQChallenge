@@ -17,6 +17,7 @@ env/
 *.bak
 secrets.json
 /db.json
+/pepes_krisis_duoq_v0.1.zip
 *-verificado.png
 
 backups/
