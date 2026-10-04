@@ -139,6 +139,7 @@ class DiscordLiveTests(unittest.TestCase):
         payload = json.loads(request.data)
         self.assertEqual(request.full_url, URL + '?wait=true')
         self.assertEqual(payload['allowed_mentions'], {'parse': []})
+        self.assertEqual(payload['flags'], 4)
         self.assertIn('\\*Luis\\*', payload['content'])
         self.assertIn('https://www.twitch.tv/channel_one', payload['content'])
 

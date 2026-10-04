@@ -71,6 +71,8 @@ La sincronización existente de Twitch, cada cinco minutos mientras el servidor 
 
 El panel de administración muestra el último envío confirmado y los errores, sin mostrar la URL privada. Los mensajes desactivan las menciones automáticas, incluido `@everyone`. No hace falta bot, EventSub ni otro proveedor de alojamiento.
 
+Los avisos mantienen el enlace de Twitch clicable y desactivan su vista previa automática mediante `SUPPRESS_EMBEDS` de Discord. Este formato se aplica a los mensajes nuevos; los enviados anteriormente conservan su aspecto.
+
 **Probar aviso de Discord**, en administración, envía un mensaje identificado como prueba mediante `POST /api/discord/test`, protegido con el PIN administrativo. No simula un directo ni cambia el registro de notificaciones del torneo.
 
 ## 🔐 Credenciales de producción

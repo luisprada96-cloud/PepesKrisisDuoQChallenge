@@ -40,6 +40,8 @@ def send(url, alert):
 
 def send_payload(url, payload):
     """Return only safe diagnostics; the webhook URL contains a secret token."""
+    # SUPPRESS_EMBEDS keeps links clickable without generating Twitch previews.
+    payload = {**payload, "flags": 4}
     request = urllib.request.Request(
         url + "?wait=true", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json", "User-Agent": "PepesKrisis-LiveAlerts/1.0"}, method="POST")
