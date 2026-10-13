@@ -91,6 +91,8 @@ En local, las claves introducidas desde el panel de administración se guardan e
 
 ## Fiabilidad y operación
 
+`POST /api/admin/check-apis`, con `authPin`, verifica las credenciales actuales desde el servidor sin necesitar equipos: consulta `lol-status-v4` de Riot y obtiene un token nuevo de Twitch para consultar `helix/streams`. Solo devuelve resultado, fecha y códigos HTTP; nunca claves, secretos o tokens. Una respuesta válida de Riot actualiza la última llamada API OK. No crea partidas, equipos ni avisos de Discord.
+
 La aplicación sirve el frontend y la API desde el mismo origen. Solo los archivos públicos de la interfaz se pueden descargar; la base de datos, copias, secretos y código Python nunca se sirven por HTTP.
 
 - Las operaciones manuales de Riot, Twitch y cálculo de caparazones requieren el PIN administrativo. Riot y Twitch responden `202` y trabajan en segundo plano; `/api/sync/status` informa de ejecución, errores, última finalización correcta y trabajo pendiente. Ese estado operativo se reinicia al arrancar el proceso.

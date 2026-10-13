@@ -801,6 +801,50 @@ def get_twitch_app_token(client_id, client_secret):
         }
         return access_token
 
+def check_service_credentials(db):
+    """Real API probes without teams; never return keys, tokens or raw errors."""
+    result = {"checkedAt": utc_now()}
+    api_key = get_riot_api_key()
+    if not api_key:
+        result["riot"] = {"success": False, "error": "Clave de Riot no configurada."}
+    else:
+        try:
+            region = db.get("config", {}).get("server", "EUW").lower()
+            platform = {"euw": "euw1", "eune": "eun1", "na": "na1", "kr": "kr"}.get(region, "euw1")
+            request = urllib.request.Request(f"https://{platform}.api.riotgames.com/lol/status/v4/platform-data",
+                                             headers={"X-Riot-Token": api_key, "User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict) or not payload.get("id"):
+                raise ValueError("invalid response")
+            result["riot"] = {"success": True, "httpStatus": 200, "endpoint": "lol-status-v4"}
+        except urllib.error.HTTPError as error:
+            result["riot"] = {"success": False, "httpStatus": error.code, "error": f"Riot respondió HTTP {error.code}."}
+        except Exception:
+            result["riot"] = {"success": False, "error": "No se pudo confirmar la conexión con Riot."}
+    client_id, client_secret = get_twitch_credentials(db)
+    if not client_id or not client_secret:
+        result["twitch"] = {"success": False, "error": "Credenciales de Twitch no configuradas."}
+    else:
+        try:
+            # Obtain a fresh token to verify the currently configured client secret.
+            clear_twitch_token_cache()
+            token = get_twitch_app_token(client_id, client_secret)
+            request = urllib.request.Request("https://api.twitch.tv/helix/streams?first=1",
+                                             headers={"Authorization": f"Bearer {token}", "Client-Id": client_id})
+            with urllib.request.urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if not isinstance(payload, dict) or not isinstance(payload.get("data"), list):
+                raise ValueError("invalid response")
+            result["twitch"] = {"success": True, "httpStatus": 200, "endpoint": "oauth + helix/streams"}
+        except urllib.error.HTTPError as error:
+            clear_twitch_token_cache()
+            result["twitch"] = {"success": False, "httpStatus": error.code, "error": f"Twitch respondió HTTP {error.code}."}
+        except Exception:
+            result["twitch"] = {"success": False, "error": "No se pudo confirmar la conexión con Twitch."}
+    return result
+
+
 def single_sync(lock):
     def decorate(callback):
         @wraps(callback)
@@ -2358,6 +2402,16 @@ class CustomHandler(BaseHTTPRequestHandler):
             weekly_summary.maintain(db, refresh=True)
             save_db(db)
             self._send_json({"success": True, "newShells": total_new_shells, "duos": safe_duos(duos)})
+
+        elif parsed.path == '/api/admin/check-apis':
+            if not verify_admin_pin(db, data.get("authPin", "")):
+                self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
+                return
+            checks = check_service_credentials(db)
+            if checks["riot"]["success"]:
+                db["lastRiotApiSuccessAt"] = utc_now()
+                save_db(db)
+            self._send_json({"success": True, **checks})
 
         elif parsed.path == '/api/discord/test':
             if not verify_admin_pin(db, data.get("authPin", "")):
