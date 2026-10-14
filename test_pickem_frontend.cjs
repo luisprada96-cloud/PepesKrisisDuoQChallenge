@@ -26,9 +26,10 @@ const path = require('node:path');
         const categories=[
           {id:'unique_champions',title:'¿Cuántos campeones distintos se jugarán?',description:'Los campeones de los participantes, sin repetir.',placeholder:'Selecciona un rango',options},
           {id:'weekly_leader',title:'¿Qué equipo terminará primero esta semana?',description:'ELO al cierre semanal.',placeholder:'Selecciona un equipo',icon:'🏆',options:[{id:'a',label:'Equipo A'},{id:'b',label:'Equipo B'}]},
-          {id:'best_game_kda',title:'¿Quién hará la partida con mejor KDA?',description:'Mejor partida individual.',placeholder:'Selecciona un jugador',icon:'⚔',options:[{id:'a1',label:'A1 · Equipo A'},{id:'a2',label:'A2 · Equipo A'},{id:'b1',label:'B1 · Equipo B'},{id:'b2',label:'B2 · Equipo B'}]}
+          {id:'best_game_kda',title:'¿Quién hará la partida con mejor KDA?',description:'Mejor partida individual.',placeholder:'Selecciona un jugador',icon:'⚔',options:[{id:'a1',label:'A1 · Equipo A'},{id:'a2',label:'A2 · Equipo A'},{id:'b1',label:'B1 · Equipo B'},{id:'b2',label:'B2 · Equipo B'}]},
+          {id:'first_five_negative',title:'¿Cuántos dúos tendrán winrate negativo en sus primeras 5 ranked?',description:'Las cinco primeras ranked del torneo.',placeholder:'Selecciona cuántos dúos',icon:'📉',eventLabel:'ESTRENO DEL TORNEO',options:Array.from({length:10},(_,i)=>({id:String(i),label:String(i)}))}
         ].map(c=>({...c,reward:1,myAnswer:logged?saved[c.id]||null:null,
-          result:closed?{status:'SETTLED',value:c.id==='unique_champions'?32:20,summary:c.id==='unique_champions'?'32 campeones distintos':c.id==='weekly_leader'?'Primer puesto · Gold IV · 50 LP':'Mejor partida individual · 20.00 KDA',optionLabel:c.id==='unique_champions'?'30–39':c.id==='weekly_leader'?'Equipo B':'A2 · Equipo A',winners:[{ballotId:'mine'}]}:null}));
+          result:closed?{status:'SETTLED',value:c.id==='unique_champions'?32:20,summary:c.id==='unique_champions'?'32 campeones distintos':c.id==='weekly_leader'?'Primer puesto · Gold IV · 50 LP':c.id==='first_five_negative'?'0 dúos con winrate negativo en sus primeras 5 ranked':'Mejor partida individual · 20.00 KDA',optionLabel:c.id==='unique_champions'?'30–39':c.id==='weekly_leader'?'Equipo B':c.id==='first_five_negative'?'0':'A2 · Equipo A',winners:[{ballotId:'mine'}]}:null}));
         const hasBallot=Object.keys(saved).length>0;
         const state={week:url.searchParams.get('week')||'2026-10-12',weeks:['2026-10-19','2026-10-12'],startsAt:future-86400*4,endsAt:future+60,closesAt:closed?1:future,closed,categories,
           entries:hasBallot?1:0,myBallot:logged&&hasBallot?{author,answers:saved}:null,
@@ -46,7 +47,8 @@ const path = require('node:path');
     await page.goto('http://pepes.test/pickem.html');
     const card=page.locator('[data-pickem-category="unique_champions"]');
     await card.waitFor();
-    assert.equal(await page.locator('[data-pickem-category]').count(),3,'all three categories are active');
+    assert.equal(await page.locator('[data-pickem-category]').count(),4,'all four categories are active');
+    assert.equal(await page.locator('.pickem-event').last().textContent(),'ESTRENO DEL TORNEO');
     await card.click();
     assert.equal(await page.locator('#pickem-dialog').isVisible(),true);
     assert.equal(await page.locator('#pickem-answer option').count(),13);
@@ -86,7 +88,7 @@ const path = require('node:path');
     await page.locator('#pickem-form').dispatchEvent('submit');
     assert.equal(calls.length,1,'cannot change a submitted prediction');
     await page.keyboard.press('Escape');
-    for(const [id,option,count,placeholder] of [['weekly_leader','b',3,'Selecciona un equipo'],['best_game_kda','a2',5,'Selecciona un jugador']]) {
+    for(const [id,option,count,placeholder] of [['weekly_leader','b',3,'Selecciona un equipo'],['best_game_kda','a2',5,'Selecciona un jugador'],['first_five_negative','0',11,'Selecciona cuántos dúos']]) {
       await page.locator(`[data-pickem-category="${id}"]`).click();
       assert.equal(await page.locator('#pickem-answer option').count(),count);
       assert.equal(await page.locator('#pickem-answer option').first().textContent(),placeholder);
@@ -97,14 +99,16 @@ const path = require('node:path');
       await page.waitForFunction(()=>!document.getElementById('pickem-dialog').open);
       assert.equal(await page.locator('#pickem-entries').textContent(),'1 quiniela enviada','categories share the same ballot');
     }
-    assert.equal(calls.length,3);
+    assert.equal(calls.length,4);
+    assert.equal(calls[3].optionId,'0','zero is a valid saved prediction');
     closed=true;
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     await page.waitForSelector('.pickem-result-entry');
     assert.match(await page.locator('.pickem-card-result').nth(0).textContent(),/32 campeones distintos/);
     assert.match(await page.locator('.pickem-card-result').nth(1).textContent(),/Equipo B/);
     assert.match(await page.locator('.pickem-card-result').nth(2).textContent(),/20.00 KDA/);
-    assert.equal(await page.locator('.pickem-result-entry').count(),3);
+    assert.match(await page.locator('.pickem-card-result').nth(3).textContent(),/0 dúos con winrate negativo/);
+    assert.equal(await page.locator('.pickem-result-entry').count(),4);
     assert.match(await page.locator('.pickem-result-entry').first().textContent(),/\+1 caparazón/);
     assert.equal(await page.evaluate(()=>window.injected),undefined);
     await Promise.all([page.waitForResponse(r=>r.url().includes('week=2026-10-19')),page.locator('#pickem-week').selectOption('2026-10-19')]);

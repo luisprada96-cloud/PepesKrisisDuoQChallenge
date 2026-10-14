@@ -194,7 +194,7 @@ class PickemServiceTests(unittest.TestCase):
         self.db['duos'].append({'id':'new','teamName':'Nuevo','player1':{'name':'Nuevo1'},'player2':{'name':'Nuevo2'}})
         _, changed = pickem.ensure_week(self.db, NOW)
         self.assertTrue(changed)
-        self.assertEqual(len(self.board['categories']), 3)
+        self.assertEqual(len(self.board['categories']), 4)
         self.assertEqual(len(self.board['ballots']), 1)
         team_category = next(c for c in self.board['categories'] if c['id']=='weekly_leader')
         player_category = next(c for c in self.board['categories'] if c['id']=='best_game_kda')
@@ -260,6 +260,103 @@ class PickemServiceTests(unittest.TestCase):
         d['player1'].update(name='Other',rank=None)
         pickem.capture_rankings(self.db)
         self.assertNotEqual(self.board['rankObservations']['a']['account'],pickem.account(d['player1']))
+
+    def first_five_category(self):
+        return next(c for c in self.board['categories'] if c['id']=='first_five_negative')
+
+    def first_games(self, duo, wins, start=NOW):
+        # Stored newest-first, as real Riot imports are. The fifth result is still chronological.
+        duo['history'] = [{**game(f"{duo['id']}-{i}",at=start+i*100),
+                           'result':'WIN' if i<wins else 'LOSS'} for i in reversed(range(5))]
+        return duo['history']
+
+    def test_first_five_options_cover_zero_through_nine_and_only_opening_week_has_category(self):
+        self.assertEqual([o['id'] for o in self.first_five_category()['options']],[str(i) for i in range(10)])
+        pickem.submit(self.db,'a','browser','first_five_negative','0',now=NOW)
+        self.assertEqual(self.board['ballots'][0]['answers']['first_five_negative'],'0')
+        for value in ('10','-1',0,True):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                pickem.submit(self.db,'b','other','first_five_negative',value,now=NOW)
+        next_week,_ = pickem.ensure_week(self.db,pickem.weeks.timestamp('2026-10-19T00:00'))
+        self.assertNotIn('first_five_negative',[c['id'] for c in self.db['pickem']['weeks'][next_week]['categories']])
+
+    def test_first_five_negative_means_at_most_two_wins_not_overall_winrate(self):
+        for wins in range(6):
+            with self.subTest(wins=wins):
+                for duo in self.db['duos']: self.first_games(duo,wins)
+                # Later wins must not change the first five.
+                self.db['duos'][0]['history'] += [{**game('later',at=NOW+1000),'result':'WIN'}]
+                metric = pickem.first_five_negative(self.db,self.first_five_category(),now=NOW+2000)
+                self.assertEqual(metric['value'],2 if wins<3 else 0)
+                self.assertEqual(metric['evidence'][0]['wins'],wins)
+                self.assertEqual(metric['evidence'][0]['winrate'],wins*20)
+
+    def test_first_five_orders_deduplicates_and_filters_test_nonranked_outside_tournament(self):
+        for duo in self.db['duos']: self.first_games(duo,2)
+        duo = self.db['duos'][0]
+        duo['history'] += [copy.deepcopy(duo['history'][0]),
+                          {**game('before',at=NOW-86400),'result':'WIN'},
+                          {**game('test',at=NOW-1),'result':'WIN','isTest':True},
+                          {**game('aram',at=NOW-1),'result':'WIN','queueId':450},
+                          {**game('after',at=pickem.weeks.timestamp(self.db['config']['endDate'])),'result':'WIN'}]
+        metric=pickem.first_five_negative(self.db,self.first_five_category(),now=NOW+2000)
+        self.assertEqual(metric['value'],2)
+        self.assertEqual(metric['evidence'][0]['matchIds'],[f'a-{i}' for i in range(5)])
+
+    def test_first_five_waits_for_incomplete_teams_and_can_finish_in_a_later_week(self):
+        self.first_games(self.db['duos'][0],2)
+        self.first_games(self.db['duos'][1],3)
+        last=self.db['duos'][1]['history'].pop(0)
+        category=self.first_five_category()
+        self.assertTrue(pickem.first_five_negative(self.db,category,now=NOW+86400*6)['pending'])
+        last['gameEndTimestamp']=(NOW+86400*6)*1000
+        self.db['duos'][1]['history'].append(last)
+        metric=pickem.first_five_negative(self.db,category,now=NOW+86400*6+1)
+        self.assertEqual(metric['value'],1)
+
+    def test_first_five_unknown_result_or_pending_import_cannot_be_skipped(self):
+        for duo in self.db['duos']: self.first_games(duo,2)
+        missing=self.db['duos'][0]['history'][0]
+        missing.pop('result')
+        category=self.first_five_category()
+        self.db['duos'][0]['history'].insert(0,{**game('sixth',at=NOW+1000),'result':'WIN'})
+        self.assertTrue(pickem.first_five_negative(self.db,category,now=NOW+2000)['pending'])
+        missing['result']='LOSS'
+        self.db['duos'][1]['riotMatchDiscovery']={'pendingMatchIds':['earlier-missing']}
+        self.assertTrue(pickem.first_five_negative(self.db,category,now=NOW+2000)['pending'])
+
+    def test_first_five_incomplete_teams_excluded_only_after_final_tournament_scan(self):
+        self.first_games(self.db['duos'][0],2)
+        self.first_games(self.db['duos'][1],0)
+        self.db['duos'][1]['history'].pop()
+        category=self.first_five_category()
+        end=pickem.weeks.timestamp(self.db['config']['endDate'])
+        self.assertTrue(pickem.first_five_negative(self.db,category,now=end+600)['pending'])
+        self.db['pickem']['lastCompleteSync']={'startedAt':end+300}
+        metric=pickem.first_five_negative(self.db,category,now=end+600)
+        self.assertEqual(metric['value'],1)
+        self.assertFalse(metric['evidence'][1]['completed'])
+        self.assertNotIn('negative',metric['evidence'][1])
+
+    def test_first_five_two_correct_ballots_pay_once_without_consuming_more_quota(self):
+        for duo in self.db['duos']: self.first_games(duo,2)
+        for browser in ('one','two'):
+            pickem.submit(self.db,'a',browser,'first_five_negative','2',now=NOW)
+        self.settle()
+        result=self.board['results']['first_five_negative']
+        self.assertEqual(result['value'],2)
+        self.assertEqual(len(result['winners']),2)
+        self.assertEqual(self.db['duos'][0]['blueShells'],7)
+        self.settle()
+        self.assertEqual(self.db['duos'][0]['blueShells'],7)
+
+    def test_first_five_can_count_all_nine_teams(self):
+        self.db['duos']=[{'id':str(i),'teamName':f'Equipo {i}'} for i in range(9)]
+        for duo in self.db['duos']: self.first_games(duo,0)
+        pickem.ensure_week(self.db,NOW)
+        metric=pickem.first_five_negative(self.db,self.first_five_category(),now=NOW+2000)
+        self.assertEqual(metric['value'],9)
+        self.assertEqual(metric['optionIds'],['9'])
 
     def add_kda_game(self, mid, first, second, at=NOW):
         match = game(mid,at=at)
@@ -374,7 +471,7 @@ class PickemEndpointTests(unittest.TestCase):
         raw = json.loads(Path(server.DB_FILE).read_text(encoding='utf-8'))
         self.assertEqual(len(raw['pickem']['weeks'][WEEK]['ballots'][0]['visitor']), 64)
 
-    def test_all_registered_choices_are_available_and_three_answers_use_one_ballot(self):
+    def test_all_registered_choices_are_available_and_four_answers_use_one_ballot(self):
         client, _ = self.client()
         auth = self.login(client)
         board, _ = self.call(client, headers=auth)
@@ -384,7 +481,7 @@ class PickemEndpointTests(unittest.TestCase):
         for c in board['categories']:
             result, _ = self.call(client, {'week':WEEK,'categoryId':c['id'],'optionId':c['options'][0]['id']}, auth)
             self.assertEqual(result['entries'], 1)
-        self.assertEqual(len(result['myBallot']['answers']), 3)
+        self.assertEqual(len(result['myBallot']['answers']), 4)
         self.assertEqual(self.call(client)[0]['predictions'], [])
 
     def test_concurrent_requests_cannot_spend_a_third_team_ballot(self):

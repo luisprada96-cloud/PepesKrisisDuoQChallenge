@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Torneo y premios | Pepes Krisis Duo Q Challenge</title>
+  <title>Torneo | Pepes Krisis Duo Q Challenge</title>
   <meta name="description"
     content="Competición en directo de ascenso de ELO en League of Legends entre parejas. Clasificación en tiempo real, estadísticas de dúos y persecución de rango en EUW.">
 
@@ -13,29 +13,32 @@
 
   <!-- Custom Stylesheet -->
   <link rel="stylesheet" href="styles.css">
+  <script src="navigation.js" defer></script>
 </head>
 
 <body>
 
   <!-- Navigation Header -->
-  <header>
-    <nav class="navbar">
+  <header class="site-header">
+    <nav class="navbar" aria-label="Navegación principal">
       <div class="container nav-container">
-        <a href="index.html" class="brand-logo">
-          <i class="fa-solid fa-trophy brand-icon"></i>
-          <span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span>
+        <a href="index.html" class="brand-logo" aria-label="Pepes Krisis Duo Q · Inicio">
+          <i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i>
+          <span class="brand-text text-gradient-cyan"><span class="brand-full">Pepes Krisis Duo Q</span><span class="brand-short">Pepes Krisis</span></span>
         </a>
-        <ul class="nav-links">
-          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol"></i> Clasificación</a></li>
-          <li><a href="torneo.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-book-open"></i> Torneo y premios</a></li>
+        <div class="nav-actions">
+          <button type="button" class="nav-toggle" id="nav-menu-toggle" aria-controls="primary-navigation" aria-expanded="false" aria-label="Abrir menú de navegación" hidden><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="nav-menu-label">Menú</span></button>
+          <a href="player.html" class="btn-player-panel" id="nav-player-link" aria-label="Mi Panel" title="Mi Panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><span class="nav-action-label">Mi Panel</span></a>
+          <a href="admin.html" class="btn-admin" id="nav-admin-link" aria-label="Panel Admin" title="Panel Admin"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span class="nav-action-label">Panel Admin</span></a>
+        </div>
+        <ul class="nav-links" id="primary-navigation">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo</a></li>
+          <li><a href="premios.html" class="nav-link"><i class="fa-solid fa-award" aria-hidden="true"></i> Premios</a></li>
           <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
           <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
           <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
           <li><a href="pickem.html" class="nav-link"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
-          <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad"></i> Mi
-              Panel</a></li>
-          <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield"></i> Panel
-              Admin</a></li>
         </ul>
       </div>
     </nav>
@@ -43,13 +46,12 @@
 
   <main class="tournament-panel">
     <div class="container tournament-heading">
-      <h1 class="text-gradient-cyan">Torneo y premios</h1>
-      <p>Consulta las reglas, descubre la ruleta y sigue la clasificación de los trofeos.</p>
+      <h1 class="text-gradient-cyan">Torneo</h1>
+      <p>Reglas de la competición, castigos de la ruleta y formas de conseguir caparazones.</p>
       <nav class="tournament-tabs" aria-label="Secciones del torneo">
         <a class="nav-link" href="#rules">Reglas</a>
         <a class="nav-link" href="#roulette-rules">Castigos y probabilidades</a>
         <a class="nav-link" href="#shell-rewards">Conseguir caparazones</a>
-        <a class="nav-link" href="#trophies">Trofeos</a>
       </nav>
     </div>
   <section class="container" id="rules" style="padding-bottom: 4rem;">
@@ -93,16 +95,7 @@
     </div>
   </section>
 
-  <section class="container fun-stats-section" id="trophies" aria-labelledby="trophies-title">
-    <div class="fun-stats-card">
-      <div class="fun-stats-heading">
-        <div><span class="section-eyebrow">Premios del torneo</span><h2 id="trophies-title">🏆 Trofeos</h2></div>
-        <span id="trophies-status" aria-live="polite">Cargando clasificación…</span>
-      </div>
-      <p class="trophies-note" id="trophies-note"></p>
-      <div id="trophies-grid" class="trophies-grid"></div>
-    </div>
-  </section>
+
   </main>
   <!-- Footer -->
   <footer class="footer">

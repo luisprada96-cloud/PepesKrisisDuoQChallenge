@@ -2047,7 +2047,7 @@ class CustomHandler(BaseHTTPRequestHandler):
 
         # The repository root is never a public directory.
         public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
-        public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css'})
+        public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files and filename not in tierlist_assets:

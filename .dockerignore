@@ -29,6 +29,9 @@
 
 !torneo.html
 !torneo.js
+!premios.html
+!premios.js
+!navigation.js
 !trophies.py
 !elo_history.py
 

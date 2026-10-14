@@ -5,28 +5,40 @@
   <title>Pick’em | Pepes Krisis Duo Q Challenge</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="pickem.css">
+  <script src="navigation.js" defer></script>
 </head>
 <body>
-  <header><nav class="navbar"><div class="container nav-container">
-    <a href="index.html" class="brand-logo"><i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i><span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span></a>
-    <ul class="nav-links">
-      <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
-      <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo y premios</a></li>
-      <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
-      <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
-      <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
-      <li><a href="pickem.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
-      <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad" aria-hidden="true"></i> Mi Panel</a></li>
-      <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Panel Admin</a></li>
-    </ul>
-  </div></nav></header>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Navegación principal">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo" aria-label="Pepes Krisis Duo Q · Inicio">
+          <i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i>
+          <span class="brand-text text-gradient-cyan"><span class="brand-full">Pepes Krisis Duo Q</span><span class="brand-short">Pepes Krisis</span></span>
+        </a>
+        <div class="nav-actions">
+          <button type="button" class="nav-toggle" id="nav-menu-toggle" aria-controls="primary-navigation" aria-expanded="false" aria-label="Abrir menú de navegación" hidden><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="nav-menu-label">Menú</span></button>
+          <a href="player.html" class="btn-player-panel" id="nav-player-link" aria-label="Mi Panel" title="Mi Panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><span class="nav-action-label">Mi Panel</span></a>
+          <a href="admin.html" class="btn-admin" id="nav-admin-link" aria-label="Panel Admin" title="Panel Admin"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span class="nav-action-label">Panel Admin</span></a>
+        </div>
+        <ul class="nav-links" id="primary-navigation">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo</a></li>
+          <li><a href="premios.html" class="nav-link"><i class="fa-solid fa-award" aria-hidden="true"></i> Premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+          <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
+          <li><a href="pickem.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
   <main class="container pickem-page">
     <div class="pickem-heading"><div><span class="section-eyebrow">Tus pronósticos tienen premio</span><h1 class="text-gradient-cyan">Pick’em del challenge</h1><p>Rellena la quiniela. Acierta. Prepara el próximo caparazón.</p></div><div class="pickem-week-control"><label for="pickem-week">Semana</label><select id="pickem-week" class="form-control" aria-label="Semana del Pick’em"></select></div></div>
     <div class="pickem-week-banner"><span><i class="fa-regular fa-clock" aria-hidden="true"></i> <span id="pickem-closing">Cargando la semana…</span></span><span id="pickem-entries"></span></div>
     <p id="pickem-feedback" class="pickem-feedback" aria-live="polite"></p>
     <div class="pickem-layout"><section class="pickem-categories" id="pickem-categories" aria-label="Categorías del Pick’em"></section><aside class="pickem-aside">
       <section class="pickem-sidebox"><h2><i class="fa-solid fa-ticket" aria-hidden="true"></i> Tu quiniela</h2><p id="pickem-participation">Inicia sesión con tu equipo para participar.</p><a href="player.html" id="pickem-login">Iniciar sesión con mi equipo ↗</a><hr><p>Cada equipo tiene <strong>dos quinielas por semana</strong>, una por navegador. Cada quiniela puede responder todas las categorías.</p><p>Las respuestas se guardan al enviarlas y quedan definitivas.</p></section>
-      <section class="pickem-sidebox"><h2>🐢 Un acierto, un caparazón</h2><p>Cada predicción correcta suma <strong>1 caparazón</strong> al equipo, aunque supere el límite normal de 5.</p><p>Una quiniela con tres respuestas correctas gana tres caparazones. Los aciertos de las dos quinielas se suman.</p><hr><p>Cierre de apuestas: <strong>domingo a las 23:59</strong>, hora de Madrid.</p><p>Los premios se entregan después de cerrar y comprobar las partidas de la semana.</p></section>
+      <section class="pickem-sidebox"><h2>🐢 Un acierto, un caparazón</h2><p>Cada predicción correcta suma <strong>1 caparazón</strong> al equipo, aunque supere el límite normal de 5.</p><p>Cada categoría acertada tiene su premio. Los aciertos de las dos quinielas se suman.</p><hr><p>Cierre de apuestas: <strong>domingo a las 23:59</strong>, hora de Madrid.</p><p>Los premios se entregan después de cerrar y comprobar las partidas de la semana.</p></section>
     </aside></div>
     <section id="pickem-results" class="pickem-results" hidden><h2>Quinielas de la semana</h2><p>Las predicciones se muestran al cerrar las apuestas.</p><div id="pickem-result-list"></div></section>
     <dialog id="pickem-dialog" class="pickem-dialog" aria-labelledby="pickem-dialog-title"><form id="pickem-form">

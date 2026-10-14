@@ -1972,10 +1972,45 @@ body {
 .duo-combined-note small { display: block; margin-top: .3rem; color: var(--text-muted); font-size: .7rem; }
 @media (max-width: 768px) { .duo-combined-stats { max-width: calc(100vw - 7rem); } .duo-combined-note { margin-left: 0; text-align: left; } }
 
-/* Keep the brand intact and give the tournament's tabs a full navigation row. */
-.nav-container { flex-wrap: wrap; gap: 1rem; }
-.brand-logo { flex-shrink: 0; white-space: nowrap; }
-.nav-links { flex-basis: 100%; }
+/* Brand and personal panels above the tournament sections. */
+.site-header .navbar { padding: .85rem 0 .65rem; }
+.site-header .nav-container { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: .85rem 1rem; align-items: center; }
+.site-header .brand-logo { min-width: 0; white-space: nowrap; gap: .65rem; }
+.site-header .brand-text { font-size: 1.05rem; }
+.brand-short { display: none; }
+.nav-actions { display: flex; align-items: center; gap: .65rem; }
+.nav-actions .btn-player-panel, .nav-actions .btn-admin { min-height: 40px; padding: .5rem .9rem; font-size: .75rem; }
+.nav-actions a[aria-current="page"] { box-shadow: 0 0 0 2px var(--bg-dark), 0 0 0 3px currentColor; }
+.site-header .nav-links { grid-column: 1 / -1; display: flex; flex-wrap: nowrap; flex-basis: auto; gap: .3rem; padding: .3rem; border: 1px solid var(--border-subtle); border-radius: 12px; background: rgba(15,23,42,.6); min-width: 0; overflow-x: auto; }
+.site-header .nav-links li { flex-shrink: 0; }
+.site-header .nav-links .nav-link { border-radius: 8px; padding: .5rem .85rem; font-size: .84rem; white-space: nowrap; gap: .5rem; }
+.site-header .nav-links .nav-link:hover { background: rgba(255,255,255,.035); }
+.site-header .nav-links .nav-link.active { color: var(--cyan-primary); background: rgba(0,240,255,.09); box-shadow: inset 0 -2px var(--cyan-primary); text-shadow: none; }
+.nav-toggle { display: none; align-items: center; justify-content: center; gap: .5rem; border: 1px solid #335060; background: #10222f; border-radius: 7px; color: var(--cyan-primary); cursor: pointer; font: 600 .85rem var(--font-body); min-height: 40px; padding: .45rem .75rem; }
+.site-header a:focus-visible, .nav-toggle:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
+@media(max-width:900px) {
+  .site-header .navbar { padding: .7rem 0; }
+  .site-header .nav-container { gap: .65rem; }
+  .navigation-enhanced .nav-toggle { display: inline-flex; }
+  .navigation-enhanced .nav-links { display: none; }
+  .navigation-enhanced.navigation-open .nav-links { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .site-header .nav-links .nav-link { white-space: normal; min-height: 42px; }
+  .nav-actions .nav-action-label { display: none; }
+  .nav-actions .btn-player-panel, .nav-actions .btn-admin { justify-content: center; width: 40px; padding: 0; font-size: .95rem; }
+}
+@media(max-width:600px) {
+  .site-header .brand-full { display: none; }
+  .site-header .brand-short { display: inline; }
+  .site-header .brand-text { font-size: .85rem; }
+  .site-header .brand-icon { font-size: 1.4rem; }
+  .site-header .brand-logo { gap: .45rem; }
+  .site-header .nav-container { padding-inline: 1rem; }
+  .nav-actions { gap: .4rem; }
+  .nav-menu-label { display: none; }
+  .nav-toggle, .nav-actions .btn-player-panel, .nav-actions .btn-admin { width: 38px; min-height: 38px; padding: 0; }
+  .site-header .nav-links .nav-link { padding: .55rem .65rem; font-size: .8rem; }
+}
+@media(max-width:360px) { .navigation-enhanced.navigation-open .nav-links { grid-template-columns: minmax(0,1fr); } }
 
 #open-roulette-window[hidden] { display: none; }
 

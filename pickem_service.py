@@ -25,15 +25,22 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
               {'id': 'best_game_kda', 'kind': 'player', 'icon': '⚔', 'placeholder': 'Selecciona un jugador',
                'title': '¿Quién hará la partida con mejor KDA?',
                'description': 'La mejor partida individual de la semana: (asesinatos + asistencias) / máximo(muertes, 1). En empate exacto, valen todos los empatados.',
-               'reward': 1}]
+               'reward': 1},
+              {'id': 'first_five_negative', 'kind': 'count', 'icon': '📉', 'eventLabel': 'ESTRENO DEL TORNEO',
+               'placeholder': 'Selecciona cuántos dúos',
+               'title': '¿Cuántos dúos tendrán winrate negativo en sus primeras 5 ranked?',
+               'description': 'Las cinco primeras Solo/Duo registradas desde el inicio del torneo. Un dúo cuenta con 0, 1 o 2 victorias; si le faltan partidas, esperamos a que las complete. Al terminar el torneo, los incompletos no cuentan.',
+               'reward': 1, 'options': [{'id':str(n),'label':str(n)} for n in range(10)]}]
 
 
 def account(player):
     return [str(player.get('name') or '').strip().casefold(), str(player.get('tag') or 'EUW').strip().casefold()]
 
 
-def category_definitions(db):
+def category_definitions(db, week=None):
     definitions = copy.deepcopy(CATEGORIES)
+    if week and week != weeks.week_key(weeks.timestamp(db.get('config',{}).get('startDate'))):
+        definitions = [c for c in definitions if c['id']!='first_five_negative']
     teams, players = [], []
     for duo in db.get('duos', []):
         teams.append({'id': duo['id'], 'label': duo['teamName']})
@@ -46,8 +53,10 @@ def category_definitions(db):
             players.append({'id': f"{duo['id']}:{key}:{suffix}", 'label': f"{name} · {duo['teamName']}",
                             'teamId': duo['id'], 'playerKey': key, 'account': identity, 'puuid': player.get('puuid')})
     for category in definitions:
-        if category['kind'] != 'range':
+        if category['kind'] in ('team','player'):
             category['options'] = sorted(teams if category['kind']=='team' else players, key=lambda o: o['label'].casefold())
+        elif category['id']=='first_five_negative':
+            category['teamIds'] = sorted(d['id'] for d in db.get('duos',[]))
     return definitions
 
 
@@ -75,11 +84,11 @@ def ensure_week(db, now=None):
     state = db.setdefault('pickem', {'weeks': {}})
     changed = key not in state['weeks']
     if changed:
-        state['weeks'][key] = {'week':key, 'categories':category_definitions(db), 'ballots':[], 'results':{}}
+        state['weeks'][key] = {'week':key, 'categories':category_definitions(db,key), 'ballots':[], 'results':{}}
     board = state['weeks'][key]
     # Add new categories only to an open week. Existing ballots keep their answers.
     if now < period(db,key)['closesAt']:
-        for definition in category_definitions(db):
+        for definition in category_definitions(db,key):
             previous = next((c for c in board['categories'] if c['id']==definition['id']), None)
             if previous is None:
                 board['categories'].append(definition)
@@ -255,8 +264,44 @@ def best_game_kda(db, board, category):
             'summary':f'Mejor partida individual · {float(best):.2f} KDA', 'evidence':evidence}
 
 
-def category_result(db, board, category):
+def first_five_negative(db, category, now=None):
+    """One tournament-opening prediction; never replace unfinished games with losses."""
+    now = time.time() if now is None else now
+    start = weeks.timestamp(db['config']['startDate'])
+    end = weeks.timestamp(db['config']['endDate'])
+    final_scan = (db.get('pickem',{}).get('lastCompleteSync') or {}).get('startedAt',0) >= end+SETTLEMENT_GRACE
+    teams = {d['id']:d for d in db.get('duos',[])}
+    evidence, negative = [], 0
+    for team_id in category['teamIds']:
+        duo = teams.get(team_id)
+        if not duo:
+            return {'status':'NO_DATA','optionIds':[], 'summary':'Falta un equipo del listado original. No se entrega premio.'}
+        if (duo.get('riotMatchDiscovery') or {}).get('pendingMatchIds'): return {'pending':True}
+        matches = {}
+        for match in duo.get('history',[]):
+            mid = match.get('matchId')
+            if not mid or match.get('isTest') or match.get('queueId') not in (None,420): continue
+            if start <= weeks.game_time(match) < min(end,now): matches.setdefault(mid,match)
+        first = sorted(matches.values(),key=lambda m:(weeks.game_time(m),m['matchId']))[:5]
+        if len(first)<5:
+            if not final_scan: return {'pending':True}
+            evidence.append({'teamId':team_id,'teamName':duo['teamName'],'games':len(first),'completed':False})
+            continue
+        if any(m.get('result') not in ('WIN','LOSS') for m in first): return {'pending':True}
+        wins = sum(m['result']=='WIN' for m in first)
+        negative += wins<3
+        evidence.append({'teamId':team_id,'teamName':duo['teamName'],'games':5,'completed':True,
+                         'wins':wins,'losses':5-wins,'winrate':wins*20,'negative':wins<3,
+                         'matchIds':[m['matchId'] for m in first]})
+    if not evidence or not any(e['completed'] for e in evidence):
+        return {'status':'NO_GAMES','optionIds':[], 'summary':'Ningún dúo completó sus primeras cinco ranked. No se entrega premio.','evidence':evidence}
+    return {'status':'SETTLED','optionIds':[str(negative)],'value':negative,'evidence':evidence,
+            'summary':f'{negative} '+('dúo con' if negative==1 else 'dúos con')+' winrate negativo en sus primeras 5 ranked'}
+
+
+def category_result(db, board, category, now=None):
     if category['id']=='weekly_leader': return weekly_leader(db,board,category)
+    if category['id']=='first_five_negative': return first_five_negative(db,category,now)
     metric = champion_count(db,board)
     if metric['pending']: return {'pending':True}
     if category['id']=='best_game_kda': return best_game_kda(db,board,category)
@@ -281,7 +326,7 @@ def maintain(db, now=None):
         if checkpoint.get('roster')!=roster_key(db): continue
         for category in board['categories']:
             if category['id'] in board['results']: continue
-            metric=category_result(db,board,category)
+            metric=category_result(db,board,category,now)
             if metric.get('pending'): continue
             correct_ids=metric.pop('optionIds')
             correct_options=[o for o in category['options'] if o['id'] in correct_ids]
