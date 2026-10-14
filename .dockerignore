@@ -5,6 +5,10 @@
 !tierlist.html
 !tierlist.js
 !tierlist.css
+!pickem.html
+!pickem.js
+!pickem.css
+!pickem_service.py
 !assets/
 !assets/tierlist/
 !assets/tierlist/*.png

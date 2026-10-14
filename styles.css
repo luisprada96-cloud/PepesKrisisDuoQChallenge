@@ -1972,8 +1972,10 @@ body {
 .duo-combined-note small { display: block; margin-top: .3rem; color: var(--text-muted); font-size: .7rem; }
 @media (max-width: 768px) { .duo-combined-stats { max-width: calc(100vw - 7rem); } .duo-combined-note { margin-left: 0; text-align: left; } }
 
-/* Navigation wraps when the Clips tab needs a second row. */
-@media (max-width: 1100px) { .nav-container { flex-wrap: wrap; gap: 1rem; } }
+/* Keep the brand intact and give the tournament's tabs a full navigation row. */
+.nav-container { flex-wrap: wrap; gap: 1rem; }
+.brand-logo { flex-shrink: 0; white-space: nowrap; }
+.nav-links { flex-basis: 100%; }
 
 #open-roulette-window[hidden] { display: none; }
 
