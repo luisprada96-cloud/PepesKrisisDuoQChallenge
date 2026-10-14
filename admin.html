@@ -289,7 +289,8 @@
 
   <!-- Admin PIN Modal Overlay -->
   <div id="admin-pin-overlay" class="modal-overlay active" style="z-index: 10000; background: rgba(5, 7, 13, 0.92); backdrop-filter: blur(12px);">
-    <div class="modal-card" style="max-width: 420px; text-align: center; border: 1px solid var(--pink-accent); box-shadow: 0 0 30px rgba(255, 0, 85, 0.3);">
+    <div class="modal-card admin-access-card" style="max-width: 420px; text-align: center; border: 1px solid var(--pink-accent); box-shadow: 0 0 30px rgba(255, 0, 85, 0.3);">
+      <a href="index.html" id="admin-access-close" class="admin-access-close" aria-label="Cerrar acceso de administración y volver a la clasificación" title="Volver a la clasificación"><i class="fa-solid fa-xmark" aria-hidden="true"></i></a>
       <div style="font-size: 2.5rem; color: var(--pink-accent); margin-bottom: 1rem;">
         <i class="fa-solid fa-lock"></i>
       </div>
@@ -300,7 +301,7 @@
 
       <form id="admin-pin-form">
         <div style="margin-bottom: 1.25rem;">
-          <input type="password" id="admin-pin-input" placeholder="PIN (por defecto: 1234)" style="width: 100%; text-align: center; letter-spacing: 4px; font-size: 1.2rem; font-weight: 700; padding: 0.85rem; background: rgba(7, 10, 18, 0.9); border: 1px solid var(--pink-accent); border-radius: 8px; color: #fff; outline: none;" required autofocus>
+          <input type="password" id="admin-pin-input" placeholder="Introduce el PIN" aria-label="PIN de administración" style="width: 100%; text-align: center; letter-spacing: 4px; font-size: 1.2rem; font-weight: 700; padding: 0.85rem; background: rgba(7, 10, 18, 0.9); border: 1px solid var(--pink-accent); border-radius: 8px; color: #fff; outline: none;" required autofocus>
         </div>
         <div id="pin-error-msg" style="color: #ff4d4d; font-size: 0.85rem; font-weight: 700; display: none; margin-bottom: 1rem;">
           <i class="fa-solid fa-circle-exclamation"></i> PIN incorrecto. Inténtalo de nuevo.
@@ -309,6 +310,7 @@
           <i class="fa-solid fa-key"></i> Acceder al Panel
         </button>
       </form>
+      <a href="index.html" id="admin-access-back" class="admin-access-back"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> Volver a la clasificación</a>
     </div>
   </div>
 

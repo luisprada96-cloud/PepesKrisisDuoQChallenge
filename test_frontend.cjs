@@ -96,7 +96,7 @@ const discordTestRequests = [];
         else if (url.pathname === '/api/trophies') result = {status: 'provisional', roleMode: 'main_role_matches', endDate: '2030-01-01', cards: ['champion','TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY','dishonor'].map(id => ({id, title: id, icon: '🏆', description: 'Premio', entries: id === 'UTILITY' ? [] : [{name: 'Jugador', teamName: 'Equipo', value: '5.00 KDA', games: 10}]}))};
         else if (url.pathname === '/api/events') result = [{type: 'SHELL_LAUNCHED', attacker: 'Lanzamiento oculto'}, {type: 'SHELL_SPUN', attacker: 'Atacante', target: 'Receptor', ...assignedPenalty, penalty: {...assignedPenalty.penalty,desc:'Castigo abierto'}}, {type: 'PENALTY_ADMIN_CORRECTION', target: 'Corrección oculta'}];
         else if (url.pathname === '/api/sync/status') result = {riot:{lastSuccessAt:1791100000000,lastApiSuccessAt:'2026-10-04T14:44:00+00:00',pending:2},twitch:{lastSuccessAt:1791100000000,error:'Fallo técnico de Twitch'}};
-        else if (url.pathname === '/api/admin/login') result = {success: true, duos, config: {penaltyWeights: {}}, penaltyCatalog: []};
+        else if (url.pathname === '/api/admin/login') result = request.postDataJSON().pin === 'wrong' ? {success:false,error:'PIN incorrecto'} : {success: true, duos, config: {penaltyWeights: {}}, penaltyCatalog: []};
         else if (url.pathname === '/api/sync') { syncCount++; result = {success: true, job: {running: true}}; }
         else if (url.pathname === '/api/discord/test') { discordTestRequests.push(request.postDataJSON()); result = {success:true}; }
         else if (url.pathname === '/api/player/login') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}, sessionToken: 'fake'};
@@ -241,6 +241,29 @@ const discordTestRequests = [];
     await page.setViewportSize({width: 390, height: 844});
     assert.equal(await page.locator('#roulette-rules-list').evaluate(el => el.scrollWidth <= el.clientWidth), true);
     await page.setViewportSize({width: 1280, height: 720});
+    // Opening the PIN screen must never trap visitors; each exit navigates away.
+    for (const width of [1280,390]) {
+      await page.setViewportSize({width,height:844});
+      for (const exit of ['#admin-access-back','#admin-access-close']) {
+        await page.goto('http://pepes.test/admin.html');
+        await page.waitForSelector('#admin-pin-overlay.active');
+        await page.locator(exit).click();
+        await page.waitForURL('**/index.html');
+      }
+      await page.goto('http://pepes.test/admin.html');
+      await page.waitForSelector('#admin-pin-overlay.active');
+      await page.keyboard.press('Escape');
+      await page.waitForURL('**/index.html');
+    }
+    await page.goto('http://pepes.test/admin.html');
+    await page.locator('#admin-pin-input').fill('wrong');
+    await page.locator('#admin-pin-form button[type="submit"]').click();
+    await page.waitForFunction(()=>document.getElementById('pin-error-msg').style.display==='block');
+    assert.equal(await page.locator('#admin-pin-overlay').isVisible(),true);
+    assert.equal(await page.locator('#admin-diagnostics').isVisible(),false);
+    await page.locator('#admin-access-back').click();
+    await page.waitForURL('**/index.html');
+    await page.setViewportSize({width:1280,height:720});
     await page.goto('http://pepes.test/admin.html');
     assert.equal(await page.locator('#admin-diagnostics').isVisible(), false);
     await page.locator('#admin-pin-input').fill('9999');

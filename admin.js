@@ -45,6 +45,13 @@ function checkAdminAuth() {
   // Focus input automatically
   setTimeout(() => pinInput && pinInput.focus(), 100);
 
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && pinOverlay.classList.contains('active')) {
+      event.preventDefault();
+      location.assign('index.html');
+    }
+  });
+
   pinForm.onsubmit = async (e) => {
     e.preventDefault();
     const enteredPin = pinInput.value.trim();

@@ -2043,6 +2043,12 @@ body {
 .roulette-assignment { color:var(--cyan-primary);font-size:1.1rem;font-weight:800;overflow-wrap:anywhere;margin:1rem 0; }
 
 #admin-diagnostics[hidden] { display:none; }
+.admin-access-card { position: relative; padding: 2.5rem 1.5rem 1.5rem; }
+.admin-access-card .btn-submit-duo { display: flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px; padding: .75rem 1rem; border: 1px solid var(--pink-accent); border-radius: 8px; font: 700 .9rem var(--font-body); cursor: pointer; }
+.admin-access-close { position: absolute; top: .55rem; right: .55rem; display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-muted); text-decoration: none; font-size: 1.2rem; }
+.admin-access-back { display: flex; align-items: center; justify-content: center; gap: .5rem; margin-top: 1rem; padding: .7rem .4rem; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-muted); text-decoration: none; font-size: .85rem; }
+.admin-access-close:hover, .admin-access-back:hover { color: var(--cyan-primary); border-color: var(--cyan-primary); background: rgba(0,240,255,.05); }
+.admin-access-close:focus-visible, .admin-access-back:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
 #admin-diagnostics .connection-status { margin:0 0 1rem; }
 .admin-diagnostics-note, .admin-diagnostics-help { color:var(--text-muted); font-size:.85rem; margin:.8rem 0; }
 .admin-diagnostics-help summary { cursor:pointer; color:var(--cyan-primary); }
