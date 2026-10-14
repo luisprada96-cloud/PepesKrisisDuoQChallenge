@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tierlist | Pepes Krisis Duo Q Challenge</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="tierlist.css">
+</head>
+<body>
+  <header><nav class="navbar"><div class="container nav-container">
+    <a href="index.html" class="brand-logo"><i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i><span class="brand-text text-gradient-cyan">Pepes Krisis Duo Q</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+      <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo y premios</a></li>
+      <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+      <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+      <li><a href="tierlist.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
+      <li><a href="player.html" class="btn-player-panel" id="nav-player-link"><i class="fa-solid fa-gamepad" aria-hidden="true"></i> Mi Panel</a></li>
+      <li><a href="admin.html" class="btn-admin" id="nav-admin-link"><i class="fa-solid fa-user-shield" aria-hidden="true"></i> Panel Admin</a></li>
+    </ul>
+  </div></nav></header>
+  <main class="container tierlist-page">
+    <div class="tierlist-heading"><span class="section-eyebrow">El veredicto de la comunidad</span><h1 class="text-gradient-cyan">Tierlist del challenge</h1><p>Coloca a los equipos y comparte tu pronóstico.</p></div>
+    <div class="tierlist-tabs" role="group" aria-label="Vista de tierlists">
+      <button type="button" data-tierlist-view="gallery" aria-pressed="true" aria-controls="tierlist-gallery"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlists publicadas</button>
+      <button type="button" data-tierlist-view="editor" aria-pressed="false" aria-controls="tierlist-editor"><i class="fa-solid fa-plus" aria-hidden="true"></i> Crear mi tierlist</button>
+    </div>
+    <p id="tierlist-feedback" class="tierlist-feedback" role="status" aria-live="polite"></p>
+    <section id="tierlist-gallery" aria-label="Tierlists publicadas">
+      <div class="tierlist-gallery-heading"><p id="tierlist-count">Cargando tierlists…</p><button type="button" id="tierlist-refresh" class="tierlist-secondary">Actualizar</button></div>
+      <div id="tierlist-feed" class="tierlist-feed"></div>
+      <nav id="tierlist-pagination" class="tierlist-pagination" aria-label="Páginas de tierlists" hidden>
+        <button type="button" id="tierlist-previous" class="tierlist-secondary">← Anterior</button><span id="tierlist-page-info" aria-live="polite"></span><button type="button" id="tierlist-next" class="tierlist-secondary">Siguiente →</button>
+      </nav>
+    </section>
+    <section id="tierlist-editor" hidden aria-label="Crear mi tierlist">
+      <form id="tierlist-form" class="tierlist-composer">
+        <div class="tierlist-editor-heading"><div><h2>¿Quién está para ganar?</h2><p id="tierlist-help">Arrastra los equipos a una fila. También puedes seleccionar un equipo y pulsar la letra de su fila.</p></div><button type="button" id="tierlist-reset" class="tierlist-secondary">Vaciar tablero</button></div>
+        <div id="tierlist-board" class="tier-board tier-board-editor" aria-describedby="tierlist-help"></div>
+        <div class="tierlist-pool-heading"><h3>Equipos por colocar</h3><span id="tierlist-remaining"></span></div>
+        <div id="tierlist-pool" class="tier-items tierlist-pool" data-place="pool" aria-label="Equipos por colocar"></div>
+        <div class="tierlist-selection"><span id="tierlist-selected">Selecciona un equipo para moverlo.</span><div>
+          <button type="button" data-tierlist-shift="-1" class="tierlist-secondary" aria-label="Mover el equipo seleccionado a la izquierda">←</button>
+          <button type="button" data-tierlist-shift="1" class="tierlist-secondary" aria-label="Mover el equipo seleccionado a la derecha">→</button>
+          <button type="button" id="tierlist-unplace" class="tierlist-secondary">Sacar de la fila</button>
+        </div></div>
+        <div class="tierlist-publish-area"><div><label for="tierlist-author">¿Quién ha hecho esta tierlist? <span>(opcional)</span></label><input type="text" id="tierlist-author" class="form-control" maxlength="60" placeholder="Tu nombre o apodo" autocomplete="nickname"><p>El equipo que la publica siempre aparecerá junto al autor.</p></div><div class="tierlist-publish-action"><p id="tierlist-publishing-status"></p><a href="player.html" id="tierlist-login">Iniciar sesión con mi equipo ↗</a><p class="tierlist-final-note">Al publicarla quedará visible para todos y no podrás editarla.</p><button type="submit" id="tierlist-publish" class="tierlist-primary" disabled>Publicar tierlist</button></div></div>
+        <p id="tierlist-form-error" class="tierlist-error" role="alert" hidden></p>
+      </form>
+    </section>
+    <dialog id="tierlist-detail" class="tierlist-detail" aria-labelledby="tierlist-detail-title"><div class="tierlist-detail-heading"><div><h2 id="tierlist-detail-title"></h2><p id="tierlist-detail-meta"></p></div><button type="button" id="tierlist-detail-close" class="tierlist-secondary" aria-label="Cerrar tierlist">✕</button></div><div id="tierlist-detail-board" class="tier-board"></div></dialog>
+  </main>
+  <footer class="footer"><div class="container"><p><strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026.</p></div></footer>
+  <script src="data.js"></script><script src="alerts.js"></script><script src="tierlist.js"></script>
+</body>
+</html>

@@ -89,6 +89,14 @@ En local, las claves introducidas desde el panel de administración se guardan e
 
 ---
 
+## Tierlists de los equipos
+
+`tierlist.html` permite clasificar los nueve equipos en S/A/B/C/D usando las imágenes originales de `assets/tierlist/`. Admite arrastrar, seleccionar un equipo y pulsar su fila, y mover con el teclado. El borrador y el autor opcional se recuerdan en ese navegador. Publicar requiere sesión de equipo, los nueve equipos colocados exactamente una vez y un autor de hasta 60 caracteres si se indica. Las listas publicadas son definitivas.
+
+Las publicaciones se guardan en `tierlists` dentro de la misma base (`db.json` en local, Neon en producción), con equipo autor, nombre opcional, fecha, filas y orden. Son públicas, conservan el nombre del equipo al publicar y no participan en la limpieza semanal de clips. La galería muestra seis por página y permite ampliar cada tablero. Sin nombre opcional, el título utiliza el equipo.
+
+`GET /api/tierlists?offset=0&limit=6` devuelve catálogo, publicaciones y estado para publicar; crea la cookie HttpOnly `pepes_tierlist_visitor`. `POST /api/tierlists` exige sesión Bearer y esa cookie, comprueba el origen y guarda todo en la mutación serializada existente. El servidor limita a dos publicaciones por equipo y una por navegador, incluso cambiando de equipo en ese navegador. Solo se guarda el hash del identificador de navegador y nunca se expone en las respuestas públicas. Cambiar o borrar cookies puede ocupar la segunda plaza del equipo, pero no permite superar el límite de dos. Un fallo al guardar o una lista incompleta no consume plaza.
+
 ## Fiabilidad y operación
 
 `POST /api/admin/check-apis`, con `authPin`, verifica las credenciales actuales desde el servidor sin necesitar equipos: consulta `lol-status-v4` de Riot y obtiene un token nuevo de Twitch para consultar `helix/streams`. Solo devuelve resultado, fecha y códigos HTTP; nunca claves, secretos o tokens. Una respuesta válida de Riot actualiza la última llamada API OK. No crea partidas, equipos ni avisos de Discord.

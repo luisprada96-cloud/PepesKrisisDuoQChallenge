@@ -22,6 +22,7 @@ import re
 import clips_service
 import weekly_summary
 import discord_live
+import tierlists_service
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
 from storage import read_json, write_json, StorageError
@@ -1842,19 +1843,19 @@ class CustomHandler(BaseHTTPRequestHandler):
         body_bytes = json.dumps(data_obj, ensure_ascii=False).encode('utf-8')
         self._send_bytes(body_bytes, 'application/json; charset=utf-8', code, headers)
 
-    def clips_visitor(self):
+    def clips_visitor(self, cookie_name='pepes_clips_visitor'):
         try:
             cookies = SimpleCookie()
             cookies.load(self.headers.get('Cookie', ''))
-            value = cookies.get('pepes_clips_visitor')
+            value = cookies.get(cookie_name)
             token = value.value if value else ''
             return token if re.fullmatch(r'[A-Za-z0-9_-]{43}', token) else None
         except CookieError:
             return None
 
-    def clips_cookie(self, token):
+    def clips_cookie(self, token, cookie_name='pepes_clips_visitor'):
         secure = self.headers.get('X-Forwarded-Proto', '').split(',')[0].strip() == 'https'
-        return f'pepes_clips_visitor={token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax' + ('; Secure' if secure else '')
+        return f'{cookie_name}={token}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax' + ('; Secure' if secure else '')
 
     def clips_origin_allowed(self):
         origin = self.headers.get('Origin')
@@ -1929,6 +1930,19 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == '/api/tierlists':
+            visitor_token = self.clips_visitor('pepes_tierlist_visitor')
+            new_token = visitor_token is None
+            visitor_token = visitor_token or secrets.token_urlsafe(32)
+            offset, limit = page_args(parsed)
+            with db_lock:
+                db = load_db()
+                result = tierlists_service.public_board(db, self.clips_team(db), clips_service.visitor_hash(visitor_token), offset, min(limit, 6))
+            headers = {'Vary': 'Cookie, Authorization'}
+            if new_token:
+                headers['Set-Cookie'] = self.clips_cookie(visitor_token, 'pepes_tierlist_visitor')
+            self._send_json(result, headers=headers)
+            return
         if path == '/api/clips':
             token = self.clips_visitor()
             new_token = token is None
@@ -2006,12 +2020,15 @@ class CustomHandler(BaseHTTPRequestHandler):
 
         # The repository root is never a public directory.
         public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
+        public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css'})
+        tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
-        if filename not in public_files:
+        if filename not in public_files and filename not in tierlist_assets:
             self._send_json({"error": "File Not Found"}, 404)
             return
         filepath = os.path.realpath(os.path.join(BASE_DIR, filename))
-        if os.path.dirname(filepath) != os.path.realpath(BASE_DIR) or not os.path.isfile(filepath):
+        expected_directory = os.path.join(BASE_DIR, 'assets', 'tierlist') if filename in tierlist_assets else BASE_DIR
+        if os.path.dirname(filepath) != expected_directory or not os.path.isfile(filepath):
             self._send_json({"error": "File Not Found"}, 404)
             return
         with open(filepath, "rb") as handle:
@@ -2024,6 +2041,30 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         data = self.read_body()
         db = load_db()
+
+        if parsed.path == '/api/tierlists':
+            if not self.clips_origin_allowed():
+                self._send_json({'error': 'Origen no permitido.'}, 403)
+                return
+            team_id = self.clips_team(db)
+            if not team_id:
+                self._send_json({'error': 'Inicia sesión con tu equipo para publicar.'}, 401)
+                return
+            visitor_token = self.clips_visitor('pepes_tierlist_visitor')
+            if not visitor_token:
+                self._send_json({'error': 'Activa las cookies y vuelve a cargar la página.'}, 400)
+                return
+            try:
+                post = tierlists_service.publish(db, team_id, clips_service.visitor_hash(visitor_token), data.get('author', ''), data.get('tiers'))
+            except FileExistsError as error:
+                self._send_json({'error': str(error)}, 409)
+                return
+            except ValueError as error:
+                self._send_json({'error': str(error)}, 400)
+                return
+            save_db(db)
+            self._send_json({'success': True, 'postId': post['id'], **tierlists_service.public_board(db, team_id, clips_service.visitor_hash(visitor_token))})
+            return
 
         if parsed.path in ('/api/clips', '/api/clips/like'):
             if not self.clips_origin_allowed():
