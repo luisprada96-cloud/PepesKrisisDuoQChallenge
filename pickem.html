@@ -36,10 +36,24 @@
     <div class="pickem-heading"><div><span class="section-eyebrow">Tus pronósticos tienen premio</span><h1 class="text-gradient-cyan">Pick’em del challenge</h1><p>Rellena la quiniela. Acierta. Prepara el próximo caparazón.</p></div><div class="pickem-week-control"><label for="pickem-week">Semana</label><select id="pickem-week" class="form-control" aria-label="Semana del Pick’em"></select></div></div>
     <div class="pickem-week-banner"><span><i class="fa-regular fa-clock" aria-hidden="true"></i> <span id="pickem-closing">Cargando la semana…</span></span><span id="pickem-entries"></span></div>
     <p id="pickem-feedback" class="pickem-feedback" aria-live="polite"></p>
-    <div class="pickem-layout"><section class="pickem-categories" id="pickem-categories" aria-label="Categorías del Pick’em"></section><aside class="pickem-aside">
-      <section class="pickem-sidebox"><h2><i class="fa-solid fa-ticket" aria-hidden="true"></i> Tu quiniela</h2><p id="pickem-participation">Inicia sesión con tu equipo para participar.</p><a href="player.html" id="pickem-login">Iniciar sesión con mi equipo ↗</a><hr><p>Cada equipo tiene <strong>dos quinielas por semana</strong>, una por navegador. Cada quiniela puede responder todas las categorías.</p><p>Las respuestas se guardan al enviarlas y quedan definitivas.</p></section>
-      <section class="pickem-sidebox"><h2>🐢 Un acierto, un caparazón</h2><p>Cada predicción correcta suma <strong>1 caparazón</strong> al equipo, aunque supere el límite normal de 5.</p><p>Cada categoría acertada tiene su premio. Los aciertos de las dos quinielas se suman.</p><hr><p>Cierre de apuestas: <strong>domingo a las 23:59</strong>, hora de Madrid.</p><p>Los premios se entregan después de cerrar y comprobar las partidas de la semana.</p></section>
-    </aside></div>
+    <div class="pickem-layout">
+      <section class="pickem-tips-bar" aria-label="Instrucciones y participación">
+        <div class="pickem-tip-card pickem-tip-status">
+          <div class="pickem-tip-title"><i class="fa-solid fa-ticket" aria-hidden="true"></i> <strong>Tu quiniela</strong></div>
+          <p id="pickem-participation">Inicia sesión con tu equipo para participar.</p>
+          <a href="player.html" id="pickem-login">Iniciar sesión con mi equipo ↗</a>
+        </div>
+        <div class="pickem-tip-card">
+          <div class="pickem-tip-title"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> <strong>Cómo funciona</strong></div>
+          <p><strong>2 quinielas por equipo</strong> a la semana (1 por navegador). Respuestas definitivas al enviar.</p>
+        </div>
+        <div class="pickem-tip-card">
+          <div class="pickem-tip-title"><i class="fa-solid fa-gift" aria-hidden="true"></i> <strong>Premios y cierre</strong></div>
+          <p><strong>+1 caparazón 🐢</strong> por acierto (supera el límite de 5). Cierre los <strong>domingos a las 23:59</strong>.</p>
+        </div>
+      </section>
+      <section class="pickem-categories" id="pickem-categories" aria-label="Categorías del Pick’em"></section>
+    </div>
     <section id="pickem-results" class="pickem-results" hidden><h2>Quinielas de la semana</h2><p>Las predicciones se muestran al cerrar las apuestas.</p><div id="pickem-result-list"></div></section>
     <dialog id="pickem-dialog" class="pickem-dialog" aria-labelledby="pickem-dialog-title"><form id="pickem-form">
       <div class="pickem-dialog-heading"><div><span class="section-eyebrow">Predicciones</span><h2 id="pickem-dialog-title"></h2></div><button type="button" class="pickem-close" id="pickem-close" aria-label="Cerrar predicción">✕</button></div>

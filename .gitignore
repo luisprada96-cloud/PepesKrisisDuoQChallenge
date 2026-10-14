@@ -26,3 +26,4 @@ drive-setup/
 client_secret*.json
 
 neon-setup/
+neon_backup_*.json
