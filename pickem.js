@@ -45,6 +45,11 @@
     controls();
   }
   function weekLabel(key) {
+    const period=state?.periods?.[key];
+    if(period) {
+      const format=timestamp=>new Date(timestamp*1000).toLocaleDateString('es-ES',{timeZone:'Europe/Madrid',day:'numeric',month:'short'});
+      return `${format(period.startsAt)} — ${format(period.endsAt-1)}`;
+    }
     const start=new Date(key+'T12:00:00Z'),end=new Date(start.getTime()+6*86400000);
     const format=d=>d.toLocaleDateString('es-ES',{timeZone:'UTC',day:'numeric',month:'short'});
     return `${format(start)} — ${format(end)}`;
@@ -73,7 +78,12 @@
     if($('pickem-champion-search').disabled)closeChampionOptions();
     $('pickem-author').disabled=busy||closed()||!!state.myBallot;
     $('pickem-week').disabled=busy;
-    $('pickem-closing').textContent=closed()?`Apuestas cerradas · ${date(state.closesAt)} (Madrid)`:`Cierre: domingo a las 23:59 · ${date(state.closesAt)} (Madrid)`;
+    $('pickem-closing').textContent=`${closed()?'Predicciones cerradas':'Responde hasta'}: ${date(state.closesAt-1)} · Partidas hasta ${date(state.endsAt-1)} (Madrid)`;
+    document.querySelectorAll('[data-pickem-category]').forEach(button=>{
+      const item=state.categories.find(item=>item.id===button.dataset.pickemCategory);
+      button.disabled=busy||(closed()&&!item?.myAnswer);
+      if(closed())button.textContent=item?.myAnswer?'Ver mi predicción':'Plazo cerrado';
+    });
   }
   function modal(preserve=false) {
     const c=category();if(!c)return;
@@ -103,27 +113,32 @@
     $('pickem-week').value=state.week;
     $('pickem-entries').textContent=`${state.entries} ${state.entries===1?'quiniela enviada':'quinielas enviadas'}`;
     $('pickem-participation').textContent=state.participation.message;
-    $('pickem-reward-rule').textContent=rewardText()+' Puede superar el límite de 5. Cierre los domingos a las 23:59.';
+    $('pickem-reward-rule').textContent=rewardText()+` Puede superar el límite de 5. Los resultados se calculan al terminar el periodo: ${date(state.endsAt-1)} (Madrid), tras completar la sincronización de partidas.`;
     $('pickem-login').hidden=!!state.participation.teamId;
     $('pickem-categories').innerHTML=state.categories.map(c=>{
-      const result=c.result ? `<div class="pickem-card-result"><strong>${escape(resultSummary(c))}</strong>${c.result.optionLabel?`<br>Resultado: ${escape(c.result.optionLabel)}`:''}</div>` : closed()?'<div class="pickem-card-result">Comprobando los resultados de la semana…</div>':'';
+      const result=c.result ? `<div class="pickem-card-result"><strong>${escape(resultSummary(c))}</strong>${c.result.optionLabel?`<br>Resultado: ${escape(c.result.optionLabel)}`:''}</div>` : closed()?`<div class="pickem-card-result">${Date.now()/1000<state.endsAt?'Predicciones cerradas. El periodo de juego sigue en curso.':'Comprobando los resultados de la semana…'}</div>`:'';
       return `<article class="pickem-card"><div class="pickem-card-art" aria-hidden="true"><span class="pickem-question-mark">${escape(c.icon||'?')}</span><span class="pickem-event">${escape(c.eventLabel||'EVENTO SEMANAL')}</span></div><h2>${escape(c.title)}</h2><p class="pickem-card-description">${escape(c.description)}</p>${isDuel(c)?`<p class="pickem-duel-rule">${escape(duelRule(c))}</p>`:''}<span class="pickem-reward">Objetivo: ${state.rewardRule.minCorrect} aciertos</span><button type="button" class="pickem-primary" data-pickem-category="${escape(c.id)}">${closed()?'Ver predicción y resultado':c.myAnswer?'Ver mi predicción':isDuel(c)&&c.teamAnswer?'Confirmar elección del equipo':'Rellenar la quiniela'}</button>${c.myAnswer?`<p class="pickem-card-answer">Tu pronóstico: <strong>${escape(optionLabel(c,c.myAnswer))}</strong></p>`:''}${result}</article>`;
     }).join('');
-    $('pickem-results').hidden=!closed();
-    $('pickem-result-list').innerHTML=state.predictions.length?state.predictions.map(b=>{
+    $('pickem-results').hidden=!(state.resultsVisible??closed());
+    $('pickem-result-list').innerHTML=renderBallots(state.predictions, 'Nadie envió una quiniela esta semana.');
+    $('pickem-team-picks').hidden=!state.participation.teamId;
+    $('pickem-team-pick-list').innerHTML=renderBallots(state.teamBallots||[], 'Tu equipo todavía no ha enviado ninguna quiniela en este periodo.');
+    if($('pickem-dialog').open)modal(true);
+    controls();
+  }
+  function renderBallots(ballots, empty) {
+    return ballots.length?ballots.map((b,index)=>{
       const awarded=b.reward?.status==='AWARDED';
       const verdict=awarded?`✓ +${b.reward.shells} pepazo`:b.pending?'Pendiente de resultados':'Sin premio';
-      const summary=`<div class="pickem-ballot-summary"><div><strong>${escape(b.author||b.teamName)}</strong><small>${escape(b.teamName)}</small></div><strong>${b.correct} aciertos${b.pending?` · ${b.pending} pendientes`:''}</strong><strong class="${awarded?'pickem-win':b.pending?'pickem-wait':''}">${escape(verdict)}</strong></div>`;
+      const summary=`<div class="pickem-ballot-summary"><div><strong>${escape(b.author||`Quiniela ${index+1}`)}</strong><small>${escape(b.teamName)}${b.createdAt?` · ${escape(date(b.createdAt))} (Madrid)`:''}</small></div><strong>${b.correct} aciertos${b.pending?` · ${b.pending} pendientes`:''}</strong><strong class="${awarded?'pickem-win':b.pending?'pickem-wait':''}">${escape(verdict)}</strong></div>`;
       const answers=state.categories.map(c=>{
-        const answer=b.answers[c.id];if(answer===undefined)return '';
+        const answer=b.answers[c.id];
         const result=c.result,correct=result?.status==='SETTLED'&&result.optionIds.includes(answer);
-        const label=!result?'Pendiente de resultado':result.status!=='SETTLED'?'Sin datos válidos':correct?'✓ Acierto':'No acertó';
+        const label=answer===undefined?'Sin responder':!result?'Pendiente de resultado':result.status!=='SETTLED'?'Sin datos válidos':correct?'✓ Acierto':'No acertó';
         return `<article class="pickem-result-entry"><div>${escape(c.title)}</div><div>${escape(optionLabel(c,answer))}</div><strong class="${correct?'pickem-win':!result?'pickem-wait':''}">${escape(label)}</strong></article>`;
       }).join('');
       return `<section class="pickem-ballot">${summary}${answers}</section>`;
-    }).join(''):'<p>Nadie envió una quiniela esta semana.</p>';
-    if($('pickem-dialog').open)modal(true);
-    controls();
+    }).join(''):`<p>${escape(empty)}</p>`;
   }
   async function load() {
     if(busy)return;
@@ -132,7 +147,7 @@
     catch(error){if(revision===version)$('pickem-feedback').textContent='No se pudo cargar el Pick’em. Vuelve a intentarlo al actualizar la página.';}
   }
   $('pickem-categories').addEventListener('click',event=>{
-    const button=event.target.closest('[data-pickem-category]');if(!button||!state)return;
+    const button=event.target.closest('[data-pickem-category]');if(!button||button.disabled||!state)return;
     currentCategory=button.dataset.pickemCategory;$('pickem-form-error').hidden=true;modal();$('pickem-dialog').showModal();
   });
   $('pickem-close').addEventListener('click',()=>{if(!busy)$('pickem-dialog').close();});

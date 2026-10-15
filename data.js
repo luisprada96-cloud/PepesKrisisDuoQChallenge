@@ -218,6 +218,7 @@ const DataStore = {
   getEvents: () => cachedRead('/events?type=SHELL_SPUN&limit=10', []),
   getHistory: (id, offset = 0) => apiRequest(`/duos/${encodeURIComponent(id)}/history?offset=${offset}&limit=30`, null, 'GET'),
   getAdminConfig: pin => mutation('/admin/login', {pin}),
+  getAdminPickem: (authPin, week = '') => mutation('/admin/pickem', {authPin, week}),
   saveDuo: (duo, authPin) => mutation('/duos', {duo, authPin}),
   deleteDuo: (id, authPin) => mutation(`/duos/${encodeURIComponent(id)}`, {authPin}, 'DELETE'),
   saveConfig: (config, authPin) => mutation('/config', {config, authPin}),

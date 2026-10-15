@@ -5,7 +5,7 @@ import json
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from fractions import Fraction
 from pathlib import Path
 from trophies import rank_key
@@ -16,6 +16,11 @@ MAX_TEAM_BALLOTS = 2
 REWARD_RULE = {'minCorrect': 3, 'shells': 1}
 SETTLEMENT_GRACE = 300
 MIN_CHAMPION_GAMES = 3
+NEW_SCHEDULE = {
+    'firstStartsAt': '2026-10-16T00:00:00+02:00',
+    'firstEndsAt': '2026-10-26T00:00:00+01:00',
+    'firstClosesAt': '2026-10-17T00:00:00+02:00',
+}
 CHAMPION_OPTIONS = json.loads((Path(__file__).parent / 'assets' / 'pickem' / 'champions.json').read_text(encoding='utf-8'))['champions']
 RANK_CATEGORIES = {'weekly_leader', 'first_week_last'}
 OPENING_CATEGORIES = {'first_five_negative', 'first_individual_shell', 'joji_parradise_deaths', 'first_week_last'}
@@ -71,7 +76,7 @@ def account(player):
 
 def category_definitions(db, week=None):
     definitions = copy.deepcopy(CATEGORIES)
-    if week and week != weeks.week_key(weeks.timestamp(db.get('config',{}).get('startDate'))):
+    if week and week != calendar_key(db, weeks.timestamp(db.get('config',{}).get('startDate'))):
         definitions = [c for c in definitions if c['id'] not in OPENING_CATEGORIES]
     teams, players = [], []
     for duo in db.get('duos', []):
@@ -104,14 +109,46 @@ def roster_key(db):
                               for k in ('player1','player2') for f in ('name','tag')]] for d in db.get('duos',[])])
 
 
+def calendar_key(db, now):
+    schedule = db.get('config', {}).get('pickemSchedule')
+    if schedule and now < weeks.timestamp(schedule['firstEndsAt']):
+        return datetime.fromtimestamp(weeks.timestamp(schedule['firstStartsAt']), weeks.MADRID).date().isoformat()
+    return weeks.week_key(now)
+
+
 def period(db, week):
-    start, end = weeks.bounds(week)
     tournament_start = weeks.timestamp(db.get('config',{}).get('startDate'))
     tournament_end = weeks.timestamp(db.get('config',{}).get('endDate'))
     if not tournament_start or tournament_end <= tournament_start:
         raise ValueError('El calendario del torneo no está configurado.')
+    schedule = db.get('config', {}).get('pickemSchedule')
+    if schedule:
+        first_start, first_end, first_close = (weeks.timestamp(schedule[key]) for key in
+                                              ('firstStartsAt', 'firstEndsAt', 'firstClosesAt'))
+        if not tournament_start <= first_start < first_close < first_end <= tournament_end:
+            raise ValueError('El calendario de Pick’em no es válido.')
+        first_key = calendar_key(db, first_start)
+        if week == first_key:
+            return {'startsAt': first_start, 'endsAt': first_end, 'closesAt': first_close}
+        start, end = weeks.bounds(week)
+        if start < first_end:
+            raise ValueError('Esta semana es anterior al calendario de Pick’em.')
+        # Local midnight after Monday includes its entire 23:59 minute, also across DST.
+        monday = datetime.fromtimestamp(start, weeks.MADRID)
+        close = (monday + timedelta(days=1)).timestamp()
+        return {'startsAt': start, 'endsAt': min(end, tournament_end), 'closesAt': min(close, tournament_end)}
+    start, end = weeks.bounds(week)
     return {'startsAt': max(start,tournament_start), 'endsAt': min(end,tournament_end),
             'closesAt': min(end-60,tournament_end)}
+
+
+def reset_calendar(db):
+    """Explicit one-off reset; callers back up and atomically save the tournament."""
+    db['config']['pickemSchedule'] = dict(NEW_SCHEDULE)
+    db['pickem'] = {'weeks': {}}
+    db['events'] = [event for event in db.get('events', []) if event.get('type') != 'PICKEM_REWARD']
+    for duo in db.get('duos', []):
+        duo.pop('pickemShellsEarnedTotal', None)
 
 
 def ensure_week(db, now=None):
@@ -119,7 +156,7 @@ def ensure_week(db, now=None):
     config = db.get('config',{})
     start, end = weeks.timestamp(config.get('startDate')), weeks.timestamp(config.get('endDate'))
     if not start or end <= start: raise ValueError('El calendario del torneo no está configurado.')
-    key = weeks.week_key(min(max(now,start),end-0.001))
+    key = calendar_key(db, min(max(now,start),end-0.001))
     state = db.setdefault('pickem', {'weeks': {}})
     changed = key not in state['weeks']
     if changed:
@@ -160,6 +197,7 @@ def ballot_status(db, board, team_id, visitor, now=None):
     own = next((b for b in board['ballots'] if visitor and b['visitor']==visitor),None)
     bounds = period(db,board['week'])
     if not team: reason, message = 'login','Inicia sesión con tu equipo para rellenar la quiniela.'
+    elif now < bounds['startsAt']: reason,message = 'upcoming','Las predicciones de este periodo todavía no están abiertas.'
     elif now >= bounds['closesAt']: reason,message = 'closed','Las predicciones de esta semana están cerradas.'
     elif bounds['startsAt'] >= bounds['endsAt']: reason,message = 'closed','Esta semana queda fuera del torneo.'
     elif own and own['teamId']!=team_id: reason,message = 'browser','Este navegador ya tiene una quiniela esta semana.'
@@ -662,6 +700,25 @@ def record_complete_sync(db, original, started_at, now=None):
     return True
 
 
+def visible_ballot(board, ballot):
+    return {**{key: copy.deepcopy(ballot.get(key)) for key in
+               ('id', 'teamId', 'teamName', 'author', 'answers', 'createdAt')},
+            **ballot_score(board, ballot),
+            'reward': copy.deepcopy(board.get('ballotRewards', {}).get(ballot['id']))}
+
+
+def period_list(db):
+    return {key: period(db, key) for key in sorted(db['pickem']['weeks'], reverse=True)}
+
+
+def admin_board(db, selected_week=None, now=None):
+    """Only for authenticated admin routes. No visitor hashes or account credentials."""
+    public = public_board(db, selected_week=selected_week, now=now)
+    board = db['pickem']['weeks'][public['week']]
+    public['predictions'] = [visible_ballot(board, ballot) for ballot in board['ballots']]
+    return public
+
+
 def public_board(db, team_id=None, visitor=None, selected_week=None, now=None):
     now=time.time() if now is None else now
     state=db['pickem']
@@ -690,8 +747,11 @@ def public_board(db, team_id=None, visitor=None, selected_week=None, now=None):
             c['teamAnswerConflict'] = choice['conflict']
         categories.append(c)
     predictions=[]
-    if now>=bounds['closesAt']:
-        predictions=[{**{k:copy.deepcopy(b[k]) for k in ('id','teamId','teamName','author','answers','createdAt')}, **outcome(b)} for b in board['ballots']]
+    visible_at = bounds['endsAt'] if db.get('config', {}).get('pickemSchedule') else bounds['closesAt']
+    if now>=visible_at:
+        predictions=[visible_ballot(board, b) for b in board['ballots']]
     return {'week':selected_week,'weeks':available,**bounds,'closed':now>=bounds['closesAt'],
             'categories':categories,'participation':status,'myBallot':personal,'predictions':predictions,
+            'teamBallots':[visible_ballot(board, b) for b in board['ballots'] if status['teamId'] and b['teamId']==status['teamId']],
+            'resultsVisible':now>=visible_at, 'periods':period_list(db),
             'entries':len(board['ballots']), 'rewardRule':dict(rule)}

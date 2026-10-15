@@ -11,6 +11,9 @@ let adminConfig = {};
 let adminSessionPin = '';
 let penaltyCatalog = [];
 let adminPenaltyPage = 1;
+let adminPickemBoard = null;
+let adminPickemWeek = '';
+let adminPickemRevision = 0;
 const ADMIN_PENALTIES_PAGE_SIZE = 10;
 const ADMIN_ROLE_LABELS = {
   TOP: 'Top',
@@ -86,6 +89,94 @@ async function loadAdminData() {
   renderAdminPenalties();
   fillConfigForm();
   refreshAdminWeeklyDiagnostics();
+  refreshAdminPickem();
+}
+
+const adminPickemDate = timestamp => new Date(timestamp * 1000).toLocaleString('es-ES', {
+  timeZone: 'Europe/Madrid', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+});
+
+async function refreshAdminPickem() {
+  if (!adminSessionPin || !document.getElementById('admin-pickem')) return;
+  const revision = ++adminPickemRevision;
+  const status = document.getElementById('admin-pickem-status');
+  document.getElementById('admin-pickem').hidden = false;
+  document.getElementById('admin-pickem-export').disabled = true;
+  status.textContent = 'Cargando quinielas…';
+  const board = await DataStore.getAdminPickem(adminSessionPin, adminPickemWeek);
+  if (revision !== adminPickemRevision) return;
+  if (!board.success) {
+    adminPickemBoard = null;
+    document.getElementById('admin-pickem-list').textContent = '';
+    status.textContent = board.error || 'No se pudieron cargar las quinielas.';
+    return;
+  }
+  adminPickemBoard = board;
+  adminPickemWeek = board.week;
+  const week = document.getElementById('admin-pickem-week');
+  week.innerHTML = board.weeks.map(key => {
+    const range = board.periods[key];
+    return `<option value="${escapeHtml(key)}">${escapeHtml(adminPickemDate(range.startsAt))} — ${escapeHtml(adminPickemDate(range.endsAt - 1))}</option>`;
+  }).join('');
+  week.value = board.week;
+  const team = document.getElementById('admin-pickem-team'), previous = team.value;
+  const teams = new Map(board.predictions.map(ballot => [ballot.teamId, ballot.teamName]));
+  team.innerHTML = '<option value="">Todos los equipos</option>' + [...teams].map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join('');
+  if (teams.has(previous)) team.value = previous;
+  renderAdminPickem();
+}
+
+function adminPickemBallots() {
+  const team = document.getElementById('admin-pickem-team')?.value;
+  return (adminPickemBoard?.predictions || []).filter(ballot => !team || ballot.teamId === team);
+}
+
+function renderAdminPickem() {
+  const board = adminPickemBoard;
+  if (!board) return;
+  const ballots = adminPickemBallots();
+  document.getElementById('admin-pickem-status').textContent = `${ballots.length} quinielas · Respuestas hasta ${adminPickemDate(board.closesAt - 1)} · Partidas hasta ${adminPickemDate(board.endsAt - 1)} (Madrid).`;
+  document.getElementById('admin-pickem-export').disabled = ballots.length === 0;
+  document.getElementById('admin-pickem-list').innerHTML = ballots.length ? ballots.map((ballot, index) => {
+    const rows = board.categories.map(category => {
+      const answer = ballot.answers[category.id];
+      const label = category.options.find(option => option.id === answer)?.label || 'Sin responder';
+      const result = answer === undefined ? 'Sin responder' : !category.result ? 'Pendiente' : category.result.optionIds.includes(answer) ? 'Acierto' : 'Sin acierto';
+      return `<tr><td>${escapeHtml(category.title)}</td><td>${escapeHtml(label)}</td><td>${escapeHtml(result)}</td></tr>`;
+    }).join('');
+    return `<details style="margin: 0.75rem 0;"><summary style="cursor: pointer;"><strong>${escapeHtml(ballot.teamName)}</strong> · ${escapeHtml(ballot.author || `Quiniela ${index + 1}`)} · ${escapeHtml(adminPickemDate(ballot.createdAt))} (Madrid)</summary><div class="admin-penalties-table-wrap"><table class="admin-penalties-table"><thead><tr><th>Categoría</th><th>Selección guardada</th><th>Resultado</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+  }).join('') : '<p>No hay quinielas enviadas para esta selección.</p>';
+}
+
+function adminPickemCsv() {
+  if (!adminPickemBoard) return '';
+  const board = adminPickemBoard;
+  const rows = [['Periodo', 'Equipo', 'Autor', 'Fecha (Madrid)', 'Quiniela', 'Categoría', 'Selección', 'Resultado', 'Premio']];
+  for (const ballot of adminPickemBallots()) {
+    for (const category of board.categories) {
+      const answer = ballot.answers[category.id];
+      const selection = category.options.find(option => option.id === answer)?.label || 'Sin responder';
+      const result = answer === undefined ? 'Sin responder' : !category.result ? 'Pendiente' : category.result.optionIds.includes(answer) ? 'Acierto' : 'Sin acierto';
+      rows.push([board.week, ballot.teamName, ballot.author || '', adminPickemDate(ballot.createdAt), ballot.id,
+        category.title, selection, result, ballot.reward?.shells ?? 'Pendiente']);
+    }
+  }
+  const cell = value => {
+    let text = String(value ?? '');
+    if (/^\s*[=+\-@]/.test(text)) text = "'" + text;
+    return '"' + text.replace(/"/g, '""') + '"';
+  };
+  return '\ufeff' + rows.map(row => row.map(cell).join(';')).join('\r\n');
+}
+
+function downloadAdminPickem() {
+  if (!adminPickemBoard || !adminPickemBallots().length) return;
+  const blob = new Blob([adminPickemCsv()], {type: 'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob), link = document.createElement('a');
+  link.href = url;
+  link.download = `pickem-${adminPickemBoard.week}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function refreshAdminData() {
@@ -403,6 +494,13 @@ function renderAdminDuosList() {
 function setupAdminListeners() {
   if (document.body.dataset.adminListenersReady === 'true') return;
   document.body.dataset.adminListenersReady = 'true';
+  document.getElementById('admin-pickem-week')?.addEventListener('change', event => {
+    adminPickemWeek = event.target.value;
+    refreshAdminPickem();
+  });
+  document.getElementById('admin-pickem-team')?.addEventListener('change', renderAdminPickem);
+  document.getElementById('admin-pickem-refresh')?.addEventListener('click', refreshAdminPickem);
+  document.getElementById('admin-pickem-export')?.addEventListener('click', downloadAdminPickem);
 
   const addForm = document.getElementById('add-duo-form');
   const cfgForm = document.getElementById('config-form');

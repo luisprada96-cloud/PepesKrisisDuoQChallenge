@@ -2130,6 +2130,21 @@ class CustomHandler(BaseHTTPRequestHandler):
         data = self.read_body()
         db = load_db()
 
+        if parsed.path == '/api/admin/pickem':
+            if not verify_admin_pin(db, str(data.get('authPin', '')).strip()):
+                self._send_json({'success': False, 'error': 'PIN incorrecto'}, 401)
+                return
+            _, changed = pickem_service.ensure_week(db)
+            if changed:
+                save_db(db)
+            try:
+                board = pickem_service.admin_board(db, data.get('week') or None)
+            except LookupError as error:
+                self._send_json({'success': False, 'error': str(error)}, 404)
+                return
+            self._send_json({'success': True, **board})
+            return
+
         if parsed.path == '/api/pickem':
             if not self.clips_origin_allowed():
                 self._send_json({'error':'Origen no permitido.'}, 403)

@@ -69,6 +69,19 @@
       </details>
     </section>
 
+    <section id="admin-pickem" class="admin-card" hidden>
+      <h2 class="admin-card-title"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Quinielas de Pick’em</h2>
+      <p>Consulta las respuestas de todos los equipos, incluso antes del cierre. El CSV incluye equipo, autor, fecha y cada selección.</p>
+      <div style="display: flex; gap: 0.75rem; align-items: end; flex-wrap: wrap; margin: 1rem 0;">
+        <div style="flex: 1 1 230px; min-width: 0;"><label for="admin-pickem-week">Periodo</label><select id="admin-pickem-week" class="form-control" style="width: 100%; min-width: 0;"></select></div>
+        <div style="flex: 1 1 180px; min-width: 0;"><label for="admin-pickem-team">Equipo</label><select id="admin-pickem-team" class="form-control" style="width: 100%; min-width: 0;"><option value="">Todos los equipos</option></select></div>
+        <button type="button" id="admin-pickem-refresh" class="btn-refresh">Actualizar quinielas</button>
+        <button type="button" id="admin-pickem-export" class="btn-refresh" disabled>Descargar CSV</button>
+      </div>
+      <p id="admin-pickem-status" role="status" aria-live="polite"></p>
+      <div id="admin-pickem-list"></div>
+    </section>
+
     <!-- Section 1: Add New Duo -->
     <section class="admin-card">
       <h2 class="admin-card-title">
