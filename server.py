@@ -23,6 +23,7 @@ import clips_service
 import weekly_summary
 import discord_live
 import tierlists_service
+import final_predictions
 import pickem_service
 from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individual_shell_criteria
 from http.cookies import SimpleCookie, CookieError
@@ -659,7 +660,8 @@ def load_db():
         clips_awarded = clips_service.settle_weekly_reward(data)
         weekly_archived = weekly_summary.maintain(data)
         pickem_awarded = pickem_service.maintain(data)
-        if migrate_credentials(data) or rewards_migrated or elo_migrated or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded:
+        predictions_settled = final_predictions.maintain(data)
+        if migrate_credentials(data) or rewards_migrated or elo_migrated or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled:
             save_db(data)
         return data
 
@@ -1759,6 +1761,7 @@ def public_trophies():
             result["status"] = "awarded"
             result["awardedAt"] = time.time()
             db["awardedTrophies"] = result
+            final_predictions.maintain(db)
             save_db(db)
         return result
 
@@ -1953,6 +1956,21 @@ class CustomHandler(BaseHTTPRequestHandler):
             if new_token: headers['Set-Cookie'] = self.clips_cookie(visitor_token, 'pepes_pickem_visitor')
             self._send_json(result, headers=headers)
             return
+        if path == '/api/final-predictions':
+            visitor_token = self.clips_visitor('pepes_porra_visitor')
+            new_token = visitor_token is None
+            visitor_token = visitor_token or secrets.token_urlsafe(32)
+            offset, limit = page_args(parsed)
+            with db_lock:
+                db = load_db()
+                changed = final_predictions.ensure_board(db)
+                changed = final_predictions.maintain(db) or changed
+                if changed: save_db(db)
+                result = final_predictions.public_board(db, self.clips_team(db), clips_service.visitor_hash(visitor_token), offset, min(limit, 6))
+            headers = {'Vary': 'Cookie, Authorization'}
+            if new_token: headers['Set-Cookie'] = self.clips_cookie(visitor_token, 'pepes_porra_visitor')
+            self._send_json(result, headers=headers)
+            return
         if path == '/api/tierlists':
             visitor_token = self.clips_visitor('pepes_tierlist_visitor')
             new_token = visitor_token is None
@@ -2044,6 +2062,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         # The repository root is never a public directory.
         public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
         public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
+        public_files.update({'porra.html', 'porra.js', 'porra.css'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files and filename not in tierlist_assets:
@@ -2093,6 +2112,26 @@ class CustomHandler(BaseHTTPRequestHandler):
             self._send_json({'success':True, **pickem_service.public_board(db, team_id, clips_service.visitor_hash(visitor_token))}, headers={'Vary':'Cookie, Authorization'})
             return
 
+        if parsed.path == '/api/final-predictions':
+            if not self.clips_origin_allowed():
+                self._send_json({'error': 'Origen no permitido.'}, 403)
+                return
+            team_id = self.clips_team(db)
+            if not team_id:
+                self._send_json({'error': 'Inicia sesión con tu equipo para publicar.'}, 401)
+                return
+            visitor_token = self.clips_visitor('pepes_porra_visitor')
+            if not visitor_token:
+                self._send_json({'error': 'Activa las cookies y vuelve a cargar la página.'}, 400)
+                return
+            try:
+                post, changed = final_predictions.publish(db, team_id, clips_service.visitor_hash(visitor_token), data.get('author', ''), data.get('order'))
+            except FileExistsError as error:
+                self._send_json({'error': str(error)}, 409)
+                return
+            if changed: save_db(db)
+            self._send_json({'success': True, 'postId': post['id'], **final_predictions.public_board(db, team_id, clips_service.visitor_hash(visitor_token))}, headers={'Vary': 'Cookie, Authorization'})
+            return
         if parsed.path == '/api/tierlists':
             if not self.clips_origin_allowed():
                 self._send_json({'error': 'Origen no permitido.'}, 403)

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Porra final | Pepes Krisis Duo Q Challenge</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="porra.css">
+  <script src="navigation.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Navegación principal">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo" aria-label="Pepes Krisis Duo Q · Inicio">
+          <i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i>
+          <span class="brand-text text-gradient-cyan"><span class="brand-full">Pepes Krisis Duo Q</span><span class="brand-short">Pepes Krisis</span></span>
+        </a>
+        <div class="nav-actions">
+          <button type="button" class="nav-toggle" id="nav-menu-toggle" aria-controls="primary-navigation" aria-expanded="false" aria-label="Abrir menú de navegación" hidden><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="nav-menu-label">Menú</span></button>
+          <a href="player.html" class="btn-player-panel" id="nav-player-link" aria-label="Mi Panel" title="Mi Panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><span class="nav-action-label">Mi Panel</span></a>
+          <a href="admin.html" class="btn-admin" id="nav-admin-link" aria-label="Panel Admin" title="Panel Admin"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span class="nav-action-label">Panel Admin</span></a>
+        </div>
+        <ul class="nav-links" id="primary-navigation">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo</a></li>
+          <li><a href="premios.html" class="nav-link"><i class="fa-solid fa-award" aria-hidden="true"></i> Premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+          <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
+          <li><a href="porra.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Porra final</a></li>
+          <li><a href="pickem.html" class="nav-link"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+  <main class="container porra-page">
+    <div class="rp-main">
+      <div class="rp-kicker">La porra de clasificación final</div>
+      <h1>Así acaba el challenge.</h1>
+      <p class="rp-subtitle">Nueve equipos. Un orden. ¿Quién lo va a clavar?</p>
+      <div class="rp-switch" role="group" aria-label="Vista de la porra">
+        <button type="button" data-porra-view="editor" aria-pressed="false" aria-controls="porra-editor">Mi pronóstico</button>
+        <button type="button" data-porra-view="gallery" aria-pressed="true" aria-controls="porra-gallery">Predicciones publicadas</button>
+      </div>
+      <p id="porra-feedback" class="rp-feedback" role="status" aria-live="polite"></p>
+      <section id="porra-editor" hidden aria-label="Ordenar mi pronóstico">
+        <form id="porra-form" class="rp-editor">
+          <div class="rp-section-head"><div><h2>Tu clasificación final</h2><p class="rp-help" id="porra-help">Arrastra para ordenar o utiliza las flechas.</p></div><span id="porra-team-count" class="rp-badge">Cargando equipos…</span></div>
+          <div id="porra-board" aria-describedby="porra-help"></div>
+          <div class="rp-publish">
+            <div class="rp-author"><label for="porra-author">¿Quién firma esta predicción? <span class="rp-tagline">(opcional)</span></label><input id="porra-author" type="text" maxlength="60" placeholder="Tu nombre o apodo" autocomplete="nickname"></div>
+            <button type="submit" id="porra-publish" class="rp-primary" disabled><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Publicar mi pronóstico</button>
+            <p id="porra-publishing-status" class="rp-publish-note">Inicia sesión con tu equipo para publicar.</p>
+            <a href="player.html" id="porra-login">Iniciar sesión con mi equipo ↗</a>
+            <p class="rp-publish-note">Puedes publicar en cualquier momento. Se mostrará la fecha y hora de subida. Dos pronósticos por equipo y uno por navegador, independientes de Tierlist.</p>
+            <p class="rp-publish-note">Al publicarlo quedará visible para todos y no podrás editarlo.</p>
+          </div>
+          <p id="porra-form-error" class="porra-error" role="alert" hidden></p>
+        </form>
+        <p class="rp-bottom"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Hoy haces la predicción. Al final llegan las cuentas.</p>
+      </section>
+      <section id="porra-gallery" aria-label="Predicciones publicadas">
+        <div class="rp-section-head"><div><h2>El veredicto de la comunidad</h2><p class="rp-help" id="porra-count">Cargando pronósticos…</p></div><button type="button" id="porra-refresh" class="rp-secondary">Actualizar</button></div>
+        <p class="rp-help porra-result-status" id="porra-result-status">Los aciertos se comprobarán con la clasificación oficial al terminar el torneo.</p>
+        <div class="rp-posts" id="porra-feed"></div>
+        <nav class="porra-pagination" id="porra-pagination" aria-label="Páginas de pronósticos" hidden>
+          <button type="button" id="porra-previous" class="rp-secondary">← Anterior</button><span id="porra-page-info" aria-live="polite"></span><button type="button" id="porra-next" class="rp-secondary">Siguiente →</button>
+        </nav>
+      </section>
+    </div>
+    <dialog id="porra-detail" class="porra-detail" aria-labelledby="porra-detail-title">
+      <div class="rp-section-head"><div><h2 id="porra-detail-title"></h2><p class="rp-help" id="porra-detail-meta"></p></div><button type="button" id="porra-detail-close" class="rp-secondary" aria-label="Cerrar pronóstico">✕</button></div>
+      <div id="porra-detail-body"></div>
+    </dialog>
+  </main>
+  <footer class="footer"><div class="container"><p><strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026.</p></div></footer>
+  <script src="data.js"></script><script src="alerts.js"></script><script src="porra.js"></script>
+</body>
+</html>
