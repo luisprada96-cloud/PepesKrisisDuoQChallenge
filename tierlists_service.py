@@ -4,6 +4,7 @@ import time
 import uuid
 
 TIERS = ('S', 'A', 'B', 'C', 'D')
+ROLE_TIERS = ('TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY')
 MAX_TEAM_POSTS = 2
 ITEMS = (
     {'id': 'atodoflash', 'name': 'ATodoFlash', 'image': '/assets/tierlist/atodoflash.png'},
@@ -34,13 +35,27 @@ PLAYER_ITEMS = tuple(
         ('pablo-crespo', 'Pablo Crespo', 'VaporesEnElC2'), ('pablo-casco', 'Pablo Casco', 'VaporesEnElC2'),
     )
 )
-CATALOGS = {'teams': ITEMS, 'players': PLAYER_ITEMS}
+PLAYER_ROLES = {
+    'player-ameteum': 'TOP', 'player-pablo-casco': 'TOP', 'player-unluckypanda': 'TOP',
+    'player-markel': 'JUNGLE', 'player-luis': 'JUNGLE', 'player-ikerpantv': 'JUNGLE',
+    'player-papaportu': 'JUNGLE', 'player-pablo-crespo': 'JUNGLE',
+    'player-unluckypingu': 'MIDDLE', 'player-pato': 'MIDDLE', 'player-taberneta': 'MIDDLE',
+    'player-parradise': 'MIDDLE',
+    'player-joji': 'BOTTOM', 'player-sendi': 'BOTTOM', 'player-mclovin': 'BOTTOM',
+    'player-guille': 'UTILITY', 'player-chicha': 'UTILITY', 'player-fogell': 'UTILITY',
+}
+ROLE_ITEMS = tuple({**item, 'role': PLAYER_ROLES[item['id']]} for item in PLAYER_ITEMS)
+CATALOGS = {'teams': ITEMS, 'players': PLAYER_ITEMS, 'roles': ROLE_ITEMS}
 ALL_ITEMS = ITEMS + PLAYER_ITEMS
+
+
+def tiers_for(kind='teams'):
+    return ROLE_TIERS if kind == 'roles' else TIERS
 
 
 def catalog(kind='teams'):
     if not isinstance(kind, str) or kind not in CATALOGS:
-        raise ValueError('Selecciona Equipos o Integrantes.')
+        raise ValueError('Selecciona Equipos, Integrantes o Por roles.')
     return CATALOGS[kind]
 
 
@@ -70,17 +85,22 @@ def publication_status(db, team_id, visitor, kind='teams'):
 
 def validate_tiers(tiers, kind='teams'):
     items = catalog(kind)
-    if not isinstance(tiers, dict) or set(tiers) != set(TIERS):
-        raise ValueError('Utiliza las filas S, A, B, C y D.')
+    expected_tiers = tiers_for(kind)
+    if not isinstance(tiers, dict) or set(tiers) != set(expected_tiers):
+        raise ValueError('Las filas de la tierlist no son válidas.')
     ids = []
-    for tier in TIERS:
+    for tier in expected_tiers:
         if not isinstance(tiers[tier], list) or any(not isinstance(i, str) for i in tiers[tier]):
             raise ValueError('La distribución no es válida.')
+        if kind == 'roles':
+            for player_id in tiers[tier]:
+                if PLAYER_ROLES.get(player_id) != tier:
+                    raise ValueError(f'El integrante {player_id} no pertenece al rol {tier}.')
         ids.extend(tiers[tier])
     if len(ids) != len(items) or set(ids) != {i['id'] for i in items}:
         label = 'equipos' if kind == 'teams' else 'integrantes'
         raise ValueError(f'Coloca los {len(items)} {label} exactamente una vez.')
-    return {tier: list(tiers[tier]) for tier in TIERS}
+    return {tier: list(tiers[tier]) for tier in expected_tiers}
 
 
 def publish(db, team_id, visitor, author, tiers, now=None, kind='teams'):
@@ -108,6 +128,6 @@ def public_board(db, team_id=None, visitor=None, offset=0, limit=6, kind='teams'
     posts = sorted(posts_for(db, kind), key=lambda p: (p['createdAt'], p['id']), reverse=True)
     public = [{key: copy.deepcopy(post[key]) for key in ('id', 'teamId', 'teamName', 'author', 'tiers', 'createdAt')}
               for post in posts[offset:offset + limit]]
-    return {'kind': kind, 'items': copy.deepcopy(items), 'tiers': list(TIERS), 'posts': public,
+    return {'kind': kind, 'items': copy.deepcopy(items), 'tiers': list(tiers_for(kind)), 'posts': public,
             'total': len(posts), 'offset': offset, 'limit': limit,
             'publishing': publication_status(db, team_id, visitor, kind)}

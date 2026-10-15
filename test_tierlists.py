@@ -107,6 +107,39 @@ class ParticipantTierlistServiceTests(unittest.TestCase):
         for kind in ('unknown',None,[],{}):
             with self.subTest(kind=kind),self.assertRaises(ValueError):tierlists.catalog(kind)
 
+    def test_roles_catalog_and_validation_rules(self):
+        items = tierlists.catalog('roles')
+        self.assertEqual(len(items), 18)
+        self.assertEqual(len({i['id'] for i in items}), 18)
+        valid = {role: [item['id'] for item in tierlists.ROLE_ITEMS if item['role'] == role]
+                 for role in tierlists.ROLE_TIERS}
+        validated = tierlists.validate_tiers(valid, 'roles')
+        self.assertEqual(validated, valid)
+
+        swapped = copy.deepcopy(valid)
+        swapped['TOP'][0], swapped['BOTTOM'][0] = swapped['BOTTOM'][0], swapped['TOP'][0]
+        with self.assertRaises(ValueError):
+            tierlists.validate_tiers(swapped, 'roles')
+
+        missing = copy.deepcopy(valid)
+        missing['TOP'].pop()
+        with self.assertRaises(ValueError):
+            tierlists.validate_tiers(missing, 'roles')
+
+    def test_roles_independent_publishing_quota(self):
+        db = {'duos': [{'id': 'a', 'teamName': 'Equipo'}]}
+        valid = {role: [item['id'] for item in tierlists.ROLE_ITEMS if item['role'] == role]
+                 for role in tierlists.ROLE_TIERS}
+        self.assertTrue(tierlists.publication_status(db, 'a', 'browser1', 'roles')['canPublish'])
+        tierlists.publish(db, 'a', 'browser1', 'Autor1', valid, kind='roles')
+        self.assertFalse(tierlists.publication_status(db, 'a', 'browser1', 'roles')['canPublish'])
+        self.assertTrue(tierlists.publication_status(db, 'a', 'browser2', 'roles')['canPublish'])
+        tierlists.publish(db, 'a', 'browser2', 'Autor2', valid, kind='roles')
+        self.assertFalse(tierlists.publication_status(db, 'a', 'browser3', 'roles')['canPublish'])
+        board = tierlists.public_board(db, kind='roles')
+        self.assertEqual(board['total'], 2)
+        self.assertEqual(board['tiers'], list(tierlists.ROLE_TIERS))
+
 
 class TierlistEndpointTests(unittest.TestCase):
     def setUp(self):
