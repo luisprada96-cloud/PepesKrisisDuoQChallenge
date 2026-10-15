@@ -387,8 +387,9 @@ function renderAdminDuosList() {
           <input type="url" id="discord-webhook-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.discordWebhook || '')}" placeholder="https://discord.com/api/webhooks/..." style="font-family: monospace; font-size: 0.85rem;">
         </div>
         <div class="form-group" style="flex: 1 1 160px; margin: 0;">
-          <label for="discord-role-${escapeHtml(duo.id)}">ID Rol Discord (@)</label>
-          <input type="text" id="discord-role-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.discordRoleId || '')}" placeholder="Ej: 1334567890..." style="font-family: monospace; font-size: 0.85rem;">
+          <label for="discord-role-${escapeHtml(duo.id)}">ID numérico del rol de Discord</label>
+          <input type="text" id="discord-role-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.discordRoleId || '')}" placeholder="Ej: 1560279740261343352" inputmode="numeric" pattern="[0-9]{17,20}" maxlength="20" aria-describedby="discord-role-help-${escapeHtml(duo.id)}" style="font-family: monospace; font-size: 0.85rem;">
+          <small id="discord-role-help-${escapeHtml(duo.id)}" style="color: var(--text-muted);">Discord → modo desarrollador → clic derecho en el rol → Copiar ID del rol. Pega solo el número.</small>
         </div>
         <button type="button" class="btn-refresh" data-team-action="webhook" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
           <i class="fa-solid fa-save"></i> Guardar Discord
@@ -605,6 +606,9 @@ async function addNewDuo() {
     return;
   }
 
+  const discordRoleId = document.getElementById('new-discord-role-id')?.value?.trim() || '';
+  if (!validateDiscordRoleId(discordRoleId, document.getElementById('new-discord-role-id'))) return;
+
   const [p1Name, p1Tag = 'EUW'] = p1NameTag.split('#');
   const [p2Name, p2Tag = 'EUW'] = p2NameTag.split('#');
 
@@ -613,7 +617,7 @@ async function addNewDuo() {
     teamName: teamName,
     password: password,
     discordWebhook: document.getElementById('new-discord-webhook')?.value?.trim() || '',
-    discordRoleId: document.getElementById('new-discord-role-id')?.value?.trim() || '',
+    discordRoleId,
     blueShells: 0,
     player1: {
       ...profiles.player1,
@@ -678,6 +682,13 @@ async function handleSaveRoles(id) {
   alert(`Roles principales guardados para "${duo.teamName}".`);
 }
 
+function validateDiscordRoleId(value, input) {
+  if (!value || /^[0-9]{17,20}$/.test(value)) return true;
+  alert('Pega el ID numérico del rol de Discord (entre 17 y 20 dígitos), no su nombre. También puedes dejarlo vacío.');
+  input?.focus();
+  return false;
+}
+
 async function handleSaveDiscordWebhook(id) {
   const duo = adminDuos.find(d => d.id === id);
   const input = document.getElementById(`discord-webhook-${id}`);
@@ -685,6 +696,7 @@ async function handleSaveDiscordWebhook(id) {
   if (!duo || !input) return;
   const webhookUrl = input.value.trim();
   const roleId = roleInput ? roleInput.value.trim() : '';
+  if (!validateDiscordRoleId(roleId, roleInput)) return;
   const result = await DataStore.saveDuo({id, discordWebhook: webhookUrl, discordRoleId: roleId}, adminSessionPin);
   if (!result || result.success === false) {
     alert(result?.error || 'No se pudo guardar la configuración de Discord.');

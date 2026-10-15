@@ -4,6 +4,8 @@ import io
 import json
 import os
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 import urllib.error
 from pathlib import Path
@@ -12,6 +14,7 @@ from unittest.mock import patch, MagicMock
 import discord_shells
 import discord_live
 import server
+import test_shell_penalties as fixtures
 
 
 TEST_WEBHOOK_URL_1 = "https://discord.com/api/webhooks/111111111111111111/test_token_duo_1"
@@ -206,6 +209,53 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
         self.assertEqual(target_duo["discordWebhook"], "")
         self.assertEqual(target_duo["discordRoleId"], "")
 
+    def test_role_names_rejected_without_changing_team_settings(self):
+        token = server.create_player_session("team-target")
+        before = server.load_db()
+        for invalid in ("Marx&Mises", "@everyone", "<@&1560279740261343352>", "123", "１" * 18):
+            with self.subTest(role=invalid):
+                status, result = self._post("/api/duos", {
+                    "authPin": "1234", "duo": {"id": "team-target", "discordRoleId": invalid}
+                })
+                self.assertEqual(status, 400)
+                self.assertFalse(result["success"])
+                status, result = self._post("/api/player/discord-webhook", {
+                    "sessionToken": token, "webhookUrl": TEST_WEBHOOK_URL_1, "roleId": invalid
+                })
+                self.assertEqual(status, 400)
+                self.assertFalse(result["success"])
+                self.assertEqual(server.load_db(), before)
+
+        new_team = copy.deepcopy(before["duos"][0])
+        new_team.update(id="new-team", discordRoleId="Marx&Mises")
+        status, _ = self._post("/api/duos", {"authPin": "1234", "duo": new_team})
+        self.assertEqual(status, 400)
+        self.assertEqual(server.load_db(), before)
+
+    def test_admin_saves_numeric_role_id_and_can_clear_it(self):
+        for role in ("1560279740261343352", ""):
+            status, result = self._post("/api/duos", {
+                "authPin": "1234", "duo": {"id": "team-target", "discordRoleId": role}
+            })
+            self.assertEqual(status, 200)
+            self.assertTrue(result["success"])
+            saved = next(d for d in server.load_db()["duos"] if d["id"] == "team-target")
+            self.assertEqual(saved["discordRoleId"], role)
+            self.assertEqual(saved["discordWebhook"], TEST_WEBHOOK_URL_2)
+            self.assertEqual(saved["blueShells"], 1)
+
+    def test_legacy_role_name_does_not_block_unrelated_admin_edits(self):
+        db = server.load_db()
+        db["duos"][1]["discordRoleId"] = "Old role name"
+        server.save_db(db)
+        status, result = self._post("/api/duos", {
+            "authPin": "1234", "duo": {"id": "team-target", "teamName": "Updated name"}
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(result["success"])
+        saved = next(d for d in server.load_db()["duos"] if d["id"] == "team-target")
+        self.assertEqual(saved["discordRoleId"], "Old role name")
+
     @patch.object(discord_shells, "send_sync", return_value={"success": True, "messageId": "999"})
     def test_player_test_discord_webhook(self, mock_send):
         token = server.create_player_session("team-target")
@@ -295,6 +345,65 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
         duos = admin_res.get("duos", [])
         self.assertTrue(any(d.get("discordWebhook") == TEST_WEBHOOK_URL_1 for d in duos))
         self.assertTrue(any(d.get("discordRoleId") == TEST_ROLE_ID_1 for d in duos))
+
+
+class DiscordTestConcurrencyTests(unittest.TestCase):
+    tearDown = fixtures.ShellEndpointTests.tearDown
+    post = fixtures.ShellEndpointTests.post
+
+    def setUp(self):
+        patcher = patch.object(server, 'remote_backend', None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        fixtures.ShellEndpointTests.setUp(self)
+        db = server.load_db()
+        db['duos'][0]['discordWebhook'] = TEST_WEBHOOK_URL_1
+        db['duos'][0]['discordRoleId'] = TEST_ROLE_ID_1
+        server.save_db(db)
+        self.token = self.post('/api/player/login', {'teamId':'a','password':'a-pass'})['sessionToken']
+
+    def test_slow_admin_and_player_discord_tests_do_not_block_reads_or_mutations(self):
+        for endpoint, payload in (
+            ('/api/player/discord-webhook/test', {'sessionToken':self.token}),
+            ('/api/discord/test', {'authPin':'9999'}),
+        ):
+            with self.subTest(endpoint=endpoint):
+                started, release = threading.Event(), threading.Event()
+                def slow_discord(url, body):
+                    started.set()
+                    if not release.wait(5):
+                        raise TimeoutError('Test did not release mocked Discord response.')
+                    return {'success':True,'messageId':'fake-message'}
+                before = copy.deepcopy(server.load_db())
+                with patch.dict(os.environ, {'DISCORD_LIVE_WEBHOOK_URL':TEST_WEBHOOK_URL_1}), \
+                     patch.object(discord_live, 'send_payload', side_effect=slow_discord) as send, \
+                     ThreadPoolExecutor(max_workers=2) as pool:
+                    waiting = pool.submit(self.post, endpoint, payload)
+                    try:
+                        self.assertTrue(started.wait(2), 'Discord send was not reached')
+                        # Both requests need db_lock; they must finish while Discord is still waiting.
+                        read = pool.submit(self.post, '/api/player/state', {'sessionToken':self.token})
+                        self.assertTrue(read.result(timeout=1)['success'])
+                        changed_url = TEST_WEBHOOK_URL_2 if before['duos'][0]['discordWebhook']==TEST_WEBHOOK_URL_1 else TEST_WEBHOOK_URL_1
+                        update = pool.submit(self.post, '/api/player/discord-webhook',
+                                             {'sessionToken':self.token,'webhookUrl':changed_url,'roleId':TEST_ROLE_ID_1})
+                        self.assertTrue(update.result(timeout=1)['success'])
+                        self.assertFalse(waiting.done(), 'Mocked send should still be waiting')
+                    finally:
+                        release.set()
+                    self.assertTrue(waiting.result(timeout=2)['success'])
+                    send.assert_called_once()
+                after = server.load_db()
+                expected = copy.deepcopy(before)
+                expected['duos'][0]['discordWebhook'] = changed_url
+                self.assertEqual(after, expected, 'Sending a test must not overwrite concurrent changes or create tournament data')
+
+    def test_invalid_player_session_and_missing_webhook_never_send(self):
+        with patch.object(discord_live, 'send_payload') as send:
+            self.post('/api/player/discord-webhook/test', {'sessionToken':'expired'}, expected=401)
+            db=server.load_db();db['duos'][0]['discordWebhook']='';server.save_db(db)
+            self.post('/api/player/discord-webhook/test', {'sessionToken':self.token}, expected=400)
+        send.assert_not_called()
 
 
 if __name__ == "__main__":

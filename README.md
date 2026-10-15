@@ -76,7 +76,7 @@ El panel de administración muestra el último envío confirmado y los errores, 
 
 Los avisos mantienen el enlace de Twitch clicable y desactivan su vista previa automática mediante `SUPPRESS_EMBEDS` de Discord. Este formato se aplica a los mensajes nuevos; los enviados anteriormente conservan su aspecto.
 
-**Probar aviso de Discord**, en administración, envía un mensaje identificado como prueba mediante `POST /api/discord/test`, protegido con el PIN administrativo. No simula un directo ni cambia el registro de notificaciones del torneo.
+**Probar aviso de Discord**, en administración, envía un mensaje identificado como prueba mediante `POST /api/discord/test`, protegido con el PIN administrativo. No simula un directo ni cambia el registro de notificaciones del torneo. Tanto esa prueba como la del canal de un equipo (`POST /api/player/discord-webhook/test`) validan la sesión y capturan los datos necesarios bajo el bloqueo de la base, pero esperan a Discord fuera de él. Las consultas y modificaciones del torneo siguen disponibles durante un envío lento; la prueba no guarda una copia antigua del estado al terminar. Las demás mutaciones conservan su serialización. Las pruebas de concurrencia usan Discord simulado y una base temporal, sin enviar mensajes reales ni generar lanzamientos o castigos.
 
 ## 🔐 Credenciales de producción
 
