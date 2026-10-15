@@ -5,6 +5,7 @@ import discord_live
 
 
 logger = logging.getLogger("discord_shells")
+PLAYER_PANEL_URL = "https://duoqchallenge.luisjourney.xyz/player.html"
 
 
 def webhook_url(value):
@@ -12,21 +13,33 @@ def webhook_url(value):
     return discord_live.webhook_url(value)
 
 
-def message_shell_received(attacker_name, target_name):
+def format_role_mention(team_name, role_id=None):
+    """Format a Discord mention: role ID (<@&id>) triggers a notification ping; fallback to @TeamName."""
+    role_str = str(role_id or "").strip()
+    if role_str.isdigit():
+        return f"<@&{role_str}>"
+    if role_str.startswith("<@"):
+        return role_str
+    return f"@{team_name}"
+
+
+def message_shell_received(attacker_name, target_name, target_role_id=None):
     """Notification sent to the target team's private Discord channel when attacked."""
     attacker_safe = discord_live.plain_text(attacker_name, 100)
     target_safe = discord_live.plain_text(target_name, 100)
+    mention = format_role_mention(target_name, target_role_id)
     lines = [
         "🐢⚡ **¡ALERTA DE CAPARAZÓN AZUL!**",
         f"¡Atención **{target_safe}**! El equipo **{attacker_safe}** os acaba de lanzar un Caparazón Azul. 💥",
         "",
+        mention,
         "🎲 Tenéis un caparazón pendiente en vuestra bandeja de entrada.",
         "👉 ¡Entrad a girar la ruleta de castigos antes de vuestra próxima partida!",
-        "🔗 https://pepes-krisis-duoq-challenge.onrender.com/player.html",
+        f"🔗 {PLAYER_PANEL_URL}",
     ]
     return {
         "content": "\n".join(lines),
-        "allowed_mentions": {"parse": []}
+        "allowed_mentions": {"parse": ["roles", "users", "everyone"]}
     }
 
 
@@ -52,7 +65,7 @@ def message_shell_spun(target_name, attacker_name, penalty):
     ]
     return {
         "content": "\n".join(lines),
-        "allowed_mentions": {"parse": []}
+        "allowed_mentions": {"parse": ["roles", "users", "everyone"]}
     }
 
 
@@ -67,39 +80,43 @@ def message_shell_returned_to_target(target_name, attacker_name):
     ]
     return {
         "content": "\n".join(lines),
-        "allowed_mentions": {"parse": []}
+        "allowed_mentions": {"parse": ["roles", "users", "everyone"]}
     }
 
 
-def message_shell_bounced_back(target_name, attacker_name):
+def message_shell_bounced_back(target_name, attacker_name, attacker_role_id=None):
     """Notification sent to the original attacker when their shell bounces back at them."""
     target_safe = discord_live.plain_text(target_name, 100)
     attacker_safe = discord_live.plain_text(attacker_name, 100)
+    mention = format_role_mention(attacker_name, attacker_role_id)
     lines = [
         "↩️💥 **¡EL CAPARAZÓN OS HA SIDO DEVUELTO!**",
         f"¡Cuidado **{attacker_safe}**! El equipo **{target_safe}** ha sacado *Devolver Caparazón*.",
         "",
+        mention,
         "🎯 El caparazón ha rebotado contra vosotros y ahora tenéis una ruleta pendiente en vuestro panel.",
         "👉 Entrad a girar la ruleta de castigos antes de vuestra próxima partida:",
-        "https://pepes-krisis-duoq-challenge.onrender.com/player.html",
+        f"🔗 {PLAYER_PANEL_URL}",
     ]
     return {
         "content": "\n".join(lines),
-        "allowed_mentions": {"parse": []}
+        "allowed_mentions": {"parse": ["roles", "users", "everyone"]}
     }
 
 
-def message_test(team_name):
+def message_test(team_name, role_id=None):
     """Test notification to verify that the private duo Discord channel is properly linked."""
     team_safe = discord_live.plain_text(team_name, 100)
+    mention = format_role_mention(team_name, role_id)
     lines = [
         "🐢⚡ **Prueba de conexión — Pepes Krisis Duo Q**",
         f"¡Hola **{team_safe}**! La conexión con vuestro canal de Discord funciona correctamente.",
+        f"Mención configurada: {mention}",
         "A partir de ahora, cuando otro equipo os lance un Caparazón Azul o recibáis un castigo, os llegará un aviso automático por este canal.",
     ]
     return {
         "content": "\n".join(lines),
-        "allowed_mentions": {"parse": []}
+        "allowed_mentions": {"parse": ["roles", "users", "everyone"]}
     }
 
 
@@ -130,11 +147,11 @@ def send_async(url, payload):
     return True
 
 
-def notify_shell_received_async(target_webhook, attacker_name, target_name):
+def notify_shell_received_async(target_webhook, attacker_name, target_name, target_role_id=None):
     """Send async alert to target team that they have received a shell."""
     if not target_webhook:
         return False
-    return send_async(target_webhook, message_shell_received(attacker_name, target_name))
+    return send_async(target_webhook, message_shell_received(attacker_name, target_name, target_role_id))
 
 
 def notify_shell_spun_async(target_webhook, target_name, attacker_name, penalty):
@@ -151,8 +168,8 @@ def notify_shell_returned_async(target_webhook, target_name, attacker_name):
     return send_async(target_webhook, message_shell_returned_to_target(target_name, attacker_name))
 
 
-def notify_shell_bounced_back_async(attacker_webhook, target_name, attacker_name):
+def notify_shell_bounced_back_async(attacker_webhook, target_name, attacker_name, attacker_role_id=None):
     """Send async alert to attacking team warning them their shell bounced back."""
     if not attacker_webhook:
         return False
-    return send_async(attacker_webhook, message_shell_bounced_back(target_name, attacker_name))
+    return send_async(attacker_webhook, message_shell_bounced_back(target_name, attacker_name, attacker_role_id))

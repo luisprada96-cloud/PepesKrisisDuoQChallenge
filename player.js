@@ -212,8 +212,13 @@ function renderDiscordWebhookSettings() {
   if (!webhookInput) return;
 
   const currentWebhook = activeDuo?.discordWebhook || '';
+  const currentRoleId = activeDuo?.discordRoleId || '';
+  const roleInput = document.getElementById('player-discord-role-id');
   if (document.activeElement !== webhookInput) {
     webhookInput.value = currentWebhook;
+  }
+  if (roleInput && document.activeElement !== roleInput) {
+    roleInput.value = currentRoleId;
   }
 
   if (currentWebhook) {
@@ -512,16 +517,21 @@ function setupPlayerListeners() {
     discordForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const input = document.getElementById('player-discord-webhook');
+      const roleInput = document.getElementById('player-discord-role-id');
       const val = (input?.value || '').trim();
+      const roleVal = (roleInput?.value || '').trim();
       const btnSave = document.getElementById('btn-save-discord-webhook');
       if (btnSave) {
         btnSave.disabled = true;
         btnSave.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando...`;
       }
       try {
-        const res = await DataStore.savePlayerDiscordWebhook(val, playerSessionToken);
+        const res = await DataStore.savePlayerDiscordWebhook(val, playerSessionToken, roleVal);
         if (res.success) {
-          if (activeDuo) activeDuo.discordWebhook = res.discordWebhook || '';
+          if (activeDuo) {
+            activeDuo.discordWebhook = res.discordWebhook || '';
+            activeDuo.discordRoleId = res.discordRoleId || '';
+          }
           sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
           showPlayerToast('Webhook de Discord guardado correctamente.');
           renderDiscordWebhookSettings();
@@ -564,11 +574,16 @@ function setupPlayerListeners() {
       if (!confirm('¿Seguro que deseas eliminar el webhook de Discord de tu equipo?')) return;
       btnDeleteDiscord.disabled = true;
       try {
-        const res = await DataStore.savePlayerDiscordWebhook('', playerSessionToken);
+        const res = await DataStore.savePlayerDiscordWebhook('', playerSessionToken, '');
         if (res.success) {
-          if (activeDuo) activeDuo.discordWebhook = '';
+          if (activeDuo) {
+            activeDuo.discordWebhook = '';
+            activeDuo.discordRoleId = '';
+          }
           const input = document.getElementById('player-discord-webhook');
           if (input) input.value = '';
+          const roleInput = document.getElementById('player-discord-role-id');
+          if (roleInput) roleInput.value = '';
           sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
           showPlayerToast('Webhook de Discord eliminado.');
           renderDiscordWebhookSettings();

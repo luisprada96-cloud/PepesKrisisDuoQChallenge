@@ -382,12 +382,16 @@ function renderAdminDuosList() {
         <i class="fa-solid fa-save"></i> Guardar nombres y Twitch
       </button>
       <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.08);">
-        <div class="form-group" style="flex: 1 1 320px; margin: 0;">
-          <label for="discord-webhook-${escapeHtml(duo.id)}"><i class="fa-brands fa-discord" style="color: #5865F2;"></i> Webhook Discord del Dúo (Alertas Caparazones)</label>
+        <div class="form-group" style="flex: 2 1 260px; margin: 0;">
+          <label for="discord-webhook-${escapeHtml(duo.id)}"><i class="fa-brands fa-discord" style="color: #5865F2;"></i> Webhook Discord</label>
           <input type="url" id="discord-webhook-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.discordWebhook || '')}" placeholder="https://discord.com/api/webhooks/..." style="font-family: monospace; font-size: 0.85rem;">
         </div>
+        <div class="form-group" style="flex: 1 1 160px; margin: 0;">
+          <label for="discord-role-${escapeHtml(duo.id)}">ID Rol Discord (@)</label>
+          <input type="text" id="discord-role-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.discordRoleId || '')}" placeholder="Ej: 1334567890..." style="font-family: monospace; font-size: 0.85rem;">
+        </div>
         <button type="button" class="btn-refresh" data-team-action="webhook" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
-          <i class="fa-solid fa-save"></i> Guardar Webhook
+          <i class="fa-solid fa-save"></i> Guardar Discord
         </button>
       </div>
     `;
@@ -609,6 +613,7 @@ async function addNewDuo() {
     teamName: teamName,
     password: password,
     discordWebhook: document.getElementById('new-discord-webhook')?.value?.trim() || '',
+    discordRoleId: document.getElementById('new-discord-role-id')?.value?.trim() || '',
     blueShells: 0,
     player1: {
       ...profiles.player1,
@@ -676,16 +681,18 @@ async function handleSaveRoles(id) {
 async function handleSaveDiscordWebhook(id) {
   const duo = adminDuos.find(d => d.id === id);
   const input = document.getElementById(`discord-webhook-${id}`);
+  const roleInput = document.getElementById(`discord-role-${id}`);
   if (!duo || !input) return;
   const webhookUrl = input.value.trim();
-  const result = await DataStore.saveDuo({id, discordWebhook: webhookUrl}, adminSessionPin);
+  const roleId = roleInput ? roleInput.value.trim() : '';
+  const result = await DataStore.saveDuo({id, discordWebhook: webhookUrl, discordRoleId: roleId}, adminSessionPin);
   if (!result || result.success === false) {
-    alert(result?.error || 'No se pudo guardar el webhook de Discord.');
+    alert(result?.error || 'No se pudo guardar la configuración de Discord.');
     return;
   }
   await refreshAdminData();
   renderAdminDuosList();
-  alert(`Webhook de Discord guardado para "${duo.teamName}".`);
+  alert(`Configuración de Discord guardada para "${duo.teamName}".`);
 }
 
 async function handleSaveParticipantProfiles(id) {

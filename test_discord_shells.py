@@ -16,6 +16,8 @@ import server
 
 TEST_WEBHOOK_URL_1 = "https://discord.com/api/webhooks/111111111111111111/test_token_duo_1"
 TEST_WEBHOOK_URL_2 = "https://discord.com/api/webhooks/222222222222222222/test_token_duo_2"
+TEST_ROLE_ID_1 = "111222333444555666"
+TEST_ROLE_ID_2 = "999888777666555444"
 
 
 class DiscordShellsUnitTests(unittest.TestCase):
@@ -30,11 +32,18 @@ class DiscordShellsUnitTests(unittest.TestCase):
         self.assertEqual(discord_shells.webhook_url("https://discord.com/other/path"), "")
 
     def test_message_shell_received_escaping_and_content(self):
+        # Case 1: Without role ID -> @TeamName
         msg = discord_shells.message_shell_received("Equipo *Atacante* <1>", "Equipo _Destino_")
         self.assertIn("ALERTA DE CAPARAZÓN AZUL", msg["content"])
         self.assertIn("Equipo \\*Atacante\\* \\<1\\>", msg["content"])
         self.assertIn("Equipo \\_Destino\\_", msg["content"])
-        self.assertEqual(msg["allowed_mentions"], {"parse": []})
+        self.assertIn("@Equipo _Destino_", msg["content"])
+        self.assertIn("https://duoqchallenge.luisjourney.xyz/player.html", msg["content"])
+        self.assertEqual(msg["allowed_mentions"], {"parse": ["roles", "users", "everyone"]})
+
+        # Case 2: With role ID -> <@&ID>
+        msg_role = discord_shells.message_shell_received("Equipo Atacante", "Equipo Destino", TEST_ROLE_ID_2)
+        self.assertIn(f"<@&{TEST_ROLE_ID_2}>", msg_role["content"])
 
     def test_message_shell_spun_content(self):
         penalty = {"icon": "🐢", "name": "Flash Invertido", "desc": "Juega con el flash en la D", "scope": "both"}
@@ -48,14 +57,17 @@ class DiscordShellsUnitTests(unittest.TestCase):
         self.assertIn("CAPARAZÓN DEVUELTO", ret_msg["content"])
         self.assertIn("Defensores", ret_msg["content"])
 
-        bounced_msg = discord_shells.message_shell_bounced_back("Defensores", "Atacantes")
+        bounced_msg = discord_shells.message_shell_bounced_back("Defensores", "Atacantes", TEST_ROLE_ID_1)
         self.assertIn("EL CAPARAZÓN OS HA SIDO DEVUELTO", bounced_msg["content"])
         self.assertIn("Atacantes", bounced_msg["content"])
+        self.assertIn(f"<@&{TEST_ROLE_ID_1}>", bounced_msg["content"])
+        self.assertIn("https://duoqchallenge.luisjourney.xyz/player.html", bounced_msg["content"])
 
     def test_message_test(self):
-        msg = discord_shells.message_test("Mi Equipo")
+        msg = discord_shells.message_test("Mi Equipo", TEST_ROLE_ID_1)
         self.assertIn("Prueba de conexión", msg["content"])
         self.assertIn("Mi Equipo", msg["content"])
+        self.assertIn(f"<@&{TEST_ROLE_ID_1}>", msg["content"])
 
     def test_send_sync_rejects_invalid_url(self):
         res = discord_shells.send_sync("https://invalid-host.com/hook", {"content": "test"})
@@ -111,6 +123,7 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
                     "blueShells": 3,
                     "passwordHash": server.hash_secret("1234"),
                     "discordWebhook": TEST_WEBHOOK_URL_1,
+                    "discordRoleId": TEST_ROLE_ID_1,
                     "player1": {"name": "P1", "tag": "EUW", "mainRole": "TOP"},
                     "player2": {"name": "P2", "tag": "EUW", "mainRole": "JUNGLE"},
                     "history": []
@@ -121,6 +134,7 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
                     "blueShells": 1,
                     "passwordHash": server.hash_secret("1234"),
                     "discordWebhook": TEST_WEBHOOK_URL_2,
+                    "discordRoleId": TEST_ROLE_ID_2,
                     "player1": {"name": "P3", "tag": "EUW", "mainRole": "MIDDLE"},
                     "player2": {"name": "P4", "tag": "EUW", "mainRole": "BOTTOM"},
                     "history": []
@@ -160,28 +174,37 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
     def test_player_save_and_clear_discord_webhook(self):
         token = server.create_player_session("team-target")
 
-        # Update webhook with valid url
+        # Update webhook and role ID
         new_url = "https://discord.com/api/webhooks/999999/new_valid_token"
-        status, res = self._post("/api/player/discord-webhook", {"sessionToken": token, "webhookUrl": new_url})
+        new_role = "555666777888999000"
+        status, res = self._post("/api/player/discord-webhook", {
+            "sessionToken": token,
+            "webhookUrl": new_url,
+            "roleId": new_role
+        })
         self.assertEqual(status, 200)
         self.assertTrue(res["success"])
         self.assertEqual(res["discordWebhook"], new_url)
+        self.assertEqual(res["discordRoleId"], new_role)
         db = server.load_db()
         target_duo = next(d for d in db["duos"] if d["id"] == "team-target")
         self.assertEqual(target_duo["discordWebhook"], new_url)
+        self.assertEqual(target_duo["discordRoleId"], new_role)
 
         # Reject invalid webhook
         status, res = self._post("/api/player/discord-webhook", {"sessionToken": token, "webhookUrl": "https://evil.com/hook"})
         self.assertEqual(status, 400)
         self.assertFalse(res["success"])
 
-        # Clear webhook by sending empty string
-        status, res = self._post("/api/player/discord-webhook", {"sessionToken": token, "webhookUrl": ""})
+        # Clear webhook and role
+        status, res = self._post("/api/player/discord-webhook", {"sessionToken": token, "webhookUrl": "", "roleId": ""})
         self.assertEqual(status, 200)
         self.assertEqual(res["discordWebhook"], "")
+        self.assertEqual(res["discordRoleId"], "")
         db = server.load_db()
         target_duo = next(d for d in db["duos"] if d["id"] == "team-target")
         self.assertEqual(target_duo["discordWebhook"], "")
+        self.assertEqual(target_duo["discordRoleId"], "")
 
     @patch.object(discord_shells, "send_sync", return_value={"success": True, "messageId": "999"})
     def test_player_test_discord_webhook(self, mock_send):
@@ -191,6 +214,8 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
         self.assertTrue(res["success"])
         mock_send.assert_called_once()
         self.assertEqual(mock_send.call_args.args[0], TEST_WEBHOOK_URL_2)
+        # Verify test payload has role mention
+        self.assertIn(f"<@&{TEST_ROLE_ID_2}>", mock_send.call_args.args[1]["content"])
 
     @patch.object(discord_shells, "notify_shell_received_async")
     def test_launch_shell_triggers_discord_alert(self, mock_notify):
@@ -202,11 +227,12 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(res["success"])
         mock_notify.assert_called_once_with(
-            TEST_WEBHOOK_URL_2, "Attacking Duo", "Defending Duo"
+            TEST_WEBHOOK_URL_2, "Attacking Duo", "Defending Duo", TEST_ROLE_ID_2
         )
 
+    @patch.object(discord_shells, "notify_shell_received_async")
     @patch.object(discord_shells, "notify_shell_spun_async")
-    def test_spin_shell_triggers_discord_alert(self, mock_notify):
+    def test_spin_shell_triggers_discord_alert(self, mock_notify_spun, mock_notify_recv):
         token_attacker = server.create_player_session("team-attacker")
         _, launch_res = self._post("/api/player/launch-shell", {
             "sessionToken": token_attacker,
@@ -215,7 +241,6 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
         attack_id = launch_res["attack"]["id"]
 
         token_target = server.create_player_session("team-target")
-        # Mock weighted_penalty to return a regular penalty
         with patch.object(server, "weighted_penalty", return_value={"baseId": "swap_flash", "name": "Flash en la D", "icon": "⚡", "scope": "both", "desc": "Jugar con flash invertido"}):
             status, spin_res = self._post("/api/player/spin-shell", {
                 "sessionToken": token_target,
@@ -223,14 +248,15 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
             })
             self.assertEqual(status, 200)
             self.assertTrue(spin_res["success"])
-            mock_notify.assert_called_once()
-            self.assertEqual(mock_notify.call_args.args[0], TEST_WEBHOOK_URL_2)
-            self.assertEqual(mock_notify.call_args.args[1], "Defending Duo")
-            self.assertEqual(mock_notify.call_args.args[2], "Attacking Duo")
+            mock_notify_spun.assert_called_once()
+            self.assertEqual(mock_notify_spun.call_args.args[0], TEST_WEBHOOK_URL_2)
+            self.assertEqual(mock_notify_spun.call_args.args[1], "Defending Duo")
+            self.assertEqual(mock_notify_spun.call_args.args[2], "Attacking Duo")
 
+    @patch.object(discord_shells, "notify_shell_received_async")
     @patch.object(discord_shells, "notify_shell_returned_async")
     @patch.object(discord_shells, "notify_shell_bounced_back_async")
-    def test_spin_shell_bounce_back_triggers_both_discord_alerts(self, mock_bounce, mock_returned):
+    def test_spin_shell_bounce_back_triggers_both_discord_alerts(self, mock_bounce, mock_returned, mock_recv):
         token_attacker = server.create_player_session("team-attacker")
         _, launch_res = self._post("/api/player/launch-shell", {
             "sessionToken": token_attacker,
@@ -247,25 +273,28 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertTrue(spin_res["success"])
             mock_returned.assert_called_once_with(TEST_WEBHOOK_URL_2, "Defending Duo", "Attacking Duo")
-            mock_bounce.assert_called_once_with(TEST_WEBHOOK_URL_1, "Defending Duo", "Attacking Duo")
+            mock_bounce.assert_called_once_with(TEST_WEBHOOK_URL_1, "Defending Duo", "Attacking Duo", TEST_ROLE_ID_1)
 
     def test_privacy_webhook_url_not_leaked_publicly(self):
-        # 1. Public summaries must NOT have discordWebhook
+        # 1. Public summaries must NOT have discordWebhook or discordRoleId
         summaries = server.public_duo_summaries()
         for duo in summaries:
             self.assertNotIn("discordWebhook", duo)
+            self.assertNotIn("discordRoleId", duo)
 
-        # 2. Player state includes discordWebhook ONLY for authenticated duo
+        # 2. Player state includes discordWebhook and discordRoleId ONLY for authenticated duo
         db = server.load_db()
         duo1 = next(d for d in db["duos"] if d["id"] == "team-attacker")
         state1 = server.player_state(db, duo1)
         self.assertEqual(state1.get("discordWebhook"), TEST_WEBHOOK_URL_1)
+        self.assertEqual(state1.get("discordRoleId"), TEST_ROLE_ID_1)
 
-        # 3. Admin includes discordWebhook
+        # 3. Admin includes discordWebhook and discordRoleId
         status, admin_res = self._post("/api/admin/login", {"pin": "1234"})
         self.assertEqual(status, 200)
         duos = admin_res.get("duos", [])
         self.assertTrue(any(d.get("discordWebhook") == TEST_WEBHOOK_URL_1 for d in duos))
+        self.assertTrue(any(d.get("discordRoleId") == TEST_ROLE_ID_1 for d in duos))
 
 
 if __name__ == "__main__":

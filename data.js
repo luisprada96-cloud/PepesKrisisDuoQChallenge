@@ -230,7 +230,7 @@ const DataStore = {
   getPlayerState: sessionToken => mutation('/player/state', {sessionToken}),
   launchShell: (targetId, sessionToken) => mutation('/player/launch-shell', {targetId, sessionToken}),
   spinShell: (attackId, sessionToken) => mutation('/player/spin-shell', {attackId, sessionToken}),
-  savePlayerDiscordWebhook: (webhookUrl, sessionToken) => mutation('/player/discord-webhook', {webhookUrl, sessionToken}),
+  savePlayerDiscordWebhook: (webhookUrl, sessionToken, roleId) => mutation('/player/discord-webhook', {webhookUrl, sessionToken, roleId}),
   testPlayerDiscordWebhook: sessionToken => mutation('/player/discord-webhook/test', {sessionToken}),
   adminResolvePenalty: (penaltyInstanceId, action, note, authPin) => mutation('/admin/resolve-penalty', {penaltyInstanceId, action, note, authPin}),
   async refreshSyncStatus() {
