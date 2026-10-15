@@ -1,8 +1,29 @@
 """Discord live alerts driven by the existing Twitch polling job."""
 import json
+import os
 import re
+import time
 import urllib.error
 import urllib.request
+from datetime import datetime
+
+COOLDOWN_SECONDS = 7200
+
+
+def parse_timestamp(value):
+    if not value:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except Exception:
+            try:
+                return float(value)
+            except Exception:
+                return 0.0
+    return 0.0
 
 
 def webhook_url(value):
@@ -63,19 +84,43 @@ def send_payload(url, payload):
         return {"success": False, "error": "No se pudo confirmar el envío a Discord.", "retryAfter": 300}
 
 
-def prepare(db, live, owners):
-    """Keep one durable notification per channel and latest stream ID."""
+def prepare(db, live, owners, now_timestamp=None, cooldown_seconds=None):
+    """Keep one durable notification per channel and latest stream ID with a 2-hour cooldown."""
+    if cooldown_seconds is None:
+        try:
+            cooldown_seconds = int(os.environ.get("DISCORD_LIVE_COOLDOWN_SECONDS", COOLDOWN_SECONDS))
+        except (ValueError, TypeError):
+            cooldown_seconds = COOLDOWN_SECONDS
+    now = time.time() if now_timestamp is None else float(now_timestamp)
     ledger = db.setdefault("discordLiveNotifications", {})
     changed = False
     for channel, owner in owners.items():
         stream = live.get(channel) or {}
         stream_id = str(stream.get("id") or "")
-        if not stream_id or ledger.get(channel, {}).get("streamId") == stream_id:
+        if not stream_id:
             continue
+        existing = ledger.get(channel)
+        if existing:
+            if existing.get("streamId") == stream_id:
+                continue
+            sent_at = parse_timestamp(existing.get("sentAt"))
+            if existing.get("status") == "sent" and sent_at > 0 and (now - sent_at) < cooldown_seconds:
+                # Within cooldown: update to current stream ID without re-queueing an alert
+                existing["streamId"] = stream_id
+                existing["title"] = str(stream.get("title") or "")[:300]
+                existing["teamId"] = owner["teamId"]
+                existing["playerKey"] = owner["playerKey"]
+                existing["name"] = owner["name"]
+                existing["teamName"] = owner["teamName"]
+                changed = True
+                continue
+
         ledger[channel] = {"channel": channel, "streamId": stream_id, "status": "pending",
                            "teamId": owner["teamId"], "playerKey": owner["playerKey"],
                            "name": owner["name"], "teamName": owner["teamName"],
                            "title": str(stream.get("title") or "")[:300]}
+        if existing and existing.get("sentAt"):
+            ledger[channel]["lastSentAt"] = existing["sentAt"]
         changed = True
     # Removed channels must not retain team-related notification records.
     for channel in list(ledger):

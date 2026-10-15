@@ -65,13 +65,31 @@ class DiscordLiveTests(unittest.TestCase):
         self.assertEqual(result['discord']['sent'], 0)
         self.assertTrue(server.load_db()['discordLiveStatus']['lastSentAt'])
 
-    def test_offline_then_same_id_is_not_resent_but_new_stream_is(self):
+    def test_offline_then_same_id_is_not_resent_and_cooldown_prevents_spam(self):
         self.sync([self.stream()])
         self.sync([])
         _, send, _ = self.sync([self.stream()])
         send.assert_not_called()
-        _, send, _ = self.sync([self.stream(stream_id='new')])
+        # A new stream ID within the 2-hour cooldown must NOT re-alert.
+        _, send, _ = self.sync([self.stream(stream_id='new_quick')])
+        send.assert_not_called()
+        # After the 2-hour cooldown expires, a new stream ID DOES alert.
+        db = server.load_db()
+        db['discordLiveNotifications']['channel_one']['sentAt'] = '2026-10-15T08:00:00+00:00'
+        server.save_db(db)
+        _, send, _ = self.sync([self.stream(stream_id='new_after_cooldown')])
         self.assertEqual(send.call_count, 1)
+
+    def test_three_consecutive_reconnects_only_alert_once(self):
+        # 1st stream start -> alerts
+        _, send, _ = self.sync([self.stream(stream_id='s1')])
+        self.assertEqual(send.call_count, 1)
+        # 2nd reconnect with new stream_id within minutes -> suppressed
+        _, send, _ = self.sync([self.stream(stream_id='s2')])
+        self.assertEqual(send.call_count, 0)
+        # 3rd reconnect with new stream_id within minutes -> suppressed
+        _, send, _ = self.sync([self.stream(stream_id='s3')])
+        self.assertEqual(send.call_count, 0)
 
     def test_disabled_or_invalid_webhook_never_sends(self):
         for url in ('', 'https://example.com/api/webhooks/123/token'):
