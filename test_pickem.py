@@ -194,7 +194,7 @@ class PickemServiceTests(unittest.TestCase):
         self.db['duos'].append({'id':'new','teamName':'Nuevo','player1':{'name':'Nuevo1'},'player2':{'name':'Nuevo2'}})
         _, changed = pickem.ensure_week(self.db, NOW)
         self.assertTrue(changed)
-        self.assertEqual(len(self.board['categories']), 6)
+        self.assertEqual(len(self.board['categories']), 7)
         self.assertEqual(len(self.board['ballots']), 1)
         team_category = next(c for c in self.board['categories'] if c['id']=='weekly_leader')
         player_category = next(c for c in self.board['categories'] if c['id']=='best_game_kda')
@@ -414,6 +414,103 @@ class PickemServiceTests(unittest.TestCase):
         for c in public['categories']:
             for option in c['options']:
                 self.assertFalse({'account','puuid','playerKey'} & option.keys())
+
+
+class FirstWeekLastTests(unittest.TestCase):
+    setUp = PickemServiceTests.setUp
+    settle = PickemServiceTests.settle
+
+    def category(self):
+        return next(c for c in self.board['categories'] if c['id']=='first_week_last')
+
+    def observe(self):
+        for d in self.db['duos']:
+            d.update(tier='Gold',division='IV',lp=50,wins=5,losses=5,rankObservedAt=NOW)
+        pickem.capture_rankings(self.db)
+
+    def result(self):
+        return pickem.category_result(self.db,self.board,self.category())
+
+    def test_only_opening_week_and_all_nine_teams_available(self):
+        for i in range(7):
+            self.db['duos'].append({'id':f'extra{i}','teamName':f'Extra {i}',
+                'player1':{'name':f'P{i}'},'player2':{'name':f'Q{i}'}})
+        pickem.ensure_week(self.db,NOW)
+        self.assertEqual({o['id'] for o in self.category()['options']}, {d['id'] for d in self.db['duos']})
+        self.assertEqual(len(self.category()['options']),9)
+        next_week=pickem.weeks.timestamp('2026-10-19T12:00')
+        key,_=pickem.ensure_week(self.db,next_week)
+        self.assertNotIn('first_week_last',[c['id'] for c in self.db['pickem']['weeks'][key]['categories']])
+
+    def test_lowest_tier_division_lp_then_winrate_not_net_lp(self):
+        scenarios=[({'tier':'Silver','division':'I','lp':99},{'tier':'Gold','division':'IV','lp':0}),
+                   ({'division':'IV','lp':99},{'division':'III','lp':0}),
+                   ({'lp':49},{'lp':50}),({'wins':4,'losses':6},{'wins':6,'losses':4})]
+        for left,right in scenarios:
+            with self.subTest(left=left,right=right):
+                self.observe()
+                a,b=self.db['duos']
+                a.update(**left,netLp=9999,rankObservedAt=NOW+1)
+                b.update(**right,netLp=-9999,rankObservedAt=NOW+1)
+                pickem.capture_rankings(self.db)
+                self.assertEqual(self.result()['optionIds'],['a'])
+                self.board.pop('rankObservations',None)
+
+    def test_exact_ties_accept_both(self):
+        self.observe()
+        self.assertEqual(set(self.result()['optionIds']),{'a','b'})
+
+    def test_preclose_snapshot_survives_monday_rank_changes(self):
+        self.observe()
+        self.db['duos'][1].update(tier='Iron',lp=0,rankObservedAt=NOW+1)
+        pickem.capture_rankings(self.db)
+        end=pickem.period(self.db,WEEK)['endsAt']
+        self.db['duos'][0].update(tier='Iron',lp=0,rankObservedAt=end+1)
+        self.db['duos'][1].update(tier='Challenger',lp=999,rankObservedAt=end+1)
+        pickem.capture_rankings(self.db)
+        self.settle()
+        result=self.board['results']['first_week_last']
+        self.assertEqual(result['optionIds'],['b'])
+        self.assertLess(result['observedAt'],end)
+        self.assertIn('Último puesto de la primera semana',result['summary'])
+
+    def test_missing_snapshot_removed_team_and_replaced_account_do_not_invent_loser(self):
+        self.observe()
+        original=copy.deepcopy(self.db)
+        del self.board['rankObservations']['b']
+        self.assertEqual(self.result()['status'],'NO_DATA')
+        self.db=copy.deepcopy(original)
+        self.board=self.db['pickem']['weeks'][WEEK]
+        self.db['duos'].pop()
+        self.assertEqual(self.result()['status'],'NO_DATA')
+        self.db=copy.deepcopy(original)
+        self.board=self.db['pickem']['weeks'][WEEK]
+        self.db['duos'][1]['player1']['name']='Replacement'
+        self.assertEqual(self.result()['status'],'NO_DATA')
+
+    def test_snapshot_capture_continues_if_weekly_leader_already_settled(self):
+        self.observe()
+        self.board['results']['weekly_leader']={'status':'SETTLED','optionIds':['a']}
+        self.db['duos'][1].update(lp=1,rankObservedAt=NOW+1)
+        self.assertTrue(pickem.capture_rankings(self.db))
+        self.assertEqual(self.result()['optionIds'],['b'])
+
+    def test_added_to_existing_ballot_without_extra_quota_and_third_correct_pays_once(self):
+        pickem.submit(self.db,'a','browser','unique_champions','0-19',now=NOW)
+        pickem.submit(self.db,'a','browser','weekly_leader','a',now=NOW)
+        self.board['categories']=[c for c in self.board['categories'] if c['id']!='first_week_last']
+        pickem.ensure_week(self.db,NOW)
+        pickem.submit(self.db,'a','browser','first_week_last','b',now=NOW)
+        self.assertEqual(len(self.board['ballots']),1)
+        self.observe()
+        self.db['duos'][1].update(tier='Iron',lp=0,rankObservedAt=NOW+1)
+        pickem.capture_rankings(self.db)
+        self.db['duos'][0]['history']=[game()]
+        self.settle()
+        self.assertEqual(self.db['duos'][0]['blueShells'],6)
+        self.assertEqual(len([e for e in self.db['events'] if e.get('type')=='PICKEM_REWARD']),1)
+        self.settle()
+        self.assertEqual(self.db['duos'][0]['blueShells'],6)
 
 
 class OpeningDeathsDuelTests(unittest.TestCase):
@@ -927,7 +1024,7 @@ class PickemEndpointTests(unittest.TestCase):
         raw = json.loads(Path(server.DB_FILE).read_text(encoding='utf-8'))
         self.assertEqual(len(raw['pickem']['weeks'][WEEK]['ballots'][0]['visitor']), 64)
 
-    def test_all_registered_choices_are_available_and_six_answers_use_one_ballot(self):
+    def test_all_registered_choices_are_available_and_seven_answers_use_one_ballot(self):
         client, _ = self.client()
         auth = self.login(client)
         board, _ = self.call(client, headers=auth)
@@ -937,7 +1034,7 @@ class PickemEndpointTests(unittest.TestCase):
         for c in board['categories']:
             result, _ = self.call(client, {'week':WEEK,'categoryId':c['id'],'optionId':c['options'][0]['id']}, auth)
             self.assertEqual(result['entries'], 1)
-        self.assertEqual(len(result['myBallot']['answers']), 6)
+        self.assertEqual(len(result['myBallot']['answers']), 7)
         self.assertEqual(self.call(client)[0]['predictions'], [])
 
     def test_concurrent_requests_cannot_spend_a_third_team_ballot(self):

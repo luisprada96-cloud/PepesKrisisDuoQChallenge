@@ -19,19 +19,19 @@
 .pickem-tip-card a { display: inline-block; font-size: 0.77rem; margin-top: 0.25rem; color: var(--cyan-primary); }
 #pickem-modal-login { font-size: .8rem; color: var(--cyan-primary); }
 
-/* Compact Categories Grid (fits 4 to 5 cards per row on desktop) */
-.pickem-categories { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.9rem; }
-.pickem-card { border: 1px solid #19a7b6; border-radius: 11px; background: linear-gradient(160deg,#121c29,#080e17); box-shadow: 0 0 14px #00e5ff10; padding: 0.75rem; display: flex; flex-direction: column; min-width: 0; transition: transform 0.2s ease, border-color 0.2s ease; }
+/* Five categories per row on desktop, with fewer columns on smaller screens. */
+.pickem-categories { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; }
+.pickem-card { border: 1px solid #19a7b6; border-radius: 11px; background: linear-gradient(160deg,#121c29,#080e17); box-shadow: 0 0 14px #00e5ff10; padding: 0.95rem; display: flex; flex-direction: column; min-width: 0; transition: transform 0.2s ease, border-color 0.2s ease; }
 .pickem-card:hover { border-color: var(--cyan-primary); transform: translateY(-2px); }
-.pickem-card-art { height: 85px; border-radius: 6px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 110%,#14596799,transparent 65%),linear-gradient(135deg,#1d2837,#0c101a); border: 1px solid #334155; }
+.pickem-card-art { height: 100px; border-radius: 6px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 110%,#14596799,transparent 65%),linear-gradient(135deg,#1d2837,#0c101a); border: 1px solid #334155; }
 .pickem-card-art::before, .pickem-card-art::after { content:''; position:absolute; border: 1px solid #68819550; width: 90px; height: 90px; transform:rotate(45deg); }
 .pickem-card-art::after { width: 60px; height: 60px; border-color: #5bc9db30; }
 .pickem-question-mark { font: 800 2.2rem var(--font-heading); color: #b9dae0; text-shadow: 0 0 20px #00eaff55; z-index: 1; }
 .pickem-event { position: absolute; bottom: 0; left: 0; width: 100%; padding: 0.2rem 0.35rem; background: #030810d0; text-align: center; font-size: 0.6rem; letter-spacing: 0.1em; font-weight: 800; z-index: 2; color: var(--cyan-primary); }
-.pickem-card h2 { font-size: 0.88rem; text-align: center; font-weight: 650; line-height: 1.35; margin: 0.65rem 0.2rem 0.3rem; min-height: 2.7em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.pickem-card-description { font-size: 0.72rem; color: var(--text-muted); text-align: center; line-height: 1.4; margin-bottom: 0.6rem; min-height: 2.8em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pickem-card h2 { font-size: 0.95rem; text-align: center; font-weight: 650; line-height: 1.35; margin: 0.65rem 0.2rem 0.3rem; min-height: 4.05em; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pickem-card-description { font-size: 0.78rem; color: var(--text-muted); text-align: center; line-height: 1.4; margin-bottom: 0.6rem; min-height: 2.8em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .pickem-reward { align-self: center; border: 1px solid var(--gold-hextech); color: #f6d678; padding: 0.2rem 0.55rem; border-radius: 20px; font-size: 0.7rem; margin: auto 0 0.65rem; white-space: nowrap; }
-.pickem-primary { display: inline-flex; align-items: center; justify-content: center; padding: 0.55rem 0.75rem; background: var(--cyan-primary); color: #04141e; border: 1px solid var(--cyan-primary); font: 750 0.74rem var(--font-body); border-radius: 6px; cursor: pointer; width: 100%; }
+.pickem-primary { display: inline-flex; align-items: center; justify-content: center; padding: 0.55rem 0.75rem; background: var(--cyan-primary); color: #04141e; border: 1px solid var(--cyan-primary); font: 750 0.8rem var(--font-body); border-radius: 6px; cursor: pointer; width: 100%; }
 .pickem-primary:hover { box-shadow: 0 0 16px #00efff35; }
 .pickem-page button:disabled { opacity: .45; cursor: default; box-shadow: none; }
 .pickem-card-answer { text-align: center; font-size: 0.72rem; margin: 0.45rem 0 0; color: #b5c9db; word-break: break-word; }
@@ -70,6 +70,9 @@
 .pickem-page button:focus-visible, .pickem-page select:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
 
 /* Media Queries */
+@media(max-width:1200px) { .pickem-categories { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+@media(max-width:1000px) { .pickem-categories { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media(max-width:760px) { .pickem-categories { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media(max-width:950px) {
   .pickem-tips-bar { grid-template-columns: 1fr; gap: 0.75rem; }
 }

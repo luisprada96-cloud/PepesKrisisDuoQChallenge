@@ -13,6 +13,8 @@ import weekly_summary as weeks
 MAX_TEAM_BALLOTS = 2
 REWARD_RULE = {'minCorrect': 3, 'shells': 1}
 SETTLEMENT_GRACE = 300
+RANK_CATEGORIES = {'weekly_leader', 'first_week_last'}
+OPENING_CATEGORIES = {'first_five_negative', 'first_individual_shell', 'joji_parradise_deaths', 'first_week_last'}
 OPTIONS = [{'id': '0-19', 'label': 'Menos de 20', 'min': 0, 'max': 19}] + [
     {'id': f'{n}-{n+9}', 'label': f'{n}–{n+9}', 'min': n, 'max': n+9} for n in range(20,120,10)
 ] + [{'id': '120+', 'label': '120 o más', 'min': 120, 'max': None}]
@@ -23,6 +25,10 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
               {'id': 'weekly_leader', 'kind': 'team', 'icon': '🏆', 'placeholder': 'Selecciona un equipo',
                'title': '¿Qué equipo terminará primero esta semana?',
                'description': 'Último ELO registrado antes de terminar la semana: rango, división y LP; desempate por winrate. En empate exacto, valen los equipos empatados.'},
+              {'id': 'first_week_last', 'kind': 'team', 'icon': '🪦', 'eventLabel': 'ESTRENO DEL TORNEO',
+               'placeholder': 'Selecciona un equipo',
+               'title': '¿Qué equipo quedará último la primera semana?',
+               'description': 'El equipo con menor ELO al cierre de la primera semana: rango, división y LP; desempate por winrate. En empate exacto, valen todos los equipos empatados.'},
               {'id': 'best_game_kda', 'kind': 'player', 'icon': '⚔', 'placeholder': 'Selecciona un jugador',
                'title': '¿Quién hará la partida con mejor KDA?',
                'description': 'La mejor partida individual de la semana: (asesinatos + asistencias) / máximo(muertes, 1). En empate exacto, valen todos los empatados.'},
@@ -49,7 +55,7 @@ def account(player):
 def category_definitions(db, week=None):
     definitions = copy.deepcopy(CATEGORIES)
     if week and week != weeks.week_key(weeks.timestamp(db.get('config',{}).get('startDate'))):
-        definitions = [c for c in definitions if c['id'] not in ('first_five_negative', 'first_individual_shell', 'joji_parradise_deaths')]
+        definitions = [c for c in definitions if c['id'] not in OPENING_CATEGORIES]
     teams, players = [], []
     for duo in db.get('duos', []):
         teams.append({'id': duo['id'], 'label': duo['teamName']})
@@ -206,7 +212,7 @@ def capture_rankings(db):
     """Preserve pre-close observations before the daily ELO point can be overwritten."""
     changed = False
     for board in (db.get('pickem') or {}).get('weeks', {}).values():
-        if 'weekly_leader' in board['results'] or not any(c['id']=='weekly_leader' for c in board['categories']): continue
+        if not any(c['id'] in RANK_CATEGORIES and c['id'] not in board['results'] for c in board['categories']): continue
         try: bounds = period(db, board['week'])
         except ValueError: continue
         observations = board.get('rankObservations', {})
@@ -236,6 +242,10 @@ def capture_rankings(db):
 
 
 def weekly_leader(db, board, category):
+    return weekly_rank_result(db, board, category)
+
+
+def weekly_rank_result(db, board, category, lowest=False):
     observations = board.get('rankObservations', {})
     candidates = []
     available = {o['id'] for o in category['options']}
@@ -245,13 +255,16 @@ def weekly_leader(db, board, category):
         if not rank or rank['account'] != account(duo.get('player1') or {}):
             return {'status':'NO_DATA', 'optionIds':[], 'summary':'Sin observaciones de ELO suficientes antes del cierre. Esta categoría no suma un acierto.'}
         candidates.append((duo['id'], rank))
+    if lowest and available - {oid for oid,_ in candidates}:
+        return {'status':'NO_DATA', 'optionIds':[], 'summary':'Falta un equipo del listado de la primera semana. Esta categoría no suma un acierto.'}
     if not candidates or not any(rank_key(rank)[0] for _,rank in candidates):
         return {'status':'NO_DATA', 'optionIds':[], 'summary':'Sin clasificación semanal disponible. Esta categoría no suma un acierto.'}
-    best = max(rank_key(rank) for _,rank in candidates)
+    best = (min if lowest else max)(rank_key(rank) for _,rank in candidates)
     leaders = [(oid,rank) for oid,rank in candidates if rank_key(rank)==best]
     rank = leaders[0][1]
     elo = f"{rank['tier']} {rank.get('division') or ''} · {rank.get('lp') or 0} LP".replace('  ', ' ')
-    return {'status':'SETTLED', 'optionIds':[oid for oid,_ in leaders], 'summary':f'Primer puesto · {elo}',
+    label = 'Último puesto de la primera semana' if lowest else 'Primer puesto'
+    return {'status':'SETTLED', 'optionIds':[oid for oid,_ in leaders], 'summary':f'{label} · {elo}',
             'observedAt':min(weeks.timestamp(rank['observedAt']) for _,rank in leaders)}
 
 
@@ -427,6 +440,7 @@ def first_five_negative(db, category, now=None):
 
 def category_result(db, board, category, now=None):
     if category['id']=='weekly_leader': return weekly_leader(db,board,category)
+    if category['id']=='first_week_last': return weekly_rank_result(db,board,category,lowest=True)
     if category['id']=='joji_parradise_deaths': return opening_deaths_duel(db,board,category)
     if category['id']=='first_five_negative': return first_five_negative(db,category,now)
     if category['id']=='first_individual_shell': return first_individual_shell(db,category,now)
