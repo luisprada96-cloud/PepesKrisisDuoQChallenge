@@ -122,7 +122,30 @@ const discordTestRequests = [];
     assert.equal(assignment.id, 'MonkeyKing');
     assert.equal(await page.locator('#personal-alert-bar').isVisible(), false);
     assert.equal(await page.locator('#leaderboard-tbody .duo-row').first().getAttribute('data-id'), 'Primero');
-    assert.equal(await page.locator('#stat-top-duo').textContent(), 'Primero');
+    const completedPenalties = page.locator('#stat-completed-penalties');
+    assert.equal(await completedPenalties.textContent(), '0');
+    assert.equal(await completedPenalties.locator('..').locator('.stat-label').textContent(), 'Castigos cumplidos');
+    await page.evaluate(() => {
+      currentDuos[0].activeDebuffs = [
+        {status:'COMPLETED', resolved:true},
+        {resolved:true},
+        {status:'ACTIVE', resolved:false},
+        {status:'CANCELLED', resolved:true}
+      ];
+      currentDuos[2].activeDebuffs = [{status:'COMPLETED'}];
+      renderStatsOverview();
+    });
+    assert.equal(await completedPenalties.textContent(), '3', 'count completed penalties across duos, including legacy resolutions but excluding pending and cancelled penalties');
+    await page.evaluate(() => {
+      currentDuos[0].activeDebuffs = [];
+      currentDuos[2].activeDebuffs = [];
+      const savedDuos = currentDuos;
+      currentDuos = [];
+      renderStatsOverview();
+      currentDuos = savedDuos;
+    });
+    assert.equal(await completedPenalties.textContent(), '0');
+    await page.evaluate(() => renderStatsOverview());
     assert.equal(historyOffsets.length, 0, 'history must not be downloaded on initial load');
     assert.deepEqual(await page.locator('.main-leaderboard-table thead th').allTextContents(), ['Pos', 'Nombre Dúo', 'Integrante 1', 'Integrante 2', 'Winrate %', 'Racha', 'Caparazones', '']);
     assert.match(await page.locator('.duo-row[data-id="Primero"] [data-player-rank="player1"]').textContent(), /Gold III\s*\(0 LP\)/);

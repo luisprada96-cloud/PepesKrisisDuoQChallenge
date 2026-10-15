@@ -103,25 +103,26 @@ function updateCountdownTimer(now = Date.now()) {
 function renderStatsOverview() {
   const duosCountEl = document.getElementById('stat-total-duos');
   const totalGamesEl = document.getElementById('stat-total-games');
-  const topDuoEl = document.getElementById('stat-top-duo');
+  const completedPenaltiesEl = document.getElementById('stat-completed-penalties');
   const liveCountEl = document.getElementById('stat-live-count');
 
   if (duosCountEl) duosCountEl.textContent = currentDuos.length;
 
   let totalGames = 0;
   let liveCount = 0;
+  let completedPenalties = 0;
   currentDuos.forEach(d => {
     totalGames += (d.wins + d.losses);
     if (d.twitchIsLive === true) liveCount++;
+    completedPenalties += (d.activeDebuffs || []).filter(penalty =>
+      penalty.status !== 'CANCELLED' && (penalty.status === 'COMPLETED' || penalty.resolved === true)
+    ).length;
   });
 
   if (totalGamesEl) totalGamesEl.textContent = totalGames;
   if (liveCountEl) liveCountEl.textContent = `${liveCount} ${liveCount === 1 ? 'Dúo' : 'Dúos'}`;
 
-  const sorted = [...currentDuos].sort(compareCompetitionRank);
-  if (topDuoEl && sorted.length > 0) {
-    topDuoEl.textContent = sorted[0].teamName;
-  }
+  if (completedPenaltiesEl) completedPenaltiesEl.textContent = completedPenalties;
 }
 
 /* Leaderboard Rendering */
