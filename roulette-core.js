@@ -4,7 +4,7 @@
     {name: 'POLIVALENTE', icon: '🎲'}, {name: 'SIN CAMPEÓN FAVORITO', icon: '🚫'},
     {name: 'CAMPEÓN ALEATORIO', icon: '🎯'}, {name: 'SIN FLASH', icon: '⚡'},
     {name: 'FLASH AL OTRO LADO', icon: '🔄'},
-    {name: 'DEVUELVE EL CAPARAZÓN', icon: '↩️'}
+    {name: 'DEVUELVE EL PEPAZO', icon: '↩️'}
   ];
   // Keep the original 22-step slowdown, measured from one shared start time.
   const steps = [0];

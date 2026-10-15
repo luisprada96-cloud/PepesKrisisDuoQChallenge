@@ -35,7 +35,7 @@
       } catch (_) {}
       return `<article class="weekly-card weekly-clip">
         ${url ? `<button type="button" class="weekly-play-clip" data-weekly-clip="${escape(url)}"><i class="fa-brands fa-twitch" aria-hidden="true"></i><br>Ver clip ganador</button>` : ''}
-        <div class="weekly-clip-body"><span>CLIP DE LA SEMANA</span><h3>${escape(winner.title)}</h3><p>${escape(winner.teamName)} · ${escape(winner.votes)} likes</p><p><span class="weekly-badge">Premio: +${escape(winner.shells)} caparazones</span></p>
+        <div class="weekly-clip-body"><span>CLIP DE LA SEMANA</span><h3>${escape(winner.title)}</h3><p>${escape(winner.teamName)} · ${escape(winner.votes)} likes</p><p><span class="weekly-badge">Premio: +${escape(winner.shells)} pepazos</span></p>
         ${url ? `<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">Ver en Twitch ↗</a>` : ''}</div></article><div id="weekly-clip-embed"></div>`;
     }
     const message = summary.status === 'CURRENT' ? 'El clip ganador se decide el domingo a las 23:59.' : clips.available ? 'Esta semana no hubo un clip con votos que pudiera recibir el premio.' : 'No hay registro de los clips de esta semana.';
@@ -49,7 +49,7 @@
     if (h.falling) highlights.push(card('📉 Semana para olvidar', h.falling.name, `${h.falling.elo.delta} LP observados · ${h.falling.teamName}`));
     if (h.attacker) highlights.push(card('🐢 El más peligroso', h.attacker.name, `${h.attacker.shells.launched} lanzados · ${h.attacker.shells.returned} devueltos`));
     if (h.completed) highlights.push(card('⚡ Misión cumplida', h.completed.name, `${h.completed.penaltiesCompleted} castigos individuales cumplidos · ${h.completed.teamName}`));
-    return `<div class="weekly-metrics">${metric('Partidas registradas', summary.totals.games)}${metric('Caparazones lanzados', summary.totals.shellsLaunched)}${metric('Castigos cumplidos', summary.totals.penaltiesCompleted)}</div>
+    return `<div class="weekly-metrics">${metric('Partidas registradas', summary.totals.games)}${metric('Pepazos lanzados', summary.totals.shellsLaunched)}${metric('Castigos cumplidos', summary.totals.penaltiesCompleted)}</div>
       ${summary.totals.penaltiesManual ? `<p class="weekly-coverage">Además, ${summary.totals.penaltiesManual} castigos marcados como cumplidos por administración.</p>` : ''}
       ${highlights.length ? `<div class="weekly-highlights">${highlights.join('')}</div>` : '<p class="weekly-empty">Todavía no hay actividad suficiente para elegir los destacados de esta semana.</p>'}
       ${winnerHtml()}${summary.clips.available ? `<p class="weekly-coverage">${summary.clips.posts} clips publicados · ${summary.clips.votes} likes en total.</p>` : ''}`;
@@ -75,7 +75,7 @@
       <p class="weekly-coverage">Winrate: ${team.winrate ?? '—'}% · Mejor racha de la semana: ${team.bestStreak} victorias.<br>Estadísticas de ambos disponibles en ${team.detailGames} de ${team.games} partidas.</p>
       <div class="weekly-players">${players}</div><div class="weekly-team-details">
       <article class="weekly-card"><span>⚡ Castigos</span><ul><li>${p.received} recibidos esta semana</li><li>${p.completed} cumplidos automáticamente</li><li>${p.manual} marcados por administración</li><li>${p.pending} pendientes ${summary.status === 'CURRENT' ? 'actualmente' : 'al cierre'}</li></ul></article>
-      <article class="weekly-card"><span>🐢 Caparazones</span><ul><li>${s.launched} lanzados · ${s.received} recibidos · ${s.returned} devueltos</li><li>${s.achievements} logros por partidas</li>${s.creditUnknown ? '' : `<li>${s.credited} añadidos al inventario · ${s.blocked} sin sumar por el límite</li>`}<li>+${s.clipPrize} por el premio de clips</li></ul></article>
+      <article class="weekly-card"><span>🐢 Pepazos</span><ul><li>${s.launched} lanzados · ${s.received} recibidos · ${s.returned} devueltos</li><li>${s.achievements} logros por partidas</li>${s.creditUnknown ? '' : `<li>${s.credited} añadidos al inventario · ${s.blocked} sin sumar por el límite</li>`}<li>+${s.clipPrize} por el premio de clips</li></ul></article>
       </div>${best ? `<article class="weekly-card" style="margin-top:1rem"><span>🏅 Mejor partida del dúo</span><h3>${best.totals.kills} / ${best.totals.deaths} / ${best.totals.assists} · KDA ${escape(kda(best.totals, best.kda))}</h3><p>${escape(best.champions.map(championDisplayName).join(' + '))} · ${escape(date(best.at, true))}</p></article>` : ''}`;
   }
 

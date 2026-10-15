@@ -1,6 +1,7 @@
 *
 !Dockerfile
 !server.py
+!terminology.py
 !shell_rules.py
 !tierlists_service.py
 !tierlist.html

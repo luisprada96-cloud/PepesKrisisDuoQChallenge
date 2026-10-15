@@ -131,7 +131,7 @@
     persistSeen();
     if (fresh.length) {
       const last = fresh[fresh.length - 1];
-      showNotice(fresh.length === 1 ? `🐢 ¡${last.attackerName || 'Un rival'} te ha lanzado un caparazón!` : `🐢 ¡Tu equipo ha recibido ${fresh.length} caparazones!`);
+      showNotice(fresh.length === 1 ? `🐢 ¡${last.attackerName || 'Un rival'} te ha lanzado un pepazo!` : `🐢 ¡Tu equipo ha recibido ${fresh.length} pepazos!`);
       playBomb();
     }
     if (!state.attacks.length) notice.hidden = true;
@@ -212,7 +212,7 @@
     persistSeen();
     enabled = sessionStorage.getItem(preferenceKey()) === 'true';
     if (enabled) { try { getAudio(); } catch (_) { enabled = false; } }
-    if (pending.length) showNotice(`🐢 Tu equipo tiene ${pending.length} caparazón(es) pendiente(s) de abrir.`);
+    if (pending.length) showNotice(`🐢 Tu equipo tiene ${pending.length} ${pending.length === 1 ? 'pepazo pendiente' : 'pepazos pendientes'} de abrir.`);
     render();
     connect(generation);
   }

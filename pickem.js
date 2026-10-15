@@ -13,7 +13,7 @@
   const allowedAnswer=(c,value)=>!isDuel(c)||(!c.teamAnswerConflict&&(!c.teamAnswer||c.teamAnswer===value));
   const duelRule=c=>c.teamAnswerConflict?'Respuestas anteriores en conflicto. Consulta a la administración.':c.teamAnswer?`Elección del equipo: ${optionLabel(c,c.teamAnswer)}. Ambos debéis elegir esta opción.`:'Una elección por equipo: la primera respuesta fija la opción para ambos integrantes.';
   const resultSummary=c=>c.result.summary || (c.result.status==='SETTLED'?`${c.result.value} campeones distintos`:'Sin datos válidos. Esta categoría no suma un acierto.');
-  const rewardText=()=>`🐢 ${state.rewardRule.shells} caparazón por quiniela con al menos ${state.rewardRule.minCorrect} aciertos.`;
+  const rewardText=()=>`🐢 ${state.rewardRule.shells} pepazo por quiniela con al menos ${state.rewardRule.minCorrect} aciertos.`;
   const date=timestamp=>new Date(timestamp*1000).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   const championSearchKey=value=>String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
   function closeChampionOptions() {
@@ -112,7 +112,7 @@
     $('pickem-results').hidden=!closed();
     $('pickem-result-list').innerHTML=state.predictions.length?state.predictions.map(b=>{
       const awarded=b.reward?.status==='AWARDED';
-      const verdict=awarded?`✓ +${b.reward.shells} caparazón`:b.pending?'Pendiente de resultados':'Sin premio';
+      const verdict=awarded?`✓ +${b.reward.shells} pepazo`:b.pending?'Pendiente de resultados':'Sin premio';
       const summary=`<div class="pickem-ballot-summary"><div><strong>${escape(b.author||b.teamName)}</strong><small>${escape(b.teamName)}</small></div><strong>${b.correct} aciertos${b.pending?` · ${b.pending} pendientes`:''}</strong><strong class="${awarded?'pickem-win':b.pending?'pickem-wait':''}">${escape(verdict)}</strong></div>`;
       const answers=state.categories.map(c=>{
         const answer=b.answers[c.id];if(answer===undefined)return '';

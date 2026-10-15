@@ -174,14 +174,14 @@
     }
     const award = result.weeklyReward?.award;
     document.getElementById('clips-reward-status').textContent = weekClosed
-      ? award?.status === 'AWARDED' ? `🏆 ${award.teamName} ha ganado +${award.shells} caparazones por «${award.title}» (${award.votes} likes).`
+      ? award?.status === 'AWARDED' ? `🏆 ${award.teamName} ha ganado +${award.shells} pepazos por «${award.title}» (${award.votes} likes).`
         : 'Votación cerrada. Esta semana no hay un clip con likes y equipo válido para recibir el premio.'
       : 'La votación está abierta. El premio se entrega automáticamente al cerrar.';
     const previous = result.weeklyReward?.previousAward;
     const previousMessage = document.getElementById('clips-previous-reward');
     previousMessage.hidden = !previous;
     previousMessage.textContent = previous ? previous.status === 'AWARDED'
-      ? `Último ganador: ${previous.teamName} · «${previous.title}» · +${previous.shells} caparazones.`
+      ? `Último ganador: ${previous.teamName} · «${previous.title}» · +${previous.shells} pepazos.`
       : 'La semana anterior terminó sin premio.' : '';
     if (currentWeek !== result.week) {
       currentWeek = result.week;

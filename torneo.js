@@ -27,7 +27,7 @@ function renderShellRewardRules(config) {
     return;
   }
   body.innerHTML = rewards.rules.map(rule => `<tr><td>${escapeHtml(rule.name)}</td><td>${escapeHtml(rule.requirement)}</td><td>+1 🐢</td></tr>`).join('');
-  document.getElementById('shell-rewards-limits').textContent = `Máximo ${rewards.inventoryLimit} caparazones en el inventario y ${rewards.perMatchLimit} obtenidos por equipo y partida, incluida la racha. Con el inventario lleno, los premios adicionales se pierden y no se recuperan después.`;
+  document.getElementById('shell-rewards-limits').textContent = `Máximo ${rewards.inventoryLimit} pepazos en el inventario y ${rewards.perMatchLimit} obtenidos por equipo y partida, incluida la racha. Con el inventario lleno, los premios adicionales se pierden y no se recuperan después.`;
 }
 
 function renderRouletteRules(config) {

@@ -28,7 +28,7 @@ const path = require('node:path');
           {id:'weekly_leader',title:'¿Qué equipo terminará primero esta semana?',description:'ELO al cierre semanal.',placeholder:'Selecciona un equipo',icon:'🏆',options:[{id:'a',label:'Equipo A'},{id:'b',label:'Equipo B'}]},
           {id:'best_game_kda',title:'¿Quién hará la partida con mejor KDA?',description:'Mejor partida individual.',placeholder:'Selecciona un jugador',icon:'⚔',options:[{id:'a1',label:'A1 · Equipo A'},{id:'a2',label:'A2 · Equipo A'},{id:'b1',label:'B1 · Equipo B'},{id:'b2',label:'B2 · Equipo B'}]},
           {id:'first_five_negative',title:'¿Cuántos dúos tendrán winrate negativo en sus primeras 5 ranked?',description:'Las cinco primeras ranked del torneo.',placeholder:'Selecciona cuántos dúos',icon:'📉',eventLabel:'ESTRENO DEL TORNEO',options:Array.from({length:10},(_,i)=>({id:String(i),label:String(i)}))},
-          {id:'first_individual_shell',title:'¿Quién conseguirá el primer caparazón individual del torneo?',description:'Primer jugador con pentakill, 20+ kills, 30+ asistencias o KDA perfecto.',placeholder:'Selecciona un jugador',icon:'🐢',eventLabel:'ESTRENO DEL TORNEO',options:Array.from({length:18},(_,i)=>({id:'person'+i,label:'Persona '+i+' · Equipo '+Math.floor(i/2)}))},
+          {id:'first_individual_shell',title:'¿Quién conseguirá el primer pepazo individual del torneo?',description:'Primer jugador con pentakill, 20+ kills, 30+ asistencias o KDA perfecto.',placeholder:'Selecciona un jugador',icon:'🐢',eventLabel:'ESTRENO DEL TORNEO',options:Array.from({length:18},(_,i)=>({id:'person'+i,label:'Persona '+i+' · Equipo '+Math.floor(i/2)}))},
           {id:'joji_parradise_deaths',kind:'duel',sharedWithTeam:true,teamAnswer:logged?(sharedDuel||saved.joji_parradise_deaths||null):null,title:'¿Quién morirá más: Joji o Parradise?',description:'Muertes acumuladas en la primera semana. En empate, ambas respuestas valen.',placeholder:'Selecciona a Joji o Parradise',icon:'💀',eventLabel:'EVENTO · PRIMERA SEMANA',options:[{id:'joji',label:'Joji'},{id:'parradise',label:'Parradise'}]},
           {id:'first_week_last',title:'¿Qué equipo quedará último la primera semana?',description:'Menor ELO al cierre de la primera semana.',placeholder:'Selecciona un equipo',icon:'🪦',eventLabel:'ESTRENO DEL TORNEO',options:Array.from({length:9},(_,i)=>({id:String.fromCharCode(97+i),label:'Equipo '+String.fromCharCode(65+i)}))},
           {id:'weekly_player_kda',kind:'player',title:'¿Quién tendrá el mejor KDA de la semana?',description:'KDA individual acumulado de la semana: (asesinatos totales + asistencias totales) / máximo(muertes totales, 1).',placeholder:'Selecciona un integrante',icon:'📊',options:Array.from({length:18},(_,i)=>({id:'person'+i,label:'Persona '+i+' · Equipo '+Math.floor(i/2)}))},
@@ -166,8 +166,8 @@ const path = require('node:path');
     assert.equal(await page.locator('.pickem-result-entry').count(),9);
     assert.match(await page.locator('.pickem-result-entry').last().textContent(),/Fogell.*Acierto/);
     assert.match(await page.locator('.pickem-ballot-summary').textContent(),/9 aciertos/);
-    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 caparazón/);
-    assert.equal(await page.locator('.pickem-result-entry').filter({hasText:'+1 caparazón'}).count(),0,'no individual category prizes');
+    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 pepazo/);
+    assert.equal(await page.locator('.pickem-result-entry').filter({hasText:'+1 pepazo'}).count(),0,'no individual category prizes');
     assert.match(await page.locator('.pickem-result-entry').first().textContent(),/Acierto/);
     assert.match(await page.locator('#pickem-reward-rule').textContent(),/al menos 3 aciertos/);
     assert.equal(await page.locator('.pickem-reward').filter({hasText:'por acierto'}).count(),0);
@@ -181,7 +181,7 @@ const path = require('node:path');
     correct=6; awarded=true;
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(()=>document.querySelector('.pickem-ballot-summary').textContent.includes('6 aciertos'));
-    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 caparazón/);
+    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 pepazo/);
     assert.equal(await page.evaluate(()=>window.injected),undefined);
     await Promise.all([page.waitForResponse(r=>r.url().includes('week=2026-10-19')),page.locator('#pickem-week').selectOption('2026-10-19')]);
     for(const width of [1440,1100,768,390,320]) {

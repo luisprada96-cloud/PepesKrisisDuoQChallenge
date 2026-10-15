@@ -1,7 +1,8 @@
-"""Discord webhook notifications for Blue Shell (Caparazón Azul) events per duo team."""
+"""Discord webhook notifications for Pepazo events per duo team."""
 import logging
 import threading
 import discord_live
+from terminology import pepazo_text
 
 
 logger = logging.getLogger("discord_shells")
@@ -29,11 +30,11 @@ def message_shell_received(attacker_name, target_name, target_role_id=None):
     target_safe = discord_live.plain_text(target_name, 100)
     mention = format_role_mention(target_name, target_role_id)
     lines = [
-        "🐢⚡ **¡ALERTA DE CAPARAZÓN AZUL!**",
-        f"¡Atención **{target_safe}**! El equipo **{attacker_safe}** os acaba de lanzar un Caparazón Azul. 💥",
+        "🐢⚡ **¡ALERTA DE PEPAZO!**",
+        f"¡Atención **{target_safe}**! El equipo **{attacker_safe}** os acaba de lanzar un Pepazo. 💥",
         "",
         mention,
-        "🎲 Tenéis un caparazón pendiente en vuestra bandeja de entrada.",
+        "🎲 Tenéis un pepazo pendiente en vuestra bandeja de entrada.",
         "👉 ¡Entrad a girar la ruleta de castigos antes de vuestra próxima partida!",
         f"🔗 {PLAYER_PANEL_URL}",
     ]
@@ -48,14 +49,14 @@ def message_shell_spun(target_name, attacker_name, penalty):
     target_safe = discord_live.plain_text(target_name, 100)
     attacker_safe = discord_live.plain_text(attacker_name, 100)
     icon = penalty.get("icon") or "🎰"
-    name = discord_live.plain_text(penalty.get("name") or "Castigo", 100)
-    desc = discord_live.plain_text(penalty.get("desc") or "", 300)
+    name = discord_live.plain_text(pepazo_text(penalty.get("name") or "Castigo"), 100)
+    desc = discord_live.plain_text(pepazo_text(penalty.get("desc") or ""), 300)
     scope = penalty.get("scope", "both")
     scope_text = "Ambos integrantes" if scope == "both" else ("1 integrante" if scope == "single" else scope)
 
     lines = [
         "🎰 **¡Ruleta de Castigo girada!**",
-        f"Equipo: **{target_safe}** (Caparazón de **{attacker_safe}**)",
+        f"Equipo: **{target_safe}** (Pepazo de **{attacker_safe}**)",
         "",
         f"Castigo obtenido: {icon} **{name}**",
         f"📝 *{desc}*",
@@ -74,8 +75,8 @@ def message_shell_returned_to_target(target_name, attacker_name):
     target_safe = discord_live.plain_text(target_name, 100)
     attacker_safe = discord_live.plain_text(attacker_name, 100)
     lines = [
-        "↩️🛡️ **¡CAPARAZÓN DEVUELTO CON ÉXITO!**",
-        f"¡Enhorabuena **{target_safe}**! Habéis sacado *Devolver Caparazón* en la ruleta.",
+        "↩️🛡️ **¡PEPAZO DEVUELTO CON ÉXITO!**",
+        f"¡Enhorabuena **{target_safe}**! Habéis sacado *Devolver Pepazo* en la ruleta.",
         f"El proyectil de **{attacker_safe}** ha rebotado y vuelve directo hacia ellos. ¡Os habéis librado!",
     ]
     return {
@@ -90,11 +91,11 @@ def message_shell_bounced_back(target_name, attacker_name, attacker_role_id=None
     attacker_safe = discord_live.plain_text(attacker_name, 100)
     mention = format_role_mention(attacker_name, attacker_role_id)
     lines = [
-        "↩️💥 **¡EL CAPARAZÓN OS HA SIDO DEVUELTO!**",
-        f"¡Cuidado **{attacker_safe}**! El equipo **{target_safe}** ha sacado *Devolver Caparazón*.",
+        "↩️💥 **¡EL PEPAZO OS HA SIDO DEVUELTO!**",
+        f"¡Cuidado **{attacker_safe}**! El equipo **{target_safe}** ha sacado *Devolver Pepazo*.",
         "",
         mention,
-        "🎯 El caparazón ha rebotado contra vosotros y ahora tenéis una ruleta pendiente en vuestro panel.",
+        "🎯 El pepazo ha rebotado contra vosotros y ahora tenéis una ruleta pendiente en vuestro panel.",
         "👉 Entrad a girar la ruleta de castigos antes de vuestra próxima partida:",
         f"🔗 {PLAYER_PANEL_URL}",
     ]
@@ -112,7 +113,7 @@ def message_test(team_name, role_id=None):
         "🐢⚡ **Prueba de conexión — Pepes Krisis Duo Q**",
         f"¡Hola **{team_safe}**! La conexión con vuestro canal de Discord funciona correctamente.",
         f"Mención configurada: {mention}",
-        "A partir de ahora, cuando otro equipo os lance un Caparazón Azul o recibáis un castigo, os llegará un aviso automático por este canal.",
+        "A partir de ahora, cuando otro equipo os lance un Pepazo o recibáis un castigo, os llegará un aviso automático por este canal.",
     ]
     return {
         "content": "\n".join(lines),

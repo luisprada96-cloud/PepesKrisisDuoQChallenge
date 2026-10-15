@@ -107,7 +107,7 @@
       </div>
 
       <div class="player-panel-tabs" role="tablist" aria-label="Secciones del equipo">
-        <button type="button" id="player-shells-tab" role="tab" aria-selected="true" aria-controls="player-shells-panel" data-player-panel-tab="shells"><i class="fa-solid fa-gift" aria-hidden="true"></i> Caparazones</button>
+        <button type="button" id="player-shells-tab" role="tab" aria-selected="true" aria-controls="player-shells-panel" data-player-panel-tab="shells"><i class="fa-solid fa-gift" aria-hidden="true"></i> Pepazos</button>
         <button type="button" id="player-penalties-tab" role="tab" aria-selected="false" aria-controls="player-penalties-panel" tabindex="-1" data-player-panel-tab="penalties"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mis castigos <span id="player-penalties-count" class="player-tab-count">0</span></button>
       </div>
 
@@ -115,27 +115,27 @@
       <!-- Gamification Grid -->
       <div class="player-shells-grid">
         
-        <!-- Inventory Card: Blue Shells -->
+        <!-- Inventory Card: Pepazos -->
         <div class="admin-card" style="border-color: rgba(0, 240, 255, 0.4); box-shadow: 0 0 25px rgba(0, 240, 255, 0.15);">
           <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
             <div style="font-size: 2.8rem; filter: drop-shadow(0 0 10px #00f0ff);">
               🐢🔵
             </div>
             <div>
-              <h2 class="font-heading text-gradient-cyan" style="font-size: 1.3rem;">Inventario de Caparazones</h2>
+              <h2 class="font-heading text-gradient-cyan" style="font-size: 1.3rem;">Inventario de Pepazos</h2>
               <div style="font-size: 0.85rem; color: var(--text-muted);">Mecánica de Ataque y Recompensa por Racha</div>
             </div>
           </div>
 
           <div style="background: rgba(7, 10, 18, 0.7); border: 1px solid var(--border-subtle); border-radius: 12px; padding: 1.25rem; text-align: center; margin-bottom: 1rem;">
             <div style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-family: var(--font-heading);">
-              Caparazones Azules Disponibles
+              Pepazos Disponibles
             </div>
             <div style="font-size: 3rem; font-family: var(--font-heading); font-weight: 900; color: var(--cyan-primary); text-shadow: 0 0 15px var(--cyan-glow);" id="dash-shells-count">
               0
             </div>
             <div style="font-size: 0.8rem; color: var(--gold-hextech);">
-              <i class="fa-solid fa-gift"></i> Gana caparazones por rachas de 4 victorias, pentakills, 20 kills, 30 asistencias o KDA perfecto. <a href="torneo.html#shell-rewards">Ver requisitos y límites</a>
+              <i class="fa-solid fa-gift"></i> Gana pepazos por rachas de 4 victorias, pentakills, 20 kills, 30 asistencias o KDA perfecto. <a href="torneo.html#shell-rewards">Ver requisitos y límites</a>
             </div>
           </div>
 
@@ -151,14 +151,14 @@
           </div>
         </div>
 
-        <!-- Action Card: Launch Blue Shell -->
+        <!-- Action Card: Launch Pepazo -->
         <div class="admin-card" style="border-color: rgba(245, 197, 66, 0.4); box-shadow: 0 0 25px rgba(245, 197, 66, 0.15);">
           <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
             <div style="font-size: 2.8rem; filter: drop-shadow(0 0 10px #f5c542);">
               💥
             </div>
             <div>
-              <h2 class="font-heading text-gradient-gold" style="font-size: 1.3rem;">Lanzar Caparazón Azul</h2>
+              <h2 class="font-heading text-gradient-gold" style="font-size: 1.3rem;">Lanzar Pepazo</h2>
               <div style="font-size: 0.85rem; color: var(--text-muted);">Ataca a un Dúo Rival en la Clasificación</div>
             </div>
           </div>
@@ -174,7 +174,7 @@
             </div>
 
             <button type="submit" id="btn-launch-shell" class="btn-refresh btn-neon-gold" style="width: 100%; justify-content: center; padding: 0.85rem; font-size: 1rem;">
-              🐢⚡ ¡Lanzar Caparazón Azul!
+              🐢⚡ ¡Lanzar Pepazo!
             </button>
 
           </form>
@@ -188,7 +188,7 @@
       </div>
       <section class="admin-card" id="pending-shells-section" style="display: none; border-color: rgba(0, 240, 255, 0.55); background: rgba(0, 240, 255, 0.06); margin-top: 2rem;">
         <h2 class="admin-card-title" style="color: var(--cyan-primary); margin-bottom: 1rem;">
-          <i class="fa-solid fa-gift"></i> Caparazones pendientes de girar
+          <i class="fa-solid fa-gift"></i> Pepazos pendientes de girar
         </h2>
         <div id="pending-shells-list"></div>
         <div id="inline-roulette-container" style="display: none; margin-top: 1.25rem; background: rgba(7, 10, 18, 0.95); border: 2px solid var(--gold-hextech); border-radius: 12px; padding: 1.25rem; text-align: center; box-shadow: 0 0 20px rgba(245, 197, 66, 0.3);">

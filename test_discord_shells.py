@@ -1,4 +1,4 @@
-"""Unit tests for duo-specific Discord Blue Shell notifications."""
+"""Unit tests for duo-specific Discord Pepazo notifications."""
 import copy
 import io
 import json
@@ -37,7 +37,7 @@ class DiscordShellsUnitTests(unittest.TestCase):
     def test_message_shell_received_escaping_and_content(self):
         # Case 1: Without role ID -> @TeamName
         msg = discord_shells.message_shell_received("Equipo *Atacante* <1>", "Equipo _Destino_")
-        self.assertIn("ALERTA DE CAPARAZÓN AZUL", msg["content"])
+        self.assertIn("ALERTA DE PEPAZO", msg["content"])
         self.assertIn("Equipo \\*Atacante\\* \\<1\\>", msg["content"])
         self.assertIn("Equipo \\_Destino\\_", msg["content"])
         self.assertIn("@Equipo _Destino_", msg["content"])
@@ -57,11 +57,11 @@ class DiscordShellsUnitTests(unittest.TestCase):
 
     def test_message_returned_and_bounced(self):
         ret_msg = discord_shells.message_shell_returned_to_target("Defensores", "Atacantes")
-        self.assertIn("CAPARAZÓN DEVUELTO", ret_msg["content"])
+        self.assertIn("PEPAZO DEVUELTO", ret_msg["content"])
         self.assertIn("Defensores", ret_msg["content"])
 
         bounced_msg = discord_shells.message_shell_bounced_back("Defensores", "Atacantes", TEST_ROLE_ID_1)
-        self.assertIn("EL CAPARAZÓN OS HA SIDO DEVUELTO", bounced_msg["content"])
+        self.assertIn("EL PEPAZO OS HA SIDO DEVUELTO", bounced_msg["content"])
         self.assertIn("Atacantes", bounced_msg["content"])
         self.assertIn(f"<@&{TEST_ROLE_ID_1}>", bounced_msg["content"])
         self.assertIn("https://duoqchallenge.luisjourney.xyz/player.html", bounced_msg["content"])
@@ -308,7 +308,7 @@ class DiscordShellsServerIntegrationTests(unittest.TestCase):
         attack_id = launch_res["attack"]["id"]
 
         token_target = server.create_player_session("team-target")
-        with patch.object(server, "weighted_penalty", return_value={"baseId": "return_shell", "name": "Devolver Caparazón", "icon": "↩️", "scope": "both", "desc": "Rebota"}):
+        with patch.object(server, "weighted_penalty", return_value={"baseId": "return_shell", "name": "Devolver Pepazo", "icon": "↩️", "scope": "both", "desc": "Rebota"}):
             status, spin_res = self._post("/api/player/spin-shell", {
                 "sessionToken": token_target,
                 "attackId": attack_id

@@ -125,7 +125,7 @@ const {champions} = require('./assets/pickem/champions.json');
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     await page.waitForSelector('.pickem-result-entry');
     assert.match(await page.locator('.pickem-card-result').last().textContent(),/100.00 %.*mínimo 3 partidas.*Wukong/s);
-    assert.match(await page.locator('.pickem-result-entry').textContent(),/Wukong.*Acierto/s);
+    assert.match(await page.locator('.pickem-result-entry').filter({hasText:'¿Qué campeón tendrá mejor winrate?'}).textContent(),/Wukong.*Acierto/s);
     assert.deepEqual(errors,[]);
     console.log('Champion picker passed: full catalog, search, aliases, keyboard, guest preview, refresh, failed save, immutable answer, result and mobile layouts.');
   } finally {await browser.close();}

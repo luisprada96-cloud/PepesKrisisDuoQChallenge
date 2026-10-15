@@ -15,7 +15,7 @@ WEEKLY_REWARD_SHELLS = 3
 PREVIEW_POSTS = [
     {'id': 'demo-1', 'title': 'Cinco contra uno. ¿Qué podía salir mal?', 'team': 'ELDUOYASS', 'initials': 'EY', 'duration': '0:32', 'scene': 1},
     {'id': 'demo-2', 'title': 'El robo de Nashor que nos devolvió la fe', 'team': 'Krisis', 'initials': 'KR', 'duration': '0:24', 'scene': 2},
-    {'id': 'demo-3', 'title': 'Cuando el caparazón te obliga a jugar support', 'team': 'Pingu', 'initials': 'PI', 'duration': '0:41', 'scene': 3},
+    {'id': 'demo-3', 'title': 'Cuando el pepazo te obliga a jugar support', 'team': 'Pingu', 'initials': 'PI', 'duration': '0:41', 'scene': 3},
 ]
 
 
@@ -67,7 +67,7 @@ def settle_weekly_reward(db, now=None):
             'timestamp': datetime.fromtimestamp(timestamp, MADRID).strftime('%Y-%m-%d %H:%M:%S'),
             'week': board['week'], 'target': team['teamName'], 'teamId': team['id'],
             'clipId': winner['id'], 'shells': WEEKLY_REWARD_SHELLS,
-            'message': f"🏆 {team['teamName']} gana {WEEKLY_REWARD_SHELLS} caparazones por el clip más votado de la semana: {winner['title']} ({award['votes']} likes)."})
+            'message': f"🏆 {team['teamName']} gana {WEEKLY_REWARD_SHELLS} pepazos por el clip más votado de la semana: {winner['title']} ({award['votes']} likes)."})
     ledger[board['week']] = award
     board['weeklyAward'] = copy.deepcopy(award)
     return True

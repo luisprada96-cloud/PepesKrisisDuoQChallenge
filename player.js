@@ -145,7 +145,7 @@ function renderDashboardData() {
 
   if (streakTextEl) {
     const remaining = 3 - progressInCycle;
-    streakTextEl.textContent = `${streak}W racha activa • ${remaining} victoria${remaining !== 1 ? 's' : ''} más para +1 Caparazón`;
+    streakTextEl.textContent = `${streak}W racha activa • ${remaining} victoria${remaining !== 1 ? 's' : ''} más para +1 Pepazo`;
   }
   if (streakBarEl) {
     streakBarEl.style.width = `${progressPercent}%`;
@@ -179,7 +179,7 @@ function renderOutgoingShells() {
   container.innerHTML = `<div class="outgoing-shell-title">Últimos lanzamientos</div>` + attacks.slice(0, 3).map(attack => {
     const result = attack.result;
     const status = attack.status === 'PENDING_SPIN' ? 'Esperando que el rival gire' :
-      attack.status === 'RETURNED' ? 'Caparazón devuelto' : (result ? result.name : attack.status);
+      attack.status === 'RETURNED' ? 'Pepazo devuelto' : (result ? result.name : attack.status);
     return `<div class="outgoing-shell-row"><span>→ ${escapeHtml(attack.targetName || 'Rival')}</span><strong>${escapeHtml(status)}</strong></div>`;
   }).join('');
 }
@@ -192,7 +192,7 @@ function renderPendingShells() {
   section.style.display = attacks.length ? 'block' : 'none';
   container.innerHTML = attacks.map(attack => `
     <div class="pending-shell-card">
-      <div><strong>${attack.returnedFromAttackId ? '↩️ Caparazón devuelto por' : '🐢 Caparazón de'} #${escapeHtml(attack.attackerName || 'Rival')}</strong><span>Recibido ${escapeHtml(formatIsoDate(attack.launchedAt))}</span></div>
+      <div><strong>${attack.returnedFromAttackId ? '↩️ Pepazo devuelto por' : '🐢 Pepazo de'} #${escapeHtml(attack.attackerName || 'Rival')}</strong><span>Recibido ${escapeHtml(formatIsoDate(attack.launchedAt))}</span></div>
       <div class="pending-shell-actions">
         <button type="button" class="btn-refresh btn-neon-gold" data-spin-id="${escapeHtml(attack.id)}">🎰 Girar ruleta</button>
         <button type="button" class="btn-refresh" data-spin-outside-id="${escapeHtml(attack.id)}">Girar ruleta fuera ↗</button>
@@ -306,7 +306,7 @@ window.openShellRouletteOutside = function(attackId) {
   const attack = activeDuo?.pendingShellAttacks?.find(item => item.id === attackId);
   if (!attack) return;
   RouletteWindow.update({phase: 'prepared', teamName: activeDuo.teamName, attackId,
-    message: `Caparazón de ${attack.attackerName || 'Rival'}. Pulsa Girar cuando estés listo.`});
+    message: `Pepazo de ${attack.attackerName || 'Rival'}. Pulsa Girar cuando estés listo.`});
   if (!RouletteWindow.open()) {
     showPlayerToast('Permite las ventanas emergentes para abrir la ruleta fuera.', true);
     return;
@@ -318,7 +318,7 @@ window.spinShellHandler = async function(attackId, outside = false) {
   if (rouletteBusy) return;
   const teamName = activeDuo?.teamName || 'Tu equipo';
   if (!playerSessionToken || !activeDuo?.pendingShellAttacks?.some(attack => attack.id === attackId)) {
-    if (outside) RouletteWindow.update({phase: 'unavailable', teamName, message: 'Este caparazón ya no está pendiente. Vuelve al panel de tu equipo.'});
+    if (outside) RouletteWindow.update({phase: 'unavailable', teamName, message: 'Este pepazo ya no está pendiente. Vuelve al panel de tu equipo.'});
     return;
   }
   rouletteBusy = true;
@@ -434,7 +434,7 @@ function setupPlayerListeners() {
       }
 
       if ((activeDuo.blueShells || 0) <= 0) {
-        showPlayerToast("No tienes Caparazones Azules disponibles en tu inventario.", true);
+        showPlayerToast("No tienes Pepazos disponibles en tu inventario.", true);
         return;
       }
 
@@ -453,20 +453,20 @@ function setupPlayerListeners() {
           sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
           allDuos = await DataStore.getDuos();
           renderDashboardData();
-          showPlayerToast(`Caparazón enviado a ${targetName}. Ellos girarán la ruleta.`);
-          if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Caparazón Azul!`; }
+          showPlayerToast(`Pepazo enviado a ${targetName}. Ellos girarán la ruleta.`);
+          if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Pepazo!`; }
         } else {
-          showPlayerToast(res?.error || "Error al lanzar el Caparazón Azul.", true);
+          showPlayerToast(res?.error || "Error al lanzar el Pepazo.", true);
           if (btnSubmit) {
             btnSubmit.disabled = false;
-            btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Caparazón Azul!`;
+            btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Pepazo!`;
           }
         }
       } catch (err) {
         showPlayerToast("Error de conexión con el servidor.", true);
         if (btnSubmit) {
           btnSubmit.disabled = false;
-          btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Caparazón Azul!`;
+          btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Pepazo!`;
         }
       }
     });
@@ -497,7 +497,7 @@ function showRouletteInline(state, onCloseCallback) {
     if (onCloseCallback) onCloseCallback();
     return;
   }
-  if (targetText) targetText.textContent = 'Tu equipo está girando el Caparazón Azul...';
+  if (targetText) targetText.textContent = 'Tu equipo está girando el Pepazo...';
   container.style.display = 'block';
   ShellRoulette.animate(state, current => {
     if (rouletteIcon) rouletteIcon.textContent = current.icon;

@@ -41,7 +41,7 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
                'description': 'KDA individual acumulado de la semana: (asesinatos totales + asistencias totales) / máximo(muertes totales, 1). No es la media de los KDA de cada partida. Cuenta con al menos una Solo/Duo registrada; en empate exacto, valen todos los integrantes empatados.'},
               {'id': 'first_individual_shell', 'kind': 'player', 'icon': '🐢', 'eventLabel': 'ESTRENO DEL TORNEO',
                'placeholder': 'Selecciona un jugador',
-               'title': '¿Quién conseguirá el primer caparazón individual del torneo?',
+               'title': '¿Quién conseguirá el primer pepazo individual del torneo?',
                'description': 'Primer jugador con pentakill, 20+ asesinatos, 30+ asistencias o 0 muertes y más de 20 asesinatos + asistencias. Cuenta aunque su equipo tenga el inventario lleno. Se usa el final de la partida; si coinciden varios jugadores, todos valen.'},
               {'id': 'joji_parradise_deaths', 'kind': 'duel', 'icon': '💀', 'eventLabel': 'EVENTO · PRIMERA SEMANA',
                'placeholder': 'Selecciona a Joji o Parradise',
@@ -623,7 +623,7 @@ def reward_ballots(db, board, now):
                 'timestamp': datetime.fromtimestamp(now, weeks.MADRID).strftime('%Y-%m-%d %H:%M:%S'),
                 'week': board['week'], 'ballotId': ballot['id'], 'teamId': team['id'],
                 'target': team['teamName'], 'shells': amount, 'correct': score['correct'],
-                'message': f"🔮 {team['teamName']} gana {amount} caparazón por una quiniela con {score['correct']} aciertos"})
+                'message': f"🔮 {team['teamName']} gana {amount} pepazo por una quiniela con {score['correct']} aciertos"})
         changed = True
     return changed
 

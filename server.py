@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Pepes Krisis Duo Q Challenge - Python Backend Server & Live Riot API Engine
-Features: Real ELO Tracking, Match-V5, Player Panels, Blue Shells Gamification & Auth
+Features: Real ELO Tracking, Match-V5, Player Panels, Pepazos Gamification & Auth
 """
 
 import os
@@ -30,6 +30,7 @@ from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individua
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
 from storage import read_json, write_json, StorageError
+from terminology import pepazo_payload
 from postgres_storage import from_environment
 from elo_history import record_elo, ensure_player_elo_histories, record_player_elo
 from trophies import build_trophies, deadline_timestamp
@@ -86,7 +87,7 @@ PENALTY_CATALOG = [
     {"id": "no_flash_both", "baseId": "no_flash", "scope": "BOTH", "name": "Sin Flash · AMBOS", "icon": "⚡", "desc": "Los dos deben jugar sin Flash.", "defaultWeight": 6},
     {"id": "swap_flash_one", "baseId": "swap_flash", "scope": "ONE", "name": "Flash al otro lado · UNO", "icon": "🔄", "desc": "El integrante elegido por la ruleta (50/50) debe llevar Flash en la posición contraria a la registrada en su primera partida con Flash. El otro hechizo es libre.", "defaultWeight": 12},
     {"id": "swap_flash_both", "baseId": "swap_flash", "scope": "BOTH", "name": "Flash al otro lado · AMBOS", "icon": "🔄", "desc": "Ambos deben llevar Flash en la posición contraria a la registrada en su primera partida con Flash, cada uno según su propia referencia. El otro hechizo es libre.", "defaultWeight": 6},
-    {"id": "return_shell", "baseId": "return_shell", "scope": "SPECIAL", "name": "Devuelve el caparazón", "icon": "↩️", "desc": "El equipo atacante recibe el caparazón en su bandeja y debe girar su ruleta.", "defaultWeight": 5}
+    {"id": "return_shell", "baseId": "return_shell", "scope": "SPECIAL", "name": "Devuelve el pepazo", "icon": "↩️", "desc": "El equipo atacante recibe el pepazo en su bandeja y debe girar su ruleta.", "defaultWeight": 5}
 ]
 
 player_sessions = {}
@@ -1860,7 +1861,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         self.wfile.write(content_bytes)
 
     def _send_json(self, data_obj, code=200, headers=None):
-        body_bytes = json.dumps(data_obj, ensure_ascii=False).encode('utf-8')
+        body_bytes = json.dumps(pepazo_payload(data_obj), ensure_ascii=False).encode('utf-8')
         self._send_bytes(body_bytes, 'application/json; charset=utf-8', code, headers)
 
     def clips_visitor(self, cookie_name='pepes_clips_visitor'):
@@ -2380,11 +2381,11 @@ class CustomHandler(BaseHTTPRequestHandler):
                 return
 
             if attacker_id == target_id:
-                self._send_json({"success": False, "error": "No puedes lanzarte un caparazón a ti mismo"}, 400)
+                self._send_json({"success": False, "error": "No puedes lanzarte un pepazo a ti mismo"}, 400)
                 return
 
             if attacker.get("blueShells", 0) <= 0:
-                self._send_json({"success": False, "error": "No tienes Caparazones Azules disponibles en tu inventario"}, 400)
+                self._send_json({"success": False, "error": "No tienes Pepazos disponibles en tu inventario"}, 400)
                 return
 
             attacker["blueShells"] -= 1
@@ -2400,7 +2401,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 "target": target["teamName"],
                 "type": "SHELL_LAUNCHED",
                 "shellAttackId": attack["id"],
-                "message": f"🐢⚡ ¡{attacker['teamName']} ha lanzado un Caparazón Azul contra {target['teamName']}! El equipo receptor debe girar la ruleta."
+                "message": f"🐢⚡ ¡{attacker['teamName']} ha lanzado un Pepazo contra {target['teamName']}! El equipo receptor debe girar la ruleta."
             }
             events = db.get("events", [])
             events.insert(0, event)
@@ -2422,10 +2423,10 @@ class CustomHandler(BaseHTTPRequestHandler):
             target = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
             attack = next((a for a in db.get("shellAttacks", []) if a.get("id") == attack_id), None)
             if not target or not attack or attack.get("targetTeamId") != team_id:
-                self._send_json({"success": False, "error": "Caparazón no encontrado"}, 404)
+                self._send_json({"success": False, "error": "Pepazo no encontrado"}, 404)
                 return
             if attack.get("status") != "PENDING_SPIN":
-                self._send_json({"success": False, "error": "Este caparazón ya ha sido girado"}, 409)
+                self._send_json({"success": False, "error": "Este pepazo ya ha sido girado"}, 409)
                 return
 
             try:
@@ -2438,9 +2439,9 @@ class CustomHandler(BaseHTTPRequestHandler):
             if selected_penalty["baseId"] == "return_shell":
                 return_target = next((d for d in db.get("duos", []) if d.get("id") == attack.get("attackerTeamId")), None)
                 if not return_target or return_target["id"] == target["id"]:
-                    self._send_json({"success": False, "error": "No se puede devolver el caparazón: el equipo atacante ya no está disponible."}, 409)
+                    self._send_json({"success": False, "error": "No se puede devolver el pepazo: el equipo atacante ya no está disponible."}, 409)
                     return
-                selected_penalty["desc"] = f"El caparazón vuelve a {return_target['teamName']}, que debe girarlo desde su bandeja."
+                selected_penalty["desc"] = f"El pepazo vuelve a {return_target['teamName']}, que debe girarlo desde su bandeja."
 
             now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             attack["spunAt"] = now_iso
@@ -2455,7 +2456,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                     "id": f"event-{uuid.uuid4().hex}", "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "type": "SHELL_RETURNED", "shellAttackId": returned_attack["id"],
                     "sourceShellAttackId": attack["id"], "attacker": target["teamName"], "target": return_target["teamName"],
-                    "message": f"↩️ {target['teamName']} ha devuelto el caparazón a {return_target['teamName']}. Debe girar su ruleta."
+                    "message": f"↩️ {target['teamName']} ha devuelto el pepazo a {return_target['teamName']}. Debe girar su ruleta."
                 })
             else:
                 penalty_instance = {

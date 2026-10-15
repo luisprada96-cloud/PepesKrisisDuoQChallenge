@@ -306,14 +306,14 @@ function renderLeaderboardTable() {
         ${streakBadge}
       </td>
       <td>
-        <div class="shells-summary-cell" aria-label="${Number(duo.shellsLaunched) || 0} caparazones lanzados y ${Number(duo.shellsReceived) || 0} recibidos">
-          <span class="shell-count shell-count-launched" title="Caparazones lanzados">
+        <div class="shells-summary-cell" aria-label="${Number(duo.shellsLaunched) || 0} pepazos lanzados y ${Number(duo.shellsReceived) || 0} recibidos">
+          <span class="shell-count shell-count-launched" title="Pepazos lanzados">
             <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
             <strong>${Number(duo.shellsLaunched) || 0}</strong>
             <small>Lanzados</small>
           </span>
           <span class="shell-count-divider" aria-hidden="true"></span>
-          <span class="shell-count shell-count-received" title="Caparazones recibidos">
+          <span class="shell-count shell-count-received" title="Pepazos recibidos">
             <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
             <strong>${Number(duo.shellsReceived) || 0}</strong>
             <small>Recibidos</small>
@@ -517,14 +517,14 @@ async function renderRecentAttacksTable() {
     return;
   }
 
-  // Mostrar las últimas 10 aperturas de caparazones
+  // Mostrar las últimas 10 aperturas de pepazos
   const recentEvents = events.slice(0, 10);
 
   recentEvents.forEach(ev => {
     const tr = document.createElement('tr');
     const pen = ev.penalty || {};
     const icon = pen.icon || '🐢⚡';
-    const penName = pen.name || 'Caparazón Azul';
+    const penName = pen.name || 'Pepazo';
     const penDesc = pen.desc || ev.message || '';
 
     tr.innerHTML = `

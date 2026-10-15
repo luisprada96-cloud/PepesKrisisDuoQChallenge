@@ -489,7 +489,7 @@ function setupAdminListeners() {
       if (!res.success) {
         if (icon) icon.classList.remove('spinning');
         btnCalcShells.disabled = false;
-        alert(res.error || 'No se pudieron calcular los caparazones.');
+        alert(res.error || 'No se pudieron calcular los pepazos.');
         return;
       }
       if (res.duos) adminDuos = res.duos;
@@ -518,8 +518,8 @@ function setupAdminListeners() {
 
       const added = res.newShells || 0;
       const msg = added > 0 
-        ? `¡Cálculo completado! 🐢⚡ Se han otorgado +${added} nuevo(s) Caparazón(es) Azul(es).` 
-        : `¡Cálculo completado! Todos los caparazones ya estaban al día (0 nuevos otorgados).`;
+        ? `¡Cálculo completado! 🐢⚡ ${added === 1 ? 'Se ha otorgado +1 nuevo pepazo' : `Se han otorgado +${added} nuevos pepazos`}.`
+        : `¡Cálculo completado! Todos los pepazos ya estaban al día (0 nuevos otorgados).`;
 
       if (window.showToast) {
         showToast(msg, added > 0 ? 'success' : 'info');
