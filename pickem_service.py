@@ -48,6 +48,11 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
                'title': '¿Quién morirá más: Joji o Parradise?',
                'description': 'Muertes acumuladas de Joji y Parradise en las Solo/Duo registradas durante la primera semana del torneo. Gana quien sume más muertes; en empate, ambas respuestas valen.',
                'contenders': ['Joji', 'Parradise']},
+              {'id': 'chicha_fogell_kills', 'kind': 'duel', 'icon': '⚔️', 'eventLabel': 'DUELO SEMANAL',
+               'placeholder': 'Selecciona a Chicha o Fogell',
+               'title': '¿Quién hará más kills esta semana: Chicha o Fogell?',
+               'description': 'Kills individuales acumuladas de Chicha y Fogell en las Solo/Duo registradas esta semana. Gana quien sume más kills; en empate, ambas respuestas valen.',
+               'contenders': ['Chicha', 'Fogell']},
               {'id': 'first_five_negative', 'kind': 'count', 'icon': '📉', 'eventLabel': 'ESTRENO DEL TORNEO',
                'placeholder': 'Selecciona cuántos dúos',
                'title': '¿Cuántos dúos tendrán winrate negativo en sus primeras 5 ranked?',
@@ -420,9 +425,15 @@ def weekly_player_kda(db, board, category):
 
 def opening_deaths_duel(db, board, category):
     """Accumulate only the two bound participants' deaths in the opening week's stored games."""
+    return participant_stat_duel(db, board, category, 'deaths', 'muertes')
+
+
+def participant_stat_duel(db, board, category, metric, metric_label):
+    """Sum a weekly stat for two bound accounts, preserving identities and confirmed data."""
     contenders = category['options']
     if len(contenders)!=2 or any(not o.get('account') for o in contenders):
-        return {'status':'NO_DATA', 'optionIds':[], 'summary':'Falta identificar a Joji o Parradise. Esta categoría no suma un acierto.'}
+        names = ' o '.join(category.get('contenders') or [o['label'] for o in contenders])
+        return {'status':'NO_DATA', 'optionIds':[], 'summary':f'Falta identificar a {names}. Esta categoría no suma un acierto.'}
     bounds = period(db,board['week'])
     options = {(o['teamId'],o['playerKey'],tuple(o['account'])):o for o in contenders}
     totals, evidence = [], []
@@ -431,7 +442,7 @@ def opening_deaths_duel(db, board, category):
         if not duo:
             return {'status':'NO_DATA', 'optionIds':[], 'summary':'Falta un participante del evento. Esta categoría no suma un acierto.'}
         if (duo.get('riotMatchDiscovery') or {}).get('pendingMatchIds'): return {'pending':True}
-        key, deaths, games, seen = contender['playerKey'],0,0,set()
+        key, total, games, seen = contender['playerKey'],0,0,set()
         for game in duo.get('history',[]):
             mid = game.get('matchId')
             if not mid or mid in seen or game.get('isTest') or game.get('queueId') not in (None,420): continue
@@ -443,19 +454,19 @@ def opening_deaths_duel(db, board, category):
             if not isinstance(stats,dict): continue  # Confirmed absent from this match.
             matched = player_option(options,duo,key,stats)
             if not matched or matched['id']!=contender['id']: continue
-            value = stats.get('deaths')
+            value = stats.get(metric)
             if not isinstance(value,int) or isinstance(value,bool) or value<0: return {'pending':True}
-            deaths += value
+            total += value
             games += 1
-            evidence.append({'optionId':contender['id'],'matchId':mid,'deaths':value,'gameEndTimestamp':at*1000})
-        totals.append({'optionId':contender['id'],'label':contender['label'],'deaths':deaths,'games':games})
+            evidence.append({'optionId':contender['id'],'matchId':mid,metric:value,'gameEndTimestamp':at*1000})
+        totals.append({'optionId':contender['id'],'label':contender['label'],metric:total,'games':games})
     if not any(t['games'] for t in totals):
         return {'status':'NO_GAMES', 'optionIds':[], 'totals':totals,
-                'summary':'Sin partidas válidas de Joji y Parradise esta semana. Esta categoría no suma un acierto.'}
-    most = max(t['deaths'] for t in totals)
-    return {'status':'SETTLED', 'optionIds':[t['optionId'] for t in totals if t['deaths']==most],
+                'summary':f"Sin partidas válidas de {' y '.join(o['label'] for o in contenders)} esta semana. Esta categoría no suma un acierto."}
+    most = max(t[metric] for t in totals)
+    return {'status':'SETTLED', 'optionIds':[t['optionId'] for t in totals if t[metric]==most],
             'totals':totals, 'evidence':evidence,
-            'summary':' · '.join(f"{t['label']}: {t['deaths']} muertes" for t in totals)}
+            'summary':' · '.join(f"{t['label']}: {t[metric]} {metric_label}" for t in totals)}
 
 
 def first_individual_shell(db, category, now=None):
@@ -547,6 +558,7 @@ def first_five_negative(db, category, now=None):
 
 
 def category_result(db, board, category, now=None):
+    if category['id']=='chicha_fogell_kills': return participant_stat_duel(db,board,category,'kills','kills')
     if category['id']=='weekly_player_kda': return weekly_player_kda(db,board,category)
     if category['id']=='best_champion_winrate': return best_champion_winrate(db,board,category)
     if category['id']=='weekly_leader': return weekly_leader(db,board,category)

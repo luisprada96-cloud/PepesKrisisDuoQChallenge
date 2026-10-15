@@ -978,6 +978,8 @@ class PickemEndpointTests(unittest.TestCase):
         db['config'].update(database()['config'])
         db['duos'][0]['player1']['displayName']='Joji'
         db['duos'][1]['player2']['displayName']='Parradise'
+        db['duos'][0]['player2']['displayName']='Chicha'
+        db['duos'][1]['player1']['displayName']='Fogell'
         server.save_db(db)
 
     tearDown = fixtures.ShellEndpointTests.tearDown
