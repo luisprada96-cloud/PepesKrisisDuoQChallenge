@@ -24,6 +24,7 @@ import weekly_summary
 import discord_live
 import tierlists_service
 import pickem_service
+from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individual_shell_criteria
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
 from storage import read_json, write_json, StorageError
@@ -54,9 +55,6 @@ VALID_MAIN_ROLES = {"TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"}
 MAX_SHELLS_INVENTORY = 5
 MAX_SHELLS_PER_MATCH = 2
 SHELL_WIN_STREAK = 4
-SHELL_KILLS = 20
-SHELL_ASSISTS = 30
-SHELL_PERFECT_KDA = 20
 
 
 def shell_reward_rules():
@@ -1043,6 +1041,8 @@ def participant_stats(participant, participants=()):
         "kills": int(participant.get("kills", 0) or 0),
         "deaths": int(participant.get("deaths", 0) or 0),
         "assists": int(participant.get("assists", 0) or 0),
+        "pentaKills": int(participant.get("pentaKills", 0) or 0),
+        "largestMultiKill": int(participant.get("largestMultiKill", 0) or 0),
         "win": bool(participant.get("win", False)),
         "position": normalize_position(participant),
         "summonerSpellIds": [int(participant.get("summoner1Id", 0) or 0), int(participant.get("summoner2Id", 0) or 0)],
@@ -1324,12 +1324,8 @@ def update_duo_shells(duo):
         if not match.get("legacyShellRewards"):
             players = [match.get(key) for key in ("player1Stats", "player2Stats")]
             players = [p for p in players if isinstance(p, dict)]
-            if any(p.get("kills", 0) >= SHELL_KILLS for p in players):
-                candidates.append("kills")
-            if any(p.get("assists", 0) >= SHELL_ASSISTS for p in players):
-                candidates.append("assists")
-            if any(p.get("deaths") == 0 and p.get("kills", 0) + p.get("assists", 0) > SHELL_PERFECT_KDA for p in players):
-                candidates.append("perfect")
+            individual = {rule for p in players for rule in individual_shell_criteria(p)}
+            candidates.extend(rule for rule in ('kills', 'assists', 'perfect') if rule in individual)
         for rule in candidates:
             if rule in evaluated:
                 continue

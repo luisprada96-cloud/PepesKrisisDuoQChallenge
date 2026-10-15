@@ -49,7 +49,11 @@ def add_match_metadata(match, info, puuid1, puuid2, player1_present):
 
 def needs_match_details(match):
     return bool(not match.get("isTest") and match.get("matchId")
-                and (optional_int(match.get("matchDetailsVersion")) or 0) < MATCH_DETAILS_VERSION)
+                and ((optional_int(match.get("matchDetailsVersion")) or 0) < MATCH_DETAILS_VERSION
+                     or (match.get("pentaKill") and any(
+                         isinstance(match.get(key), dict) and
+                         not any(optional_int(match[key].get(field)) is not None for field in ('pentaKills', 'largestMultiKill'))
+                         for key in ('player1Stats', 'player2Stats')))))
 
 
 def update_match_details_backfill(duo):

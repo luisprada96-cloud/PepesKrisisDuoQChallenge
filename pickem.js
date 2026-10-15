@@ -7,7 +7,8 @@
   const closed=()=>!state || state.closed || Date.now()/1000>=state.closesAt;
   const category=()=>state?.categories.find(c=>c.id===currentCategory);
   const optionLabel=(c,id)=>c.options.find(o=>o.id===id)?.label || 'Sin respuesta';
-  const resultSummary=c=>c.result.summary || (c.result.status==='SETTLED'?`${c.result.value} campeones distintos`:'Sin partidas válidas. No se entrega premio en esta categoría.');
+  const resultSummary=c=>c.result.summary || (c.result.status==='SETTLED'?`${c.result.value} campeones distintos`:'Sin datos válidos. Esta categoría no suma un acierto.');
+  const rewardText=()=>`🐢 ${state.rewardRule.shells} caparazón por quiniela con al menos ${state.rewardRule.minCorrect} aciertos.`;
   const date=timestamp=>new Date(timestamp*1000).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   function weekLabel(key) {
     const start=new Date(key+'T12:00:00Z'),end=new Date(start.getTime()+6*86400000);
@@ -48,7 +49,7 @@
     if(!preserve||state.myBallot)$('pickem-author').value=state.myBallot?.author||'';
     $('pickem-modal-login').hidden=!!state.participation.teamId;
     $('pickem-modal-status').textContent=c.myAnswer?'Tu respuesta para esta categoría ya está guardada.':state.participation.message;
-    $('pickem-answer-summary').textContent=c.result ? `${resultSummary(c)}${c.result.optionLabel?' · '+c.result.optionLabel:''}` : `🐢 Si aciertas, tu equipo gana ${c.reward} caparazón.`;
+    $('pickem-answer-summary').textContent=c.result ? `${resultSummary(c)}${c.result.optionLabel?' · '+c.result.optionLabel:''}` : rewardText();
     controls();
   }
   function render() {
@@ -57,18 +58,25 @@
     $('pickem-week').value=state.week;
     $('pickem-entries').textContent=`${state.entries} ${state.entries===1?'quiniela enviada':'quinielas enviadas'}`;
     $('pickem-participation').textContent=state.participation.message;
+    $('pickem-reward-rule').textContent=rewardText()+' Puede superar el límite de 5. Cierre los domingos a las 23:59.';
     $('pickem-login').hidden=!!state.participation.teamId;
     $('pickem-categories').innerHTML=state.categories.map(c=>{
       const result=c.result ? `<div class="pickem-card-result"><strong>${escape(resultSummary(c))}</strong>${c.result.optionLabel?`<br>Resultado: ${escape(c.result.optionLabel)}`:''}</div>` : closed()?'<div class="pickem-card-result">Comprobando los resultados de la semana…</div>':'';
-      return `<article class="pickem-card"><div class="pickem-card-art" aria-hidden="true"><span class="pickem-question-mark">${escape(c.icon||'?')}</span><span class="pickem-event">${escape(c.eventLabel||'EVENTO SEMANAL')}</span></div><h2>${escape(c.title)}</h2><p class="pickem-card-description">${escape(c.description)}</p><span class="pickem-reward">🐢 ${c.reward} caparazón por acierto</span><button type="button" class="pickem-primary" data-pickem-category="${escape(c.id)}">${closed()?'Ver predicción y resultado':c.myAnswer?'Ver mi predicción':'Rellenar la quiniela'}</button>${c.myAnswer?`<p class="pickem-card-answer">Tu pronóstico: <strong>${escape(optionLabel(c,c.myAnswer))}</strong></p>`:''}${result}</article>`;
+      return `<article class="pickem-card"><div class="pickem-card-art" aria-hidden="true"><span class="pickem-question-mark">${escape(c.icon||'?')}</span><span class="pickem-event">${escape(c.eventLabel||'EVENTO SEMANAL')}</span></div><h2>${escape(c.title)}</h2><p class="pickem-card-description">${escape(c.description)}</p><span class="pickem-reward">Objetivo: ${state.rewardRule.minCorrect} aciertos</span><button type="button" class="pickem-primary" data-pickem-category="${escape(c.id)}">${closed()?'Ver predicción y resultado':c.myAnswer?'Ver mi predicción':'Rellenar la quiniela'}</button>${c.myAnswer?`<p class="pickem-card-answer">Tu pronóstico: <strong>${escape(optionLabel(c,c.myAnswer))}</strong></p>`:''}${result}</article>`;
     }).join('');
     $('pickem-results').hidden=!closed();
-    $('pickem-result-list').innerHTML=state.predictions.length?state.predictions.flatMap(b=>state.categories.map(c=>{
-      const answer=b.answers[c.id];if(!answer)return '';
-      const result=c.result,win=result?.winners.some(w=>w.ballotId===b.id);
-      const verdict=!result?'Pendiente de resultado':result.status!=='SETTLED'?'Sin premio':win?`✓ +${c.reward} caparazón`:'No acertó';
-      return `<article class="pickem-result-entry"><div><strong>${escape(b.author||b.teamName)}</strong><small>${escape(b.teamName)}</small></div><div>${escape(optionLabel(c,answer))}<small>${escape(c.title)}</small></div><strong class="${win?'pickem-win':!result?'pickem-wait':''}">${escape(verdict)}</strong></article>`;
-    })).join(''):'<p>Nadie envió una quiniela esta semana.</p>';
+    $('pickem-result-list').innerHTML=state.predictions.length?state.predictions.map(b=>{
+      const awarded=b.reward?.status==='AWARDED';
+      const verdict=awarded?`✓ +${b.reward.shells} caparazón`:b.pending?'Pendiente de resultados':'Sin premio';
+      const summary=`<div class="pickem-ballot-summary"><div><strong>${escape(b.author||b.teamName)}</strong><small>${escape(b.teamName)}</small></div><strong>${b.correct} aciertos${b.pending?` · ${b.pending} pendientes`:''}</strong><strong class="${awarded?'pickem-win':b.pending?'pickem-wait':''}">${escape(verdict)}</strong></div>`;
+      const answers=state.categories.map(c=>{
+        const answer=b.answers[c.id];if(answer===undefined)return '';
+        const result=c.result,correct=result?.status==='SETTLED'&&result.optionIds.includes(answer);
+        const label=!result?'Pendiente de resultado':result.status!=='SETTLED'?'Sin datos válidos':correct?'✓ Acierto':'No acertó';
+        return `<article class="pickem-result-entry"><div>${escape(c.title)}</div><div>${escape(optionLabel(c,answer))}</div><strong class="${correct?'pickem-win':!result?'pickem-wait':''}">${escape(label)}</strong></article>`;
+      }).join('');
+      return `<section class="pickem-ballot">${summary}${answers}</section>`;
+    }).join(''):'<p>Nadie envió una quiniela esta semana.</p>';
     if($('pickem-dialog').open)modal(true);
     controls();
   }

@@ -62,7 +62,7 @@
 .pickem-results { margin-top: 2rem; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-card); padding: 1.25rem; }
 .pickem-results h2 { font-size: 1.1rem; }
 .pickem-results > p { color: var(--text-muted); font-size: .8rem; margin: .4rem 0 1rem; }
-.pickem-result-entry { display: grid; grid-template-columns: minmax(120px,1fr) minmax(100px,1fr) minmax(90px,.6fr); align-items: center; gap: .7rem; padding: .9rem 0; border-bottom: 1px solid #283548; font-size: .85rem; }
+.pickem-ballot-summary, .pickem-result-entry { display: grid; grid-template-columns: minmax(120px,1fr) minmax(100px,1fr) minmax(90px,.6fr); align-items: center; gap: .7rem; padding: .9rem 0; border-bottom: 1px solid #283548; font-size: .85rem; }
 .pickem-result-entry:last-child { border: 0; }
 .pickem-result-entry small { display: block; color: var(--text-muted); font-size: .72rem; }
 .pickem-win { color: var(--win-green); } .pickem-wait { color: var(--gold-hextech); }
@@ -84,3 +84,8 @@
   .pickem-dialog-actions span { max-width:none; }
   .pickem-result-entry { grid-template-columns: minmax(0,1fr); }
 }
+
+.pickem-ballot + .pickem-ballot { margin-top: 1.25rem; }
+.pickem-ballot-summary { padding: .9rem; background: #0b1c29; border-radius: 8px; }
+.pickem-ballot-summary small { display: block; color: var(--text-muted); }
+@media(max-width:600px) { .pickem-ballot-summary { grid-template-columns: minmax(0,1fr); } }

@@ -2,7 +2,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
-COPY server.py tierlists_service.py discord_live.py weekly_summary.py clips_service.py clip_votes.py postgres_storage.py storage.py sync_jobs.py trophies.py elo_history.py match_details.py /app/
+COPY server.py shell_rules.py tierlists_service.py discord_live.py weekly_summary.py clips_service.py clip_votes.py postgres_storage.py storage.py sync_jobs.py trophies.py elo_history.py match_details.py /app/
 COPY tierlist.html tierlist.js tierlist.css pickem.html pickem.js pickem.css pickem_service.py /app/
 COPY premios.html premios.js navigation.js /app/
 COPY assets/tierlist/ /app/assets/tierlist/
