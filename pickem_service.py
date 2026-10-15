@@ -13,7 +13,8 @@ from shell_rules import individual_shell_criteria
 import weekly_summary as weeks
 
 MAX_TEAM_BALLOTS = 2
-REWARD_RULE = {'minCorrect': 3, 'shells': 1}
+REWARD_RULE = {'version': 2, 'minCorrect': 3, 'shells': 1,
+               'tiers': [{'minCorrect': 3, 'shells': 1}, {'minCorrect': 5, 'shells': 2}]}
 SETTLEMENT_GRACE = 300
 MIN_CHAMPION_GAMES = 3
 NEW_SCHEDULE = {
@@ -616,8 +617,13 @@ def category_result(db, board, category, now=None):
 
 def ensure_reward_rule(board):
     """Keep already paid legacy prizes, without paying them again under the new rule."""
-    if 'rewardRule' in board: return False
-    board['rewardRule'] = dict(REWARD_RULE)
+    if 'rewardRule' in board:
+        if board['rewardRule'].get('version', 1) < 2 and not board.get('ballotRewards'):
+            board['rewardRule'] = copy.deepcopy(REWARD_RULE)
+            board.setdefault('ballotRewards', {})
+            return True
+        return False
+    board['rewardRule'] = copy.deepcopy(REWARD_RULE)
     board['ballotRewards'] = {}
     for result in board.get('results', {}).values():
         for winner in result.get('winners', []):
@@ -644,24 +650,34 @@ def ballot_score(board, ballot):
 def reward_ballots(db, board, now):
     changed = False
     rule = board['rewardRule']
+    tiers = rule.get('tiers') or [rule]
     for ballot in board['ballots']:
-        if ballot['id'] in board['ballotRewards']: continue
+        previous = board['ballotRewards'].get(ballot['id'])
+        if previous and (previous.get('legacy') or previous.get('final', True)): continue
         score = ballot_score(board, ballot)
-        qualifies = score['correct'] >= rule['minCorrect']
-        if not qualifies and score['pending']: continue
+        earned = max((tier['shells'] for tier in tiers if score['correct'] >= tier['minCorrect']), default=0)
+        if not earned and score['pending']: continue
         team = next((d for d in db.get('duos', []) if d['id'] == ballot['teamId']), None)
-        amount = rule['shells'] if qualifies and team else 0
-        board['ballotRewards'][ballot['id']] = {
-            **score, 'status': 'AWARDED' if amount else 'NO_REWARD', 'shells': amount, 'settledAt': now}
-        if amount:
-            team['blueShells'] = int(team.get('blueShells', 0) or 0) + amount
-            team['pickemShellsEarnedTotal'] = int(team.get('pickemShellsEarnedTotal', 0) or 0) + amount
+        paid = int((previous or {}).get('shells', 0))
+        amount = max(paid, earned if team else 0)
+        additional = amount - paid
+        next_threshold = min((tier['minCorrect'] for tier in tiers if tier['shells'] > amount), default=None)
+        final = not team or next_threshold is None or not score['pending'] or score['correct'] + score['pending'] < next_threshold
+        reward = {**score, 'status': 'AWARDED' if amount else 'NO_REWARD', 'shells': amount, 'final': final}
+        if previous and all(previous.get(key) == value for key, value in reward.items()): continue
+        reward['settledAt'] = now if additional or not previous else previous['settledAt']
+        board['ballotRewards'][ballot['id']] = reward
+        if additional:
+            team['blueShells'] = int(team.get('blueShells', 0) or 0) + additional
+            team['pickemShellsEarnedTotal'] = int(team.get('pickemShellsEarnedTotal', 0) or 0) + additional
+            noun = 'pepazo' if additional == 1 else 'pepazos'
+            bonus = f' ({amount} pepazos en total)' if paid else ''
             db.setdefault('events', []).insert(0, {
-                'id': f"pickem-{board['week']}-ballot-{ballot['id']}", 'type': 'PICKEM_REWARD',
+                'id': f"pickem-{board['week']}-ballot-{ballot['id']}" + (f'-upgrade-{amount}' if paid else ''), 'type': 'PICKEM_REWARD',
                 'timestamp': datetime.fromtimestamp(now, weeks.MADRID).strftime('%Y-%m-%d %H:%M:%S'),
                 'week': board['week'], 'ballotId': ballot['id'], 'teamId': team['id'],
-                'target': team['teamName'], 'shells': amount, 'correct': score['correct'],
-                'message': f"🔮 {team['teamName']} gana {amount} pepazo por una quiniela con {score['correct']} aciertos"})
+                'target': team['teamName'], 'shells': additional, 'totalShells': amount, 'correct': score['correct'],
+                'message': f"🔮 {team['teamName']} gana {additional} {noun} por una quiniela con {score['correct']} aciertos{bonus}"})
         changed = True
     return changed
 
@@ -754,4 +770,4 @@ def public_board(db, team_id=None, visitor=None, selected_week=None, now=None):
             'categories':categories,'participation':status,'myBallot':personal,'predictions':predictions,
             'teamBallots':[visible_ballot(board, b) for b in board['ballots'] if status['teamId'] and b['teamId']==status['teamId']],
             'resultsVisible':now>=visible_at, 'periods':period_list(db),
-            'entries':len(board['ballots']), 'rewardRule':dict(rule)}
+            'entries':len(board['ballots']), 'rewardRule':copy.deepcopy(rule)}

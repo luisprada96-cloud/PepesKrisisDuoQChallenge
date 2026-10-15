@@ -38,10 +38,10 @@ const path = require('node:path');
         if(closed) categories.find(c=>c.id==='weekly_player_kda').result={status:'SETTLED',value:4.5,summary:'Mejor KDA acumulado semanal · 4.50 KDA',optionLabel:'Persona 0 · Equipo 0',optionIds:['person0']};
         if(closed) categories.find(c=>c.id==='chicha_fogell_kills').result={status:'SETTLED',summary:'Chicha: 13 kills · Fogell: 20 kills',optionLabel:'Fogell',optionIds:['fogell']};
         const hasBallot=Object.keys(saved).length>0;
-        const state={rewardRule:{minCorrect:3,shells:1},week:url.searchParams.get('week')||'2026-10-12',weeks:['2026-10-19','2026-10-12'],startsAt:future-86400*4,endsAt:future+60,closesAt:closed?1:future,closed,categories,
+        const state={rewardRule:{version:2,minCorrect:3,shells:1,tiers:[{minCorrect:3,shells:1},{minCorrect:5,shells:2}]},week:url.searchParams.get('week')||'2026-10-12',weeks:['2026-10-19','2026-10-12'],startsAt:future-86400*4,endsAt:future+60,closesAt:closed?1:future,closed,categories,
           entries:hasBallot?1:0,myBallot:logged&&hasBallot?{author,answers:saved}:null,
           participation:{teamId:logged?'a':null,teamName:logged?'Equipo A':null,canAnswer:logged&&!closed,message:closed?'Las predicciones están cerradas.':logged?'Participando como Equipo A.':'Inicia sesión con tu equipo para rellenar la quiniela.'},
-          predictions:closed?[{id:'mine',teamId:'a',teamName:'Equipo A',author:'<img src=x onerror="window.injected=true">',answers:saved,correct,pending,reward:awarded?{status:'AWARDED',shells:1}:pending?null:{status:'NO_REWARD',shells:0}}]:[]};
+          predictions:closed?[{id:'mine',teamId:'a',teamName:'Equipo A',author:'<img src=x onerror="window.injected=true">',answers:saved,correct,pending,reward:awarded?{status:'AWARDED',shells:correct>=5?2:1}:pending?null:{status:'NO_REWARD',shells:0}}]:[]};
         return route.fulfill({contentType:'application/json',body:JSON.stringify(state)});
       }
       if(url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:'{}'});
@@ -166,10 +166,12 @@ const path = require('node:path');
     assert.equal(await page.locator('.pickem-result-entry').count(),9);
     assert.match(await page.locator('.pickem-result-entry').last().textContent(),/Fogell.*Acierto/);
     assert.match(await page.locator('.pickem-ballot-summary').textContent(),/9 aciertos/);
-    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 pepazo/);
+    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+2 pepazos/);
     assert.equal(await page.locator('.pickem-result-entry').filter({hasText:'+1 pepazo'}).count(),0,'no individual category prizes');
     assert.match(await page.locator('.pickem-result-entry').first().textContent(),/Acierto/);
     assert.match(await page.locator('#pickem-reward-rule').textContent(),/al menos 3 aciertos/);
+    assert.match(await page.locator('#pickem-reward-rule').textContent(),/2 pepazos con al menos 5 aciertos/);
+    assert.match(await page.locator('.pickem-reward').first().textContent(),/3 \/ 5 aciertos/);
     assert.equal(await page.locator('.pickem-reward').filter({hasText:'por acierto'}).count(),0);
     correct=2; pending=1; awarded=false;
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
@@ -178,10 +180,14 @@ const path = require('node:path');
     pending=0;
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(()=>document.querySelector('.pickem-ballot-summary').textContent.includes('Sin premio'));
-    correct=6; awarded=true;
+    correct=3; awarded=true;
+    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+    await page.waitForFunction(()=>document.querySelector('.pickem-ballot-summary').textContent.includes('3 aciertos'));
+    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 pepazo\b/);
+    correct=6;
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
     await page.waitForFunction(()=>document.querySelector('.pickem-ballot-summary').textContent.includes('6 aciertos'));
-    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+1 pepazo/);
+    assert.match(await page.locator('.pickem-ballot-summary').textContent(),/\+2 pepazos/);
     assert.equal(await page.evaluate(()=>window.injected),undefined);
     await Promise.all([page.waitForResponse(r=>r.url().includes('week=2026-10-19')),page.locator('#pickem-week').selectOption('2026-10-19')]);
     for(const width of [1440,1100,768,390,320]) {

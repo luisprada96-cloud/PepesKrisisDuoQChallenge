@@ -864,16 +864,17 @@ class PickemWeeklyRewardTests(unittest.TestCase):
         with patch.object(pickem, 'category_result', side_effect=result):
             self.settle()
 
-    def test_zero_through_six_correct_answers_give_at_most_one_shell(self):
+    def test_zero_through_six_correct_answers_follow_both_reward_tiers(self):
         for correct in range(7):
             with self.subTest(correct=correct):
                 self.setUp()
                 self.prepare_scores(correct=correct)
                 self.resolve()
-                amount = int(correct>=3)
+                amount = 2 if correct>=5 else int(correct>=3)
                 self.assertEqual(self.db['duos'][0]['blueShells'],5+amount)
                 self.assertEqual(self.db['duos'][0].get('pickemShellsEarnedTotal',0),amount)
-                self.assertEqual(len(self.db['events']),amount)
+                self.assertEqual(len(self.db['events']),int(amount>0))
+                self.assertEqual(sum(event['shells'] for event in self.db['events']),amount)
                 reward = self.board['ballotRewards']['one']
                 self.assertEqual(reward['correct'],correct)
                 self.assertEqual(reward['shells'],amount)
@@ -882,16 +883,17 @@ class PickemWeeklyRewardTests(unittest.TestCase):
                 restored = json.loads(json.dumps(self.db))
                 self.settle(restored)
                 self.assertEqual(restored['duos'][0]['blueShells'],5+amount)
-                self.assertEqual(len(restored['events']),amount)
+                self.assertEqual(len(restored['events']),int(amount>0))
 
     def test_team_ballots_are_independent_and_cannot_pool_answers(self):
-        for scores,expected in [((2,2),0),((3,2),1),((3,6),2)]:
+        for scores,expected in [((2,2),0),((3,2),1),((3,6),3),((5,5),4)]:
             with self.subTest(scores=scores):
                 self.setUp()
                 for i,correct in enumerate(scores): self.prepare_scores(correct=correct,browser=str(i))
                 self.resolve()
                 self.assertEqual(self.db['duos'][0]['blueShells'],5+expected)
-                self.assertEqual(len({e['id'] for e in self.db['events']}),expected)
+                self.assertEqual(len({e['id'] for e in self.db['events']}),sum(score>=3 for score in scores))
+                self.assertEqual(sum(e['shells'] for e in self.db['events']),expected)
 
     def test_pending_third_correct_waits_then_rewards_once_in_later_week(self):
         self.prepare_scores(correct=3)
@@ -907,12 +909,63 @@ class PickemWeeklyRewardTests(unittest.TestCase):
         self.prepare_scores(correct=6)
         self.resolve(pending=('cat3','cat4','cat5'))
         self.assertEqual(self.db['duos'][0]['blueShells'],6)
+        self.assertFalse(self.board['ballotRewards']['one']['final'])
         self.resolve()
-        self.assertEqual(self.db['duos'][0]['blueShells'],6)
-        self.assertEqual(len(self.db['events']),1)
+        self.assertEqual(self.db['duos'][0]['blueShells'],7)
+        self.assertEqual(len(self.db['events']),2)
+        self.assertEqual(sum(e['shells'] for e in self.db['events']),2)
         public=pickem.public_board(self.db,'a','one',now=NOW+86400*5)
         self.assertEqual(public['predictions'][0]['correct'],6)
-        self.assertEqual(public['predictions'][0]['reward']['shells'],1)
+        self.assertEqual(public['predictions'][0]['reward']['shells'],2)
+
+    def test_fifth_correct_upgrades_by_only_one_shell_even_after_restart(self):
+        self.prepare_scores(correct=6)
+        self.resolve(pending=('cat3','cat4','cat5'))
+        self.assertEqual(self.db['duos'][0]['blueShells'],6)
+        snapshot=copy.deepcopy(self.db)
+        self.assertFalse(pickem.reward_ballots(self.db,self.board,NOW+1))
+        self.assertEqual(self.db,snapshot)
+        self.resolve(pending=('cat4','cat5'))
+        self.assertEqual(self.db['duos'][0]['blueShells'],6)
+        self.assertEqual(len(self.db['events']),1)
+        self.db=json.loads(json.dumps(self.db))
+        self.board=self.db['pickem']['weeks'][WEEK]
+        self.resolve(pending=('cat5',))
+        self.assertEqual(self.db['duos'][0]['blueShells'],7)
+        self.assertEqual(self.board['ballotRewards']['one']['shells'],2)
+        self.assertTrue(self.board['ballotRewards']['one']['final'])
+        self.assertEqual(len({e['id'] for e in self.db['events']}),2)
+        self.assertEqual(sum(e['shells'] for e in self.db['events']),2)
+        self.resolve()
+        self.assertEqual(self.db['duos'][0]['blueShells'],7)
+        self.assertEqual(len(self.db['events']),2)
+
+    def test_missing_fifth_correct_does_not_prevent_the_one_shell_prize(self):
+        self.prepare_scores(count=4,correct=4)
+        self.resolve(pending=('cat3',))
+        self.assertEqual(self.db['duos'][0]['blueShells'],6)
+        self.assertTrue(self.board['ballotRewards']['one']['final'])
+        self.resolve()
+        self.assertEqual(len(self.db['events']),1)
+
+    def test_unpaid_current_rule_upgrades_without_resetting_any_answers(self):
+        ballot=self.prepare_scores(correct=5)
+        before=copy.deepcopy(ballot)
+        self.board['rewardRule']={'minCorrect':3,'shells':1}
+        self.resolve()
+        self.assertEqual(self.board['rewardRule'],pickem.REWARD_RULE)
+        self.assertEqual(self.board['ballots'][0],before)
+        self.assertEqual(self.db['duos'][0]['blueShells'],7)
+
+    def test_historical_paid_single_tier_week_keeps_its_original_prize(self):
+        self.prepare_scores(correct=6)
+        self.board['rewardRule']={'minCorrect':3,'shells':1}
+        self.board['ballotRewards']['one']={'status':'AWARDED','shells':1,'settledAt':NOW}
+        self.db['duos'][0]['blueShells']=6
+        self.resolve()
+        self.assertEqual(self.board['rewardRule'],{'minCorrect':3,'shells':1})
+        self.assertEqual(self.db['duos'][0]['blueShells'],6)
+        self.assertEqual(self.db['events'],[])
 
     def test_no_data_and_unanswered_categories_do_not_count_as_correct(self):
         ballot=self.prepare_scores(correct=6)
@@ -934,7 +987,7 @@ class PickemWeeklyRewardTests(unittest.TestCase):
         del self.board['ballotRewards']
         for c in self.board['categories']: c['reward']=1
         self.resolve()
-        self.assertEqual(self.board['rewardRule'],{'minCorrect':3,'shells':1})
+        self.assertEqual(self.board['rewardRule'],pickem.REWARD_RULE)
         self.assertEqual(self.board['ballots'][0],ballot)
         self.assertEqual(self.db['duos'][0]['blueShells'],6)
         public=pickem.public_board(self.db,now=NOW+86400*5)

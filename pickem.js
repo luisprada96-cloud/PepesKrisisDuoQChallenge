@@ -13,7 +13,7 @@
   const allowedAnswer=(c,value)=>!isDuel(c)||(!c.teamAnswerConflict&&(!c.teamAnswer||c.teamAnswer===value));
   const duelRule=c=>c.teamAnswerConflict?'Respuestas anteriores en conflicto. Consulta a la administración.':c.teamAnswer?`Elección del equipo: ${optionLabel(c,c.teamAnswer)}. Ambos debéis elegir esta opción.`:'Una elección por equipo: la primera respuesta fija la opción para ambos integrantes.';
   const resultSummary=c=>c.result.summary || (c.result.status==='SETTLED'?`${c.result.value} campeones distintos`:'Sin datos válidos. Esta categoría no suma un acierto.');
-  const rewardText=()=>`🐢 ${state.rewardRule.shells} pepazo por quiniela con al menos ${state.rewardRule.minCorrect} aciertos.`;
+  const rewardText=()=>`🐢 ${(state.rewardRule.tiers||[state.rewardRule]).map(tier=>`${tier.shells} ${tier.shells===1?'pepazo':'pepazos'} con al menos ${tier.minCorrect} aciertos`).join(' · ')}. Premio total por quiniela.`;
   const date=timestamp=>new Date(timestamp*1000).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   const championSearchKey=value=>String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
   function closeChampionOptions() {
@@ -117,7 +117,7 @@
     $('pickem-login').hidden=!!state.participation.teamId;
     $('pickem-categories').innerHTML=state.categories.map(c=>{
       const result=c.result ? `<div class="pickem-card-result"><strong>${escape(resultSummary(c))}</strong>${c.result.optionLabel?`<br>Resultado: ${escape(c.result.optionLabel)}`:''}</div>` : closed()?`<div class="pickem-card-result">${Date.now()/1000<state.endsAt?'Predicciones cerradas. El periodo de juego sigue en curso.':'Comprobando los resultados de la semana…'}</div>`:'';
-      return `<article class="pickem-card"><div class="pickem-card-art" aria-hidden="true"><span class="pickem-question-mark">${escape(c.icon||'?')}</span><span class="pickem-event">${escape(c.eventLabel||'EVENTO SEMANAL')}</span></div><h2>${escape(c.title)}</h2><p class="pickem-card-description">${escape(c.description)}</p>${isDuel(c)?`<p class="pickem-duel-rule">${escape(duelRule(c))}</p>`:''}<span class="pickem-reward">Objetivo: ${state.rewardRule.minCorrect} aciertos</span><button type="button" class="pickem-primary" data-pickem-category="${escape(c.id)}">${closed()?'Ver predicción y resultado':c.myAnswer?'Ver mi predicción':isDuel(c)&&c.teamAnswer?'Confirmar elección del equipo':'Rellenar la quiniela'}</button>${c.myAnswer?`<p class="pickem-card-answer">Tu pronóstico: <strong>${escape(optionLabel(c,c.myAnswer))}</strong></p>`:''}${result}</article>`;
+      return `<article class="pickem-card"><div class="pickem-card-art" aria-hidden="true"><span class="pickem-question-mark">${escape(c.icon||'?')}</span><span class="pickem-event">${escape(c.eventLabel||'EVENTO SEMANAL')}</span></div><h2>${escape(c.title)}</h2><p class="pickem-card-description">${escape(c.description)}</p>${isDuel(c)?`<p class="pickem-duel-rule">${escape(duelRule(c))}</p>`:''}<span class="pickem-reward">Objetivo: ${(state.rewardRule.tiers||[state.rewardRule]).map(tier=>tier.minCorrect).join(' / ')} aciertos</span><button type="button" class="pickem-primary" data-pickem-category="${escape(c.id)}">${closed()?'Ver predicción y resultado':c.myAnswer?'Ver mi predicción':isDuel(c)&&c.teamAnswer?'Confirmar elección del equipo':'Rellenar la quiniela'}</button>${c.myAnswer?`<p class="pickem-card-answer">Tu pronóstico: <strong>${escape(optionLabel(c,c.myAnswer))}</strong></p>`:''}${result}</article>`;
     }).join('');
     $('pickem-results').hidden=!(state.resultsVisible??closed());
     $('pickem-result-list').innerHTML=renderBallots(state.predictions, 'Nadie envió una quiniela esta semana.');
@@ -129,7 +129,7 @@
   function renderBallots(ballots, empty) {
     return ballots.length?ballots.map((b,index)=>{
       const awarded=b.reward?.status==='AWARDED';
-      const verdict=awarded?`✓ +${b.reward.shells} pepazo`:b.pending?'Pendiente de resultados':'Sin premio';
+      const verdict=awarded?`✓ +${b.reward.shells} ${b.reward.shells===1?'pepazo':'pepazos'}`:b.pending?'Pendiente de resultados':'Sin premio';
       const summary=`<div class="pickem-ballot-summary"><div><strong>${escape(b.author||`Quiniela ${index+1}`)}</strong><small>${escape(b.teamName)}${b.createdAt?` · ${escape(date(b.createdAt))} (Madrid)`:''}</small></div><strong>${b.correct} aciertos${b.pending?` · ${b.pending} pendientes`:''}</strong><strong class="${awarded?'pickem-win':b.pending?'pickem-wait':''}">${escape(verdict)}</strong></div>`;
       const answers=state.categories.map(c=>{
         const answer=b.answers[c.id];
