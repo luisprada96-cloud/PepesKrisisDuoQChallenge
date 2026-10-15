@@ -36,6 +36,9 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
               {'id': 'best_game_kda', 'kind': 'player', 'icon': '⚔', 'placeholder': 'Selecciona un jugador',
                'title': '¿Quién hará la partida con mejor KDA?',
                'description': 'La mejor partida individual de la semana: (asesinatos + asistencias) / máximo(muertes, 1). En empate exacto, valen todos los empatados.'},
+              {'id': 'weekly_player_kda', 'kind': 'player', 'icon': '📊', 'placeholder': 'Selecciona un integrante',
+               'title': '¿Quién tendrá el mejor KDA de la semana?',
+               'description': 'KDA individual acumulado de la semana: (asesinatos totales + asistencias totales) / máximo(muertes totales, 1). No es la media de los KDA de cada partida. Cuenta con al menos una Solo/Duo registrada; en empate exacto, valen todos los integrantes empatados.'},
               {'id': 'first_individual_shell', 'kind': 'player', 'icon': '🐢', 'eventLabel': 'ESTRENO DEL TORNEO',
                'placeholder': 'Selecciona un jugador',
                'title': '¿Quién conseguirá el primer caparazón individual del torneo?',
@@ -377,6 +380,44 @@ def best_game_kda(db, board, category):
             'summary':f'Mejor partida individual · {float(best):.2f} KDA', 'evidence':evidence}
 
 
+def weekly_player_kda(db, board, category):
+    """Compare each account's accumulated weekly K/D/A, not its best game or average."""
+    bounds = period(db, board['week'])
+    options = {(o['teamId'], o['playerKey'], tuple(o['account'])): o for o in category['options']}
+    totals, seen = {}, set()
+    for duo in db.get('duos', []):
+        if (duo.get('riotMatchDiscovery') or {}).get('pendingMatchIds'): return {'pending': True}
+        for game in duo.get('history', []):
+            mid = game.get('matchId')
+            if not mid or game.get('isTest') or game.get('queueId') not in (None, 420): continue
+            if not bounds['startsAt'] <= weeks.game_time(game) < bounds['endsAt']: continue
+            checked = game.get('participantsChecked') or {}
+            if game.get('statsVersion', 0) < 2 or not all(checked.get(key) for key in ('player1', 'player2')):
+                return {'pending': True}
+            for key in ('player1', 'player2'):
+                stats = game.get(key + 'Stats')
+                if not isinstance(stats, dict): continue  # Confirmed absent from this match.
+                option = player_option(options, duo, key, stats)
+                if not option or (mid, option['id']) in seen: continue
+                seen.add((mid, option['id']))
+                values = [stats.get(field) for field in ('kills', 'deaths', 'assists')]
+                if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in values):
+                    return {'pending': True}
+                total = totals.setdefault(option['id'], {'optionId': option['id'], 'label': option['label'],
+                    'kills': 0, 'deaths': 0, 'assists': 0, 'games': 0, 'matchIds': []})
+                for field, value in zip(('kills', 'deaths', 'assists'), values): total[field] += value
+                total['games'] += 1
+                total['matchIds'].append(mid)
+    if not totals:
+        return {'status': 'NO_GAMES', 'optionIds': [],
+                'summary': 'Sin partidas individuales válidas esta semana. Esta categoría no suma un acierto.'}
+    ratio = lambda total: Fraction(total['kills'] + total['assists'], max(total['deaths'], 1))
+    best = max(ratio(total) for total in totals.values())
+    leaders = sorted((total for total in totals.values() if ratio(total) == best), key=lambda total: total['optionId'])
+    return {'status': 'SETTLED', 'optionIds': [total['optionId'] for total in leaders], 'value': float(best),
+            'summary': f'Mejor KDA acumulado semanal · {float(best):.2f} KDA', 'evidence': leaders}
+
+
 def opening_deaths_duel(db, board, category):
     """Accumulate only the two bound participants' deaths in the opening week's stored games."""
     contenders = category['options']
@@ -506,6 +547,7 @@ def first_five_negative(db, category, now=None):
 
 
 def category_result(db, board, category, now=None):
+    if category['id']=='weekly_player_kda': return weekly_player_kda(db,board,category)
     if category['id']=='best_champion_winrate': return best_champion_winrate(db,board,category)
     if category['id']=='weekly_leader': return weekly_leader(db,board,category)
     if category['id']=='first_week_last': return weekly_rank_result(db,board,category,lowest=True)
