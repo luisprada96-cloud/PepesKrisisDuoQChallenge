@@ -36,10 +36,16 @@
     </nav>
   </header>
   <main class="container tierlist-page">
-    <div class="tierlist-heading"><span class="section-eyebrow">El veredicto de la comunidad</span><h1 class="text-gradient-cyan">Tierlist del challenge</h1><p>Coloca a los equipos y comparte tu pronóstico.</p></div>
-    <div class="tierlist-tabs" role="group" aria-label="Vista de tierlists">
+    <div class="tierlist-heading"><span class="section-eyebrow">El veredicto de la comunidad</span><h1 class="text-gradient-cyan">Tierlist del challenge</h1><p id="tierlist-description">Coloca a los equipos y comparte tu pronóstico.</p></div>
+    <div class="tierlist-toolbar">
+    <div class="tierlist-tabs tierlist-kind-tabs" role="group" aria-label="Tipo de tierlist">
+      <button type="button" data-tierlist-kind="teams" aria-pressed="true"><i class="fa-solid fa-users" aria-hidden="true"></i> Equipos</button>
+      <button type="button" data-tierlist-kind="players" aria-pressed="false"><i class="fa-solid fa-user" aria-hidden="true"></i> Integrantes</button>
+    </div>
+    <div class="tierlist-tabs tierlist-view-tabs" role="group" aria-label="Vista de tierlists">
       <button type="button" data-tierlist-view="gallery" aria-pressed="true" aria-controls="tierlist-gallery"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlists publicadas</button>
       <button type="button" data-tierlist-view="editor" aria-pressed="false" aria-controls="tierlist-editor"><i class="fa-solid fa-plus" aria-hidden="true"></i> Crear mi tierlist</button>
+    </div>
     </div>
     <p id="tierlist-feedback" class="tierlist-feedback" role="status" aria-live="polite"></p>
     <section id="tierlist-gallery" aria-label="Tierlists publicadas">
@@ -51,9 +57,9 @@
     </section>
     <section id="tierlist-editor" hidden aria-label="Crear mi tierlist">
       <form id="tierlist-form" class="tierlist-composer">
-        <div class="tierlist-editor-heading"><div><h2>¿Quién está para ganar?</h2><p id="tierlist-help">Arrastra los equipos a una fila. También puedes seleccionar un equipo y pulsar la letra de su fila.</p></div><button type="button" id="tierlist-reset" class="tierlist-secondary">Vaciar tablero</button></div>
+        <div class="tierlist-editor-heading"><div><h2 id="tierlist-editor-title">¿Quién está para ganar?</h2><p id="tierlist-help">Arrastra los equipos a una fila. También puedes seleccionar un equipo y pulsar la letra de su fila.</p></div><button type="button" id="tierlist-reset" class="tierlist-secondary">Vaciar tablero</button></div>
         <div id="tierlist-board" class="tier-board tier-board-editor" aria-describedby="tierlist-help"></div>
-        <div class="tierlist-pool-heading"><h3>Equipos por colocar</h3><span id="tierlist-remaining"></span></div>
+        <div class="tierlist-pool-heading"><h3 id="tierlist-pool-title">Equipos por colocar</h3><span id="tierlist-remaining"></span></div>
         <div id="tierlist-pool" class="tier-items tierlist-pool" data-place="pool" aria-label="Equipos por colocar"></div>
         <div class="tierlist-selection"><span id="tierlist-selected">Selecciona un equipo para moverlo.</span><div>
           <button type="button" data-tierlist-shift="-1" class="tierlist-secondary" aria-label="Mover el equipo seleccionado a la izquierda">←</button>

@@ -1972,13 +1972,14 @@ class CustomHandler(BaseHTTPRequestHandler):
             self._send_json(result, headers=headers)
             return
         if path == '/api/tierlists':
+            kind = urllib.parse.parse_qs(parsed.query).get('kind', ['teams'])[0]
             visitor_token = self.clips_visitor('pepes_tierlist_visitor')
             new_token = visitor_token is None
             visitor_token = visitor_token or secrets.token_urlsafe(32)
             offset, limit = page_args(parsed)
             with db_lock:
                 db = load_db()
-                result = tierlists_service.public_board(db, self.clips_team(db), clips_service.visitor_hash(visitor_token), offset, min(limit, 6))
+                result = tierlists_service.public_board(db, self.clips_team(db), clips_service.visitor_hash(visitor_token), offset, min(limit, 6), kind=kind)
             headers = {'Vary': 'Cookie, Authorization'}
             if new_token:
                 headers['Set-Cookie'] = self.clips_cookie(visitor_token, 'pepes_tierlist_visitor')
@@ -2063,7 +2064,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
         public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
         public_files.update({'porra.html', 'porra.js', 'porra.css'})
-        tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ITEMS}
+        tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files and filename not in tierlist_assets:
             self._send_json({"error": "File Not Found"}, 404)
@@ -2145,7 +2146,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({'error': 'Activa las cookies y vuelve a cargar la página.'}, 400)
                 return
             try:
-                post = tierlists_service.publish(db, team_id, clips_service.visitor_hash(visitor_token), data.get('author', ''), data.get('tiers'))
+                post = tierlists_service.publish(db, team_id, clips_service.visitor_hash(visitor_token), data.get('author', ''), data.get('tiers'), kind=data.get('kind', 'teams'))
             except FileExistsError as error:
                 self._send_json({'error': str(error)}, 409)
                 return
@@ -2153,7 +2154,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({'error': str(error)}, 400)
                 return
             save_db(db)
-            self._send_json({'success': True, 'postId': post['id'], **tierlists_service.public_board(db, team_id, clips_service.visitor_hash(visitor_token))})
+            self._send_json({'success': True, 'postId': post['id'], **tierlists_service.public_board(db, team_id, clips_service.visitor_hash(visitor_token), kind=post['kind'])})
             return
 
         if parsed.path in ('/api/clips', '/api/clips/like'):

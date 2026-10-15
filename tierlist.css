@@ -1,7 +1,12 @@
 .tierlist-page { padding-top: 2.5rem; padding-bottom: 3rem; }
 .tierlist-heading h1 { font-family: var(--font-heading); font-size: clamp(1.5rem, 4vw, 2.2rem); margin: .5rem 0; }
 .tierlist-heading p, .tierlist-editor-heading p, .tierlist-gallery-heading p, .tierlist-publish-area p, .tierlist-detail-meta { color: var(--text-muted); }
-.tierlist-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.8rem; }
+.tierlist-toolbar { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 1.8rem; }
+.tierlist-tabs { display: flex; flex-wrap: wrap; gap: .5rem; }
+.tierlist-kind-tabs { padding: .3rem; background: #0a1420; border: 1px solid #27384c; border-radius: 10px; }
+.tierlist-kind-tabs button { border-color: transparent; background: transparent; }
+.tierlist-kind-tabs [aria-pressed=true] { box-shadow: 0 0 14px #00e5ff10; }
+.tierlist-page[data-kind=players] .tierlist-pool:empty::before { content: 'Todos los integrantes están colocados.'; }
 .tierlist-tabs button, .tierlist-secondary, .tierlist-primary { font: inherit; font-size: .85rem; border: 1px solid #334155; background: #101a2d; color: var(--text-main); border-radius: 8px; padding: .6rem .9rem; cursor: pointer; }
 .tierlist-tabs [aria-pressed=true], .tierlist-primary { border-color: var(--cyan-primary); color: var(--cyan-primary); background: #082733; }
 .tierlist-tabs button:hover, .tierlist-secondary:hover { border-color: var(--cyan-primary); }

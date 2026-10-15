@@ -2,7 +2,9 @@
 (() => {
   const TIERS = ['S', 'A', 'B', 'C', 'D'];
   const PAGE_SIZE = 6;
-  const DRAFT_KEY = 'pepes_tierlist_draft_v1';
+  let kind = new URLSearchParams(location.search).get('tipo') === 'integrantes' ? 'players' : 'teams';
+  const draftKey = () => kind === 'teams' ? 'pepes_tierlist_draft_v1' : 'pepes_tierlist_players_draft_v1';
+  const noun = () => kind === 'players' ? 'integrante' : 'equipo';
   let items = [], posts = [], total = 0, page = 1, selected = '', ready = false, busy = false, view = 'gallery', loadVersion = 0;
   let publishing = {canPublish: false, message: 'Inicia sesión con tu equipo para publicar.'};
   let tiers = Object.fromEntries(TIERS.map(tier => [tier, []]));
@@ -20,7 +22,7 @@
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const session = token();
-      const response = await fetch(`${API_BASE_URL}/tierlists${body ? '' : `?offset=${offset}&limit=${PAGE_SIZE}`}`, {
+      const response = await fetch(`${API_BASE_URL}/tierlists?kind=${kind}${body ? '' : `&offset=${offset}&limit=${PAGE_SIZE}`}`, {
         credentials: 'same-origin', signal: controller.signal,
         headers: {...(session ? {Authorization: `Bearer ${session}`} : {}), ...(body ? {'Content-Type':'application/json'} : {})},
         ...(body ? {method:'POST', body:JSON.stringify(body)} : {})
@@ -32,11 +34,11 @@
   }
 
   function saveDraft() {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({tiers, author: $('tierlist-author').value})); } catch (_) {}
+    try { localStorage.setItem(draftKey(), JSON.stringify({tiers, author: $('tierlist-author').value})); } catch (_) {}
   }
   function restoreDraft() {
     try {
-      const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+      const draft = JSON.parse(localStorage.getItem(draftKey()) || 'null');
       const used = new Set();
       for (const tier of TIERS) tiers[tier] = (Array.isArray(draft?.tiers?.[tier]) ? draft.tiers[tier] : []).filter(id => {
         if (!itemFor(id) || used.has(id)) return false;
@@ -51,23 +53,24 @@
     if (!item) return '';
     const content = `<img src="${escape(item.image)}" alt="${escape(item.name)}" width="400" height="400" draggable="false" loading="lazy">`;
     return editable
-      ? `<button type="button" class="tier-item${selected === id ? ' is-selected' : ''}" data-tierlist-item="${escape(id)}" draggable="true" aria-pressed="${selected === id}" title="${escape(item.name)}">${content}</button>`
-      : `<span class="tier-item" title="${escape(item.name)}">${content}</span>`;
+      ? `<button type="button" class="tier-item${selected === id ? ' is-selected' : ''}" data-tierlist-item="${escape(id)}" draggable="true" aria-pressed="${selected === id}" title="${escape(item.teamName ? `${item.name} · ${item.teamName}` : item.name)}">${content}</button>`
+      : `<span class="tier-item" title="${escape(item.teamName ? `${item.name} · ${item.teamName}` : item.name)}">${content}</span>`;
   }
   function board(arrangement, editable = false) {
-    return TIERS.map(tier => `<div class="tier-row">${editable ? `<button type="button" class="tier-label tier-${tier}" data-place="${tier}" aria-label="Colocar equipo seleccionado en ${tier}">${tier}</button>` : `<span class="tier-label tier-${tier}">${tier}</span>`}<div class="tier-items"${editable ? ` data-place="${tier}" aria-label="Fila ${tier}"` : ''}>${(arrangement[tier] || []).map(id => card(id, editable)).join('')}${editable && !arrangement[tier].length ? '<span class="tier-row-empty">Coloca aquí un equipo</span>' : ''}</div></div>`).join('');
+    return TIERS.map(tier => `<div class="tier-row">${editable ? `<button type="button" class="tier-label tier-${tier}" data-place="${tier}" aria-label="Colocar ${noun()} seleccionado en ${tier}">${tier}</button>` : `<span class="tier-label tier-${tier}">${tier}</span>`}<div class="tier-items"${editable ? ` data-place="${tier}" aria-label="Fila ${tier}"` : ''}>${(arrangement[tier] || []).map(id => card(id, editable)).join('')}${editable && !arrangement[tier].length ? `<span class="tier-row-empty">Coloca aquí un ${noun()}</span>` : ''}</div></div>`).join('');
   }
   function updateControls() {
     const remaining = pool().length;
-    $('tierlist-remaining').textContent = `${remaining} ${remaining === 1 ? 'equipo pendiente' : 'equipos pendientes'}`;
+    $('tierlist-remaining').textContent = `${remaining} ${remaining === 1 ? `${noun()} pendiente` : `${noun()}s pendientes`}`;
     $('tierlist-publish').disabled = !ready || busy || !publishing.canPublish || remaining !== 0;
     $('tierlist-publish').textContent = busy ? 'Publicando…' : 'Publicar tierlist';
     $('tierlist-publishing-status').textContent = publishing.message;
     $('tierlist-login').hidden = !!publishing.teamId;
-    $('tierlist-selected').textContent = selected && itemFor(selected) ? `${itemFor(selected).name} seleccionado` : 'Selecciona un equipo para moverlo.';
+    $('tierlist-selected').textContent = selected && itemFor(selected) ? `${itemFor(selected).name} seleccionado` : `Selecciona un ${noun()} para moverlo.`;
     document.querySelectorAll('[data-tierlist-shift], #tierlist-unplace').forEach(button => { button.disabled = busy || !selected || !placed().includes(selected); });
     $('tierlist-reset').disabled = busy || !ready;
     $('tierlist-author').disabled = busy;
+    document.querySelectorAll('[data-tierlist-kind]').forEach(button => {button.disabled = busy;});
     document.querySelectorAll('#tierlist-editor [data-tierlist-item], #tierlist-board button.tier-label').forEach(button => { button.disabled = busy; });
   }
   function drawEditor(focus = false) {
@@ -134,10 +137,40 @@
   }
   function showView(value) {
     view = value;
-    history.replaceState(null, '', value === 'editor' ? '#crear' : '#publicadas');
+    updateUrl();
     $('tierlist-gallery').hidden = view !== 'gallery'; $('tierlist-editor').hidden = view !== 'editor';
     document.querySelectorAll('[data-tierlist-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tierlistView === view)));
   }
+
+  function updateUrl() {
+    const query = kind === 'players' ? '?tipo=integrantes' : '';
+    history.replaceState(null, '', `${location.pathname}${query}${view === 'editor' ? '#crear' : '#publicadas'}`);
+  }
+  function updateKindCopy() {
+    const players = kind === 'players';
+    document.querySelector('.tierlist-page').dataset.kind = kind;
+    document.querySelectorAll('[data-tierlist-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tierlistKind === kind)));
+    $('tierlist-description').textContent = players ? 'Ordena a los 18 integrantes por habilidad y comparte tu veredicto.' : 'Coloca a los equipos y comparte tu pronóstico.';
+    $('tierlist-editor-title').textContent = players ? '¿Quién tiene más manos?' : '¿Quién está para ganar?';
+    $('tierlist-help').textContent = players ? 'Arrastra los integrantes a una fila. También puedes seleccionar un integrante y pulsar la letra de su fila.' : 'Arrastra los equipos a una fila. También puedes seleccionar un equipo y pulsar la letra de su fila.';
+    $('tierlist-pool-title').textContent = players ? 'Integrantes por colocar' : 'Equipos por colocar';
+    $('tierlist-pool').setAttribute('aria-label', $('tierlist-pool-title').textContent);
+    document.querySelectorAll('[data-tierlist-shift]').forEach(button => button.setAttribute('aria-label', `Mover el ${noun()} seleccionado a la ${button.dataset.tierlistShift === '-1' ? 'izquierda' : 'derecha'}`));
+  }
+  function changeKind(value) {
+    if (busy || kind === value || !['teams','players'].includes(value)) return;
+    if (ready) saveDraft();
+    kind = value; loadVersion++; page = 1; selected = ''; ready = false;
+    items = []; posts = []; total = 0;
+    tiers = Object.fromEntries(TIERS.map(tier => [tier, []]));
+    publishing = {canPublish:false,message:'Cargando…'};
+    $('tierlist-author').value = '';
+    $('tierlist-detail').close();
+    error(''); feedback(''); updateKindCopy(); drawEditor(); drawGallery();
+    $('tierlist-count').textContent = 'Cargando tierlists…';
+    updateUrl(); load();
+  }
+  document.querySelectorAll('[data-tierlist-kind]').forEach(button => button.addEventListener('click', () => changeKind(button.dataset.tierlistKind)));
 
   document.querySelectorAll('[data-tierlist-view]').forEach(button => button.addEventListener('click', () => { showView(button.dataset.tierlistView); }));
   $('tierlist-editor').addEventListener('click', event => {
@@ -201,11 +234,11 @@
     event.preventDefault();
     if (!ready || busy || !publishing.canPublish || pool().length) return;
     busy = true; loadVersion++; updateControls(); error('');
-    const body = {author: $('tierlist-author').value.trim(), tiers: JSON.parse(JSON.stringify(tiers))};
+    const body = {kind, author: $('tierlist-author').value.trim(), tiers: JSON.parse(JSON.stringify(tiers))};
     try {
       const result = await request(0, body);
       page = 1; apply(result);
-      try { localStorage.removeItem(DRAFT_KEY); } catch (_) {}
+      try { localStorage.removeItem(draftKey()); } catch (_) {}
       feedback('Tu tierlist ya está publicada. ¡Que empiece el debate!'); showView('gallery');
     } catch (failure) {
       error(failure.name === 'AbortError' ? 'No se pudo confirmar la publicación. Consulta las tierlists publicadas antes de intentarlo otra vez.' : failure.message);
@@ -214,6 +247,7 @@
   for (const name of ['player-session-changed','player-session-ended']) document.addEventListener(name, load);
   window.addEventListener('focus', load);
   setInterval(() => { if (!document.hidden && view === 'gallery') load(); }, 60000);
-  if (location.hash === '#crear') showView('editor');
+  updateKindCopy();
+  showView(location.hash === '#crear' ? 'editor' : 'gallery');
   load();
 })();
