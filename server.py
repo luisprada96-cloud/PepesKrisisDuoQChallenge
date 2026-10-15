@@ -22,6 +22,7 @@ import re
 import clips_service
 import weekly_summary
 import discord_live
+import discord_shells
 import tierlists_service
 import final_predictions
 import pickem_service
@@ -255,10 +256,19 @@ def safe_duo_for_player(duo):
     result.pop("password", None)
     result.pop("passwordHash", None)
     result.pop("riotMatchDiscovery", None)
+    result.pop("discordWebhook", None)
+    return result
+
+def safe_duo_for_admin(duo):
+    result = safe_duo_for_player(duo)
+    result["discordWebhook"] = duo.get("discordWebhook", "")
     return result
 
 def safe_duos(duos):
     return [safe_duo_for_player(duo) for duo in duos]
+
+def safe_duos_for_admin(duos):
+    return [safe_duo_for_admin(duo) for duo in duos]
 
 def duo_summary(duo):
     result = safe_duo_for_player(duo)
@@ -332,6 +342,7 @@ def create_player_session(team_id):
 
 def player_state(db, duo):
     state = safe_duo_for_player(duo)
+    state["discordWebhook"] = duo.get("discordWebhook", "")
     attacks = db.get("shellAttacks", [])
     state["pendingShellAttacks"] = [a for a in attacks if a.get("targetTeamId") == duo.get("id") and a.get("status") == "PENDING_SPIN"]
     state["outgoingShellAttacks"] = [a for a in attacks if a.get("attackerTeamId") == duo.get("id")][:20]
@@ -2196,7 +2207,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
                 return
 
-            self._send_json({"success": True, "config": admin_config_response(db), "penaltyCatalog": PENALTY_CATALOG, "duos": safe_duos(db.get("duos", []))})
+            self._send_json({"success": True, "config": admin_config_response(db), "penaltyCatalog": PENALTY_CATALOG, "duos": safe_duos_for_admin(db.get("duos", []))})
 
         elif parsed.path == '/api/duos':
             auth_pin = str(data.get("authPin", "")).strip()
@@ -2210,7 +2221,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             idx = next((i for i, d in enumerate(duos) if d["id"] == new_id), -1)
             existing_duo = duos[idx] if idx >= 0 else {}
             if existing_duo:
-                editable = {"teamName", "twitchUrl", "password"}
+                editable = {"teamName", "twitchUrl", "password", "discordWebhook"}
                 submitted = data
                 data = copy.deepcopy(existing_duo)
                 data.update({key: submitted[key] for key in editable if key in submitted})
@@ -2225,6 +2236,17 @@ class CustomHandler(BaseHTTPRequestHandler):
                             data[player_key]["eloHistoryAccount"] = [str(data[player_key].get("name", "")).lower(), str(data[player_key].get("tag", "")).lower()]
             if not str(data.get("teamName", "")).strip():
                 raise ValueError("Team name is required")
+
+            if "discordWebhook" in data:
+                raw_webhook = str(data.get("discordWebhook") or "").strip()
+                if raw_webhook:
+                    valid_wh = discord_shells.webhook_url(raw_webhook)
+                    if not valid_wh:
+                        self._send_json({"success": False, "error": "El webhook de Discord no es válido (debe empezar por https://discord.com/api/webhooks/...)"}, 400)
+                        return
+                    data["discordWebhook"] = valid_wh
+                else:
+                    data["discordWebhook"] = ""
 
             player1 = data.get("player1") or {}
             player2 = data.get("player2") or {}
@@ -2273,7 +2295,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 
             db["duos"] = duos
             save_db(db)
-            self._send_json({"success": True, "duo": safe_duo_for_player(data)})
+            self._send_json({"success": True, "duo": safe_duo_for_admin(data)})
 
         elif parsed.path == '/api/player/login':
             team_id = data.get("teamId")
@@ -2346,6 +2368,9 @@ class CustomHandler(BaseHTTPRequestHandler):
 
             save_db(db)
             notify_shell_receivers()
+            target_webhook = target.get("discordWebhook")
+            if target_webhook:
+                discord_shells.notify_shell_received_async(target_webhook, attacker.get("teamName", "Rival"), target.get("teamName", "Objetivo"))
             self._send_json({"success": True, "attacker": player_state(db, attacker), "attack": attack, "event": event})
 
         elif parsed.path == '/api/player/spin-shell':
@@ -2427,7 +2452,60 @@ class CustomHandler(BaseHTTPRequestHandler):
             db.setdefault("events", []).insert(0, event)
             save_db(db)
             notify_shell_receivers()
+            if return_target:
+                target_webhook = target.get("discordWebhook")
+                if target_webhook:
+                    discord_shells.notify_shell_returned_async(target_webhook, target.get("teamName", "Defensor"), return_target.get("teamName", "Atacante"))
+                return_target_webhook = return_target.get("discordWebhook")
+                if return_target_webhook:
+                    discord_shells.notify_shell_bounced_back_async(return_target_webhook, target.get("teamName", "Defensor"), return_target.get("teamName", "Atacante"))
+            else:
+                target_webhook = target.get("discordWebhook")
+                if target_webhook:
+                    discord_shells.notify_shell_spun_async(target_webhook, target.get("teamName", "Equipo"), attack.get("attackerName", "Rival"), selected_penalty)
             self._send_json({"success": True, "penalty": selected_penalty, "penaltyInstance": penalty_instance, "duo": player_state(db, target), "attack": attack, "returnedAttack": returned_attack})
+
+        elif parsed.path == '/api/player/discord-webhook':
+            team_id = session_team(data.get("sessionToken"))
+            if not team_id:
+                self._send_json({"success": False, "error": "Sesión caducada"}, 401)
+                return
+            raw_url = str(data.get("webhookUrl", "") or "").strip()
+            if raw_url:
+                valid_url = discord_shells.webhook_url(raw_url)
+                if not valid_url:
+                    self._send_json({"success": False, "error": "La URL no es un webhook válido de Discord (debe empezar por https://discord.com/api/webhooks/...)"}, 400)
+                    return
+            else:
+                valid_url = ""
+            duos = db.get("duos", [])
+            duo = next((d for d in duos if d.get("id") == team_id), None)
+            if not duo:
+                self._send_json({"success": False, "error": "Equipo no encontrado"}, 404)
+                return
+            duo["discordWebhook"] = valid_url
+            save_db(db)
+            self._send_json({"success": True, "discordWebhook": valid_url, "duo": player_state(db, duo)})
+
+        elif parsed.path == '/api/player/discord-webhook/test':
+            team_id = session_team(data.get("sessionToken"))
+            if not team_id:
+                self._send_json({"success": False, "error": "Sesión caducada"}, 401)
+                return
+            duo = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
+            if not duo:
+                self._send_json({"success": False, "error": "Equipo no encontrado"}, 404)
+                return
+            url = discord_shells.webhook_url(duo.get("discordWebhook", ""))
+            if not url:
+                self._send_json({"success": False, "error": "No has configurado ningún webhook de Discord para tu equipo."}, 400)
+                return
+            payload = discord_shells.message_test(duo.get("teamName", "Equipo"))
+            result = discord_shells.send_sync(url, payload)
+            if result.get("success"):
+                self._send_json({"success": True})
+            else:
+                self._send_json({"success": False, "error": result.get("error", "Error al enviar el mensaje de prueba a Discord.")}, 400)
 
         elif parsed.path == '/api/config':
             auth_pin = str(data.get("authPin", "")).strip()
@@ -2516,7 +2594,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             })
             weekly_summary.maintain(db, refresh=True)
             save_db(db)
-            self._send_json({"success": True, "duos": safe_duos(db.get("duos", []))})
+            self._send_json({"success": True, "duos": safe_duos_for_admin(db.get("duos", []))})
 
         elif parsed.path == '/api/calculate-shells':
             if not verify_admin_pin(db, data.get('authPin', '')):
@@ -2533,7 +2611,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 total_new_shells += max(0, after - before)
             weekly_summary.maintain(db, refresh=True)
             save_db(db)
-            self._send_json({"success": True, "newShells": total_new_shells, "duos": safe_duos(duos)})
+            self._send_json({"success": True, "newShells": total_new_shells, "duos": safe_duos_for_admin(duos)})
 
         elif parsed.path == '/api/admin/check-apis':
             if not verify_admin_pin(db, data.get("authPin", "")):

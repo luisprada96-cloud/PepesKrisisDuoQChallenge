@@ -381,6 +381,15 @@ function renderAdminDuosList() {
       <button type="button" class="btn-refresh" data-team-action="profiles" data-team-id="${escapeHtml(duo.id)}" style="align-self: flex-start;">
         <i class="fa-solid fa-save"></i> Guardar nombres y Twitch
       </button>
+      <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+        <div class="form-group" style="flex: 1 1 320px; margin: 0;">
+          <label for="discord-webhook-${escapeHtml(duo.id)}"><i class="fa-brands fa-discord" style="color: #5865F2;"></i> Webhook Discord del Dúo (Alertas Caparazones)</label>
+          <input type="url" id="discord-webhook-${escapeHtml(duo.id)}" class="form-control" value="${escapeHtml(duo.discordWebhook || '')}" placeholder="https://discord.com/api/webhooks/..." style="font-family: monospace; font-size: 0.85rem;">
+        </div>
+        <button type="button" class="btn-refresh" data-team-action="webhook" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
+          <i class="fa-solid fa-save"></i> Guardar Webhook
+        </button>
+      </div>
     `;
     container.appendChild(card);
   });
@@ -599,6 +608,7 @@ async function addNewDuo() {
     id: `duo-${Date.now()}`,
     teamName: teamName,
     password: password,
+    discordWebhook: document.getElementById('new-discord-webhook')?.value?.trim() || '',
     blueShells: 0,
     player1: {
       ...profiles.player1,
@@ -661,6 +671,21 @@ async function handleSaveRoles(id) {
   await refreshAdminData();
   renderAdminDuosList();
   alert(`Roles principales guardados para "${duo.teamName}".`);
+}
+
+async function handleSaveDiscordWebhook(id) {
+  const duo = adminDuos.find(d => d.id === id);
+  const input = document.getElementById(`discord-webhook-${id}`);
+  if (!duo || !input) return;
+  const webhookUrl = input.value.trim();
+  const result = await DataStore.saveDuo({id, discordWebhook: webhookUrl}, adminSessionPin);
+  if (!result || result.success === false) {
+    alert(result?.error || 'No se pudo guardar el webhook de Discord.');
+    return;
+  }
+  await refreshAdminData();
+  renderAdminDuosList();
+  alert(`Webhook de Discord guardado para "${duo.teamName}".`);
 }
 
 async function handleSaveParticipantProfiles(id) {
@@ -768,5 +793,5 @@ document.addEventListener('click', event => {
   const penalty = event.target.closest('[data-penalty-id]');
   if (penalty) window.adminPenaltyAction(penalty.dataset.penaltyId, penalty.dataset.penaltyAction);
   const team = event.target.closest('[data-team-action]');
-  if (team) ({delete: handleDeleteDuo, roles: handleSaveRoles, profiles: handleSaveParticipantProfiles})[team.dataset.teamAction]?.(team.dataset.teamId);
+  if (team) ({delete: handleDeleteDuo, roles: handleSaveRoles, profiles: handleSaveParticipantProfiles, webhook: handleSaveDiscordWebhook})[team.dataset.teamAction]?.(team.dataset.teamId);
 });

@@ -109,6 +109,7 @@
       <div class="player-panel-tabs" role="tablist" aria-label="Secciones del equipo">
         <button type="button" id="player-shells-tab" role="tab" aria-selected="true" aria-controls="player-shells-panel" data-player-panel-tab="shells"><i class="fa-solid fa-gift" aria-hidden="true"></i> Caparazones</button>
         <button type="button" id="player-penalties-tab" role="tab" aria-selected="false" aria-controls="player-penalties-panel" tabindex="-1" data-player-panel-tab="penalties"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mis castigos <span id="player-penalties-count" class="player-tab-count">0</span></button>
+        <button type="button" id="player-discord-tab" role="tab" aria-selected="false" aria-controls="player-discord-panel" tabindex="-1" data-player-panel-tab="discord"><i class="fa-brands fa-discord" aria-hidden="true"></i> Avisos Discord <span id="player-discord-badge" class="player-tab-count" style="display: none;">✓</span></button>
       </div>
 
       <section id="player-shells-panel" class="player-panel-content" role="tabpanel" aria-labelledby="player-shells-tab">
@@ -216,6 +217,59 @@
         <div id="active-debuffs-list">
           <!-- Dynamically populated by player.js -->
         </div>
+      </section>
+
+      <!-- Discord Webhook Settings Section -->
+      <section id="player-discord-panel" class="admin-card player-panel-content" role="tabpanel" aria-labelledby="player-discord-tab" hidden>
+        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+          <div style="font-size: 2.5rem; color: #5865F2;">
+            <i class="fa-brands fa-discord"></i>
+          </div>
+          <div>
+            <h2 class="font-heading" style="color: #fff; font-size: 1.4rem; margin: 0;">
+              Canal de Discord de vuestro Dúo
+            </h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0.2rem 0 0 0;">
+              Recibe avisos automáticos en vuestro canal privado cuando os lancen un Caparazón Azul o recibáis un castigo.
+            </p>
+          </div>
+        </div>
+
+        <div style="background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem;">
+          <div style="font-size: 0.9rem; font-weight: 700; color: #8ea1e1; margin-bottom: 0.5rem;">
+            <i class="fa-solid fa-circle-info"></i> ¿Cómo obtener el Webhook de Discord?
+          </div>
+          <ol style="color: var(--text-muted); font-size: 0.85rem; margin: 0; padding-left: 1.2rem; line-height: 1.6;">
+            <li>En vuestro servidor de Discord, id al canal privado donde queréis las alertas.</li>
+            <li>Haced clic en la rueda de <strong>Ajustes del canal</strong> (o editar canal).</li>
+            <li>Id a la pestaña <strong>Integraciones</strong> &gt; <strong>Webhooks</strong>.</li>
+            <li>Pulsad <strong>Nuevo Webhook</strong>, dadle un nombre (ej: <em>Alertas Caparazones</em>) y pulsad <strong>Copiar URL del webhook</strong>.</li>
+            <li>Pegad esa URL en el campo inferior y guardad.</li>
+          </ol>
+        </div>
+
+        <form id="player-discord-form">
+          <div class="form-group" style="margin-bottom: 1.25rem;">
+            <label for="player-discord-webhook" style="display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem;">
+              URL del Webhook de Discord
+            </label>
+            <input type="url" id="player-discord-webhook" class="form-control" style="width: 100%; font-family: monospace; font-size: 0.85rem;" placeholder="https://discord.com/api/webhooks/1234567890/..." spellcheck="false" autocomplete="off">
+          </div>
+
+          <div id="player-discord-status" style="margin-bottom: 1.25rem; font-size: 0.85rem;"></div>
+
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="submit" id="btn-save-discord-webhook" class="btn-primary" style="padding: 0.65rem 1.25rem;">
+              <i class="fa-solid fa-floppy-disk"></i> Guardar Webhook
+            </button>
+            <button type="button" id="btn-test-discord-webhook" class="btn-refresh" style="padding: 0.65rem 1.25rem;" disabled>
+              <i class="fa-solid fa-paper-plane"></i> Enviar Mensaje de Prueba
+            </button>
+            <button type="button" id="btn-delete-discord-webhook" class="btn-danger" style="padding: 0.65rem 1.25rem; display: none;">
+              <i class="fa-solid fa-trash"></i> Eliminar Webhook
+            </button>
+          </div>
+        </form>
       </section>
 
     </div>
