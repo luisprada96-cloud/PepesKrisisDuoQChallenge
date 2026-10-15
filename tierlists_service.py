@@ -36,10 +36,10 @@ PLAYER_ITEMS = tuple(
     )
 )
 PLAYER_ROLES = {
-    'player-ameteum': 'TOP', 'player-pablo-casco': 'TOP', 'player-unluckypanda': 'TOP',
+    'player-taberneta': 'TOP', 'player-pablo-casco': 'TOP', 'player-unluckypanda': 'TOP',
     'player-markel': 'JUNGLE', 'player-luis': 'JUNGLE', 'player-ikerpantv': 'JUNGLE',
     'player-papaportu': 'JUNGLE', 'player-pablo-crespo': 'JUNGLE',
-    'player-unluckypingu': 'MIDDLE', 'player-pato': 'MIDDLE', 'player-taberneta': 'MIDDLE',
+    'player-unluckypingu': 'MIDDLE', 'player-pato': 'MIDDLE', 'player-ameteum': 'MIDDLE',
     'player-parradise': 'MIDDLE',
     'player-joji': 'BOTTOM', 'player-sendi': 'BOTTOM', 'player-mclovin': 'BOTTOM',
     'player-guille': 'UTILITY', 'player-chicha': 'UTILITY', 'player-fogell': 'UTILITY',

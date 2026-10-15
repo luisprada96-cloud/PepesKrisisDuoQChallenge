@@ -111,10 +111,21 @@ class ParticipantTierlistServiceTests(unittest.TestCase):
         items = tierlists.catalog('roles')
         self.assertEqual(len(items), 18)
         self.assertEqual(len({i['id'] for i in items}), 18)
+        roles = {item['id']: item['role'] for item in items}
+        self.assertEqual(roles['player-ameteum'], 'MIDDLE')
+        self.assertEqual(roles['player-taberneta'], 'TOP')
         valid = {role: [item['id'] for item in tierlists.ROLE_ITEMS if item['role'] == role]
                  for role in tierlists.ROLE_TIERS}
         validated = tierlists.validate_tiers(valid, 'roles')
         self.assertEqual(validated, valid)
+
+        old_tiltanic_roles = copy.deepcopy(valid)
+        old_tiltanic_roles['TOP'].remove('player-taberneta')
+        old_tiltanic_roles['MIDDLE'].remove('player-ameteum')
+        old_tiltanic_roles['TOP'].append('player-ameteum')
+        old_tiltanic_roles['MIDDLE'].append('player-taberneta')
+        with self.assertRaises(ValueError):
+            tierlists.validate_tiers(old_tiltanic_roles, 'roles')
 
         swapped = copy.deepcopy(valid)
         swapped['TOP'][0], swapped['BOTTOM'][0] = swapped['BOTTOM'][0], swapped['TOP'][0]
@@ -312,6 +323,36 @@ class ParticipantTierlistEndpointTests(unittest.TestCase):
         self.assertEqual(sorted(codes),[200,409])
         self.assertEqual(self.call(clients[0])[0]['total'],0)
         self.assertEqual(self.call(clients[0],path='/api/tierlists?kind=players')[0]['total'],2)
+
+
+class RoleTierlistEndpointTests(unittest.TestCase):
+    setUp = TierlistEndpointTests.setUp
+    tearDown = TierlistEndpointTests.tearDown
+    client = TierlistEndpointTests.client
+    call = TierlistEndpointTests.call
+    login = TierlistEndpointTests.login
+
+    def test_correct_tiltanic_roles_can_publish_and_old_roles_do_not_spend_quota(self):
+        client, _ = self.client()
+        auth = self.login(client)
+        board, _ = self.call(client, headers=auth, path='/api/tierlists?kind=roles')
+        roles = {item['id']:item['role'] for item in board['items']}
+        self.assertEqual(roles['player-ameteum'], 'MIDDLE')
+        self.assertEqual(roles['player-taberneta'], 'TOP')
+        correct = {role:[item['id'] for item in board['items'] if item['role']==role] for role in board['tiers']}
+        wrong = copy.deepcopy(correct)
+        wrong['TOP'][wrong['TOP'].index('player-taberneta')] = 'player-ameteum'
+        wrong['MIDDLE'][wrong['MIDDLE'].index('player-ameteum')] = 'player-taberneta'
+        self.call(client, {'kind':'roles', 'tiers':wrong}, auth, status=400)
+        board, _ = self.call(client, headers=auth, path='/api/tierlists?kind=roles')
+        self.assertTrue(board['publishing']['canPublish'])
+        self.assertEqual(board['total'], 0)
+        published, _ = self.call(client, {'kind':'roles', 'author':'Corregida', 'tiers':correct}, auth)
+        self.assertIn('player-ameteum', published['posts'][0]['tiers']['MIDDLE'])
+        self.assertIn('player-taberneta', published['posts'][0]['tiers']['TOP'])
+        self.assertFalse(published['publishing']['canPublish'])
+        self.assertEqual(self.call(client)[0]['total'], 0, 'team gallery stays separate')
+        self.assertEqual(self.call(client, path='/api/tierlists?kind=players')[0]['total'], 0)
 
 
 if __name__ == '__main__': unittest.main()
