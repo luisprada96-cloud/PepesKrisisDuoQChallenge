@@ -1,11 +1,13 @@
 """Weekly Pick'em ballots and atomic shell prizes from stored participant games."""
 import copy
 import hashlib
+import json
 import re
 import time
 import uuid
 from datetime import datetime
 from fractions import Fraction
+from pathlib import Path
 from trophies import rank_key
 from shell_rules import individual_shell_criteria
 import weekly_summary as weeks
@@ -13,6 +15,8 @@ import weekly_summary as weeks
 MAX_TEAM_BALLOTS = 2
 REWARD_RULE = {'minCorrect': 3, 'shells': 1}
 SETTLEMENT_GRACE = 300
+MIN_CHAMPION_GAMES = 3
+CHAMPION_OPTIONS = json.loads((Path(__file__).parent / 'assets' / 'pickem' / 'champions.json').read_text(encoding='utf-8'))['champions']
 RANK_CATEGORIES = {'weekly_leader', 'first_week_last'}
 OPENING_CATEGORIES = {'first_five_negative', 'first_individual_shell', 'joji_parradise_deaths', 'first_week_last'}
 OPTIONS = [{'id': '0-19', 'label': 'Menos de 20', 'min': 0, 'max': 19}] + [
@@ -45,7 +49,12 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
                'placeholder': 'Selecciona cuántos dúos',
                'title': '¿Cuántos dúos tendrán winrate negativo en sus primeras 5 ranked?',
                'description': 'Las cinco primeras Solo/Duo registradas desde el inicio del torneo. Un dúo cuenta con 0, 1 o 2 victorias; si le faltan partidas, esperamos a que las complete. Al terminar el torneo, los incompletos no cuentan.',
-               'options': [{'id':str(n),'label':str(n)} for n in range(10)]}]
+               'options': [{'id':str(n),'label':str(n)} for n in range(10)]},
+              {'id': 'best_champion_winrate', 'kind': 'champion', 'icon': '👑',
+               'placeholder': 'Busca y selecciona un campeón',
+               'title': '¿Qué campeón tendrá mejor winrate?',
+               'description': 'Winrate de los campeones jugados por los participantes esta semana. Mínimo 3 partidas individuales con el campeón para puntuar. En empate exacto, valen todos los campeones empatados.',
+               'options': CHAMPION_OPTIONS}]
 
 
 def account(player):
@@ -196,6 +205,11 @@ def submit(db, team_id, visitor, category_id, option_id, author='', now=None):
     return ballot,True
 
 
+def champion_key(value):
+    name = re.sub(r'[^a-z0-9]', '', str(value or '').casefold())
+    return {'wukong':'monkeyking', 'nunuandwillump':'nunu', 'nunuywillump':'nunu', 'locke':'vex'}.get(name, name)
+
+
 def champion_count(db, board):
     bounds = period(db,board['week'])
     champions, games, pending = set(),set(),False
@@ -217,10 +231,48 @@ def champion_count(db, board):
                 marker=(mid,stats.get('puuid') or (duo['id'],key))
                 if marker in seen: continue
                 seen.add(marker)
-                name=re.sub(r'[^a-z0-9]','',str(stats.get('championName') or '').casefold())
+                name=champion_key(stats.get('championName'))
                 if not name or name=='unknown': pending=True;continue
-                champions.add({'wukong':'monkeyking','nunuandwillump':'nunu'}.get(name,name))
+                champions.add(name)
     return {'value':len(champions),'games':len(games),'pending':pending}
+
+
+def best_champion_winrate(db, board, category):
+    bounds = period(db, board['week'])
+    options = {champion_key(value): option for option in category['options'] for value in (option['id'], option['label'])}
+    totals, seen = {}, set()
+    for duo in db.get('duos', []):
+        if (duo.get('riotMatchDiscovery') or {}).get('pendingMatchIds'): return {'pending':True}
+        for game in duo.get('history', []):
+            mid = game.get('matchId')
+            if not mid or game.get('isTest') or game.get('queueId') not in (None, 420): continue
+            if not bounds['startsAt'] <= weeks.game_time(game) < bounds['endsAt']: continue
+            checked = game.get('participantsChecked') or {}
+            if game.get('statsVersion', 0) < 2 or not all(checked.get(key) for key in ('player1', 'player2')):
+                return {'pending':True}
+            for key in ('player1', 'player2'):
+                stats = game.get(key + 'Stats')
+                if not isinstance(stats, dict): continue  # Confirmed absent from this match.
+                marker = (mid, stats.get('puuid') or (duo['id'], key))
+                if marker in seen: continue
+                seen.add(marker)
+                option = options.get(champion_key(stats.get('championName')))
+                if not option or not isinstance(stats.get('win'), bool): return {'pending':True}
+                total = totals.setdefault(option['id'], {'optionId':option['id'], 'label':option['label'],
+                                                       'games':0, 'wins':0, 'losses':0})
+                total['games'] += 1
+                total['wins'] += int(stats['win'])
+                total['losses'] += int(not stats['win'])
+    eligible = [total for total in totals.values() if total['games'] >= MIN_CHAMPION_GAMES]
+    if not eligible:
+        return {'status':'NO_DATA', 'optionIds':[], 'minGames':MIN_CHAMPION_GAMES,
+                'summary':'Ningún campeón alcanzó las 3 partidas esta semana. Esta categoría no suma un acierto.'}
+    best = max(Fraction(total['wins'], total['games']) for total in eligible)
+    leaders = sorted((total for total in eligible if Fraction(total['wins'], total['games']) == best),
+                     key=lambda total:total['optionId'])
+    return {'status':'SETTLED', 'optionIds':[total['optionId'] for total in leaders],
+            'value':float(best * 100), 'minGames':MIN_CHAMPION_GAMES, 'evidence':leaders,
+            'summary':f'Mejor winrate semanal · {float(best * 100):.2f} % · mínimo 3 partidas'}
 
 
 def capture_rankings(db):
@@ -454,6 +506,7 @@ def first_five_negative(db, category, now=None):
 
 
 def category_result(db, board, category, now=None):
+    if category['id']=='best_champion_winrate': return best_champion_winrate(db,board,category)
     if category['id']=='weekly_leader': return weekly_leader(db,board,category)
     if category['id']=='first_week_last': return weekly_rank_result(db,board,category,lowest=True)
     if category['id']=='joji_parradise_deaths': return opening_deaths_duel(db,board,category)

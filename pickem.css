@@ -52,6 +52,15 @@
 .pickem-dialog label span { color: var(--text-muted); }
 .pickem-dialog select, .pickem-dialog input { width: 100%; }
 .pickem-dialog select { padding: 1rem; font-size: 1rem; border-color: #426875; }
+.pickem-champion-picker { position: relative; }
+.pickem-champion-picker input { padding: 1rem; font-size: 1rem; border-color: #426875; }
+.pickem-champion-options { max-height: 220px; overflow-y: auto; margin-top: .35rem; border: 1px solid #426875; border-radius: 6px; background: #080e17; overscroll-behavior: contain; }
+.pickem-champion-option { display: block; padding: .65rem .9rem; cursor: pointer; font-size: .95rem; }
+.pickem-champion-option:hover, .pickem-champion-option.is-active { background: #143541; color: var(--cyan-primary); }
+.pickem-champion-option[aria-selected="true"] { font-weight: 750; }
+.pickem-champion-help { display: block; font-size: .75rem; color: var(--text-muted); margin: .4rem 0 0; }
+.pickem-champion-empty { padding: .8rem .9rem; font-size: .85rem; color: var(--text-muted); }
+.pickem-page input:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
 .pickem-answer-summary { border: 1px solid #594e2a; background: #292616; border-radius: 8px; color: #f3d58a; padding: .85rem; font-size: .82rem; margin-top: 1.2rem; }
 #pickem-modal-status { font-size: .8rem; color: var(--text-muted); margin-top: .8rem; }
 .pickem-dialog-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #2c3c4d; }

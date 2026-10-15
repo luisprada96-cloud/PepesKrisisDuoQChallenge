@@ -13,6 +13,8 @@
 !assets/
 !assets/tierlist/
 !assets/tierlist/*.png
+!assets/pickem/
+!assets/pickem/champions.json
 !discord_live.py
 !discord_shells.py
 !storage.py

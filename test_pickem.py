@@ -194,7 +194,7 @@ class PickemServiceTests(unittest.TestCase):
         self.db['duos'].append({'id':'new','teamName':'Nuevo','player1':{'name':'Nuevo1'},'player2':{'name':'Nuevo2'}})
         _, changed = pickem.ensure_week(self.db, NOW)
         self.assertTrue(changed)
-        self.assertEqual(len(self.board['categories']), 7)
+        self.assertEqual(len(self.board['categories']), len(pickem.category_definitions(self.db, WEEK)))
         self.assertEqual(len(self.board['ballots']), 1)
         team_category = next(c for c in self.board['categories'] if c['id']=='weekly_leader')
         player_category = next(c for c in self.board['categories'] if c['id']=='best_game_kda')
@@ -1024,7 +1024,7 @@ class PickemEndpointTests(unittest.TestCase):
         raw = json.loads(Path(server.DB_FILE).read_text(encoding='utf-8'))
         self.assertEqual(len(raw['pickem']['weeks'][WEEK]['ballots'][0]['visitor']), 64)
 
-    def test_all_registered_choices_are_available_and_seven_answers_use_one_ballot(self):
+    def test_all_registered_choices_are_available_and_all_answers_use_one_ballot(self):
         client, _ = self.client()
         auth = self.login(client)
         board, _ = self.call(client, headers=auth)
@@ -1034,7 +1034,7 @@ class PickemEndpointTests(unittest.TestCase):
         for c in board['categories']:
             result, _ = self.call(client, {'week':WEEK,'categoryId':c['id'],'optionId':c['options'][0]['id']}, auth)
             self.assertEqual(result['entries'], 1)
-        self.assertEqual(len(result['myBallot']['answers']), 7)
+        self.assertEqual(len(result['myBallot']['answers']), len(categories))
         self.assertEqual(self.call(client)[0]['predictions'], [])
 
     def test_concurrent_requests_cannot_spend_a_third_team_ballot(self):

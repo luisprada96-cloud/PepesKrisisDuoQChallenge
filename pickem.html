@@ -59,7 +59,13 @@
     <dialog id="pickem-dialog" class="pickem-dialog" aria-labelledby="pickem-dialog-title"><form id="pickem-form">
       <div class="pickem-dialog-heading"><div><span class="section-eyebrow">Predicciones</span><h2 id="pickem-dialog-title"></h2></div><button type="button" class="pickem-close" id="pickem-close" aria-label="Cerrar predicción">✕</button></div>
       <p id="pickem-dialog-description"></p>
-      <label for="pickem-answer">Tu pronóstico</label><select id="pickem-answer" class="form-control" required><option value="">Selecciona un rango</option></select>
+      <label for="pickem-answer" id="pickem-answer-label">Tu pronóstico</label><select id="pickem-answer" class="form-control" required><option value="">Selecciona un rango</option></select>
+      <div id="pickem-champion-picker" class="pickem-champion-picker" hidden>
+        <input type="text" id="pickem-champion-search" class="form-control" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pickem-champion-options" aria-describedby="pickem-champion-help" autocomplete="off" placeholder="Escribe el nombre de un campeón…">
+        <div id="pickem-champion-options" class="pickem-champion-options" role="listbox" aria-label="Campeones" hidden></div>
+        <p id="pickem-champion-help" class="pickem-champion-help">Busca un campeón y selecciónalo en la lista. Mínimo 3 partidas para puntuar.</p>
+        <span id="pickem-champion-status" class="pickem-champion-help" role="status" aria-live="polite"></span>
+      </div>
       <label for="pickem-author">¿Quién rellena la quiniela? <span>(opcional)</span></label><input type="text" id="pickem-author" class="form-control" maxlength="60" autocomplete="nickname" placeholder="Tu nombre o apodo">
       <div class="pickem-answer-summary" id="pickem-answer-summary">🐢 Una quiniela con al menos 3 aciertos gana 1 caparazón.</div>
       <p id="pickem-modal-status"></p><a href="player.html" id="pickem-modal-login">Iniciar sesión con mi equipo ↗</a>

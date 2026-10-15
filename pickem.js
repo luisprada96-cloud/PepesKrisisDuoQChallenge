@@ -3,9 +3,11 @@
   const $=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   let state=null, week='', currentCategory='', busy=false, version=0;
+  let championMatches=[], championActive=-1;
   const token=()=>{try{return sessionStorage.getItem('pepes_player_token')||'';}catch(_){return '';}};
   const closed=()=>!state || state.closed || Date.now()/1000>=state.closesAt;
   const category=()=>state?.categories.find(c=>c.id===currentCategory);
+  const isChampion=c=>c?.kind==='champion';
   const optionLabel=(c,id)=>c.options.find(o=>o.id===id)?.label || 'Sin respuesta';
   const isDuel=c=>c?.kind==='duel'||c?.sharedWithTeam===true;
   const allowedAnswer=(c,value)=>!isDuel(c)||(!c.teamAnswerConflict&&(!c.teamAnswer||c.teamAnswer===value));
@@ -13,6 +15,35 @@
   const resultSummary=c=>c.result.summary || (c.result.status==='SETTLED'?`${c.result.value} campeones distintos`:'Sin datos válidos. Esta categoría no suma un acierto.');
   const rewardText=()=>`🐢 ${state.rewardRule.shells} caparazón por quiniela con al menos ${state.rewardRule.minCorrect} aciertos.`;
   const date=timestamp=>new Date(timestamp*1000).toLocaleString('es-ES',{timeZone:'Europe/Madrid',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  const championSearchKey=value=>String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  function closeChampionOptions() {
+    $('pickem-champion-options').hidden=true;
+    $('pickem-champion-search').setAttribute('aria-expanded','false');
+    $('pickem-champion-search').removeAttribute('aria-activedescendant');
+    championActive=-1;
+  }
+  function renderChampionOptions() {
+    const c=category(), input=$('pickem-champion-search');
+    if(!isChampion(c)||input.disabled)return closeChampionOptions();
+    const query=championSearchKey(input.value);
+    championMatches=c.options.filter(o=>!o.disabled&&[o.label,o.id].some(value=>championSearchKey(value).includes(query)));
+    championActive=-1;
+    const list=$('pickem-champion-options');
+    list.innerHTML=championMatches.length?championMatches.map((o,index)=>`<div class="pickem-champion-option" id="pickem-champion-option-${index}" role="option" aria-selected="${o.id===$('pickem-answer').value}" data-champion-id="${escape(o.id)}">${escape(o.label)}</div>`).join(''):'<p class="pickem-champion-empty">No se encontró ningún campeón.</p>';
+    list.hidden=false;
+    input.setAttribute('aria-expanded','true');
+    input.removeAttribute('aria-activedescendant');
+    $('pickem-champion-status').textContent=`${championMatches.length} ${championMatches.length===1?'campeón disponible':'campeones disponibles'}.`;
+  }
+  function chooseChampion(id) {
+    const option=category()?.options.find(o=>o.id===id&&!o.disabled);
+    if(!option||$('pickem-champion-search').disabled)return;
+    $('pickem-answer').value=option.id;
+    $('pickem-champion-search').value=option.label;
+    $('pickem-champion-status').textContent=`Campeón seleccionado: ${option.label}.`;
+    closeChampionOptions();
+    controls();
+  }
   function weekLabel(key) {
     const start=new Date(key+'T12:00:00Z'),end=new Date(start.getTime()+6*86400000);
     const format=d=>d.toLocaleDateString('es-ES',{timeZone:'UTC',day:'numeric',month:'short'});
@@ -38,6 +69,8 @@
     $('pickem-submit').disabled=busy||closed()||!state.participation.canAnswer||!!c?.myAnswer||!$('pickem-answer').value||!allowedAnswer(c,$('pickem-answer').value);
     $('pickem-submit').textContent=busy?'Guardando…':c?.myAnswer?'Predicción guardada':isDuel(c)&&c.teamAnswer?'Confirmar elección del equipo':'Guardar predicción';
     $('pickem-answer').disabled=busy||closed()||!!c?.myAnswer||(isDuel(c)&&!!(c.teamAnswer||c.teamAnswerConflict));
+    $('pickem-champion-search').disabled=$('pickem-answer').disabled;
+    if($('pickem-champion-search').disabled)closeChampionOptions();
     $('pickem-author').disabled=busy||closed()||!!state.myBallot;
     $('pickem-week').disabled=busy;
     $('pickem-closing').textContent=closed()?`Apuestas cerradas · ${date(state.closesAt)} (Madrid)`:`Cierre: domingo a las 23:59 · ${date(state.closesAt)} (Madrid)`;
@@ -49,11 +82,20 @@
     $('pickem-dialog-description').textContent=c.description+(isDuel(c)?` ${duelRule(c)}`:'');
     $('pickem-answer').innerHTML=`<option value="">${escape(c.options.some(o=>!o.disabled)?c.placeholder||'Selecciona una opción':'Sin participantes disponibles')}</option>`+c.options.map(o=>`<option value="${escape(o.id)}"${o.disabled||!allowedAnswer(c,o.id)?' disabled':''}>${escape(o.label)}</option>`).join('');
     $('pickem-answer').value=c.myAnswer||(isDuel(c)?c.teamAnswer:null)||(preserve?existing:'');
+    $('pickem-answer').hidden=isChampion(c);
+    $('pickem-champion-picker').hidden=!isChampion(c);
+    $('pickem-answer-label').htmlFor=isChampion(c)?'pickem-champion-search':'pickem-answer';
+    if(!preserve||c.myAnswer) {
+      $('pickem-champion-search').value=$('pickem-answer').value?optionLabel(c,$('pickem-answer').value):'';
+      $('pickem-champion-status').textContent='';
+      closeChampionOptions();
+    }
     if(!preserve||state.myBallot)$('pickem-author').value=state.myBallot?.author||'';
     $('pickem-modal-login').hidden=!!state.participation.teamId;
     $('pickem-modal-status').textContent=isDuel(c)&&c.teamAnswerConflict?duelRule(c):c.myAnswer?'Tu respuesta para esta categoría ya está guardada.':isDuel(c)&&c.teamAnswer?'Confirma la elección del equipo para añadirla a tu quiniela.':state.participation.message;
     $('pickem-answer-summary').textContent=c.result ? `${resultSummary(c)}${c.result.optionLabel?' · '+c.result.optionLabel:''}` : rewardText();
     controls();
+    if(isChampion(c)&&!$('pickem-champion-options').hidden)renderChampionOptions();
   }
   function render() {
     if(!state)return;
@@ -96,6 +138,40 @@
   $('pickem-close').addEventListener('click',()=>{if(!busy)$('pickem-dialog').close();});
   $('pickem-dialog').addEventListener('cancel',event=>{if(busy)event.preventDefault();});
   $('pickem-answer').addEventListener('change',controls);
+  $('pickem-champion-search').addEventListener('focus',renderChampionOptions);
+  $('pickem-champion-search').addEventListener('click',renderChampionOptions);
+  $('pickem-champion-search').addEventListener('input',()=>{
+    $('pickem-answer').value='';
+    renderChampionOptions();
+    controls();
+  });
+  $('pickem-champion-search').addEventListener('keydown',event=>{
+    const list=$('pickem-champion-options');
+    if(event.key==='Escape'&&!list.hidden) {
+      event.preventDefault();event.stopPropagation();closeChampionOptions();return;
+    }
+    if(event.key==='ArrowDown'||event.key==='ArrowUp') {
+      event.preventDefault();
+      if(list.hidden)renderChampionOptions();
+      if(!championMatches.length)return;
+      championActive=championActive<0?(event.key==='ArrowDown'?0:championMatches.length-1):(championActive+(event.key==='ArrowDown'?1:-1)+championMatches.length)%championMatches.length;
+      Array.from(list.children).forEach((option,index)=>option.classList.toggle('is-active',index===championActive));
+      const option=list.children[championActive];
+      $('pickem-champion-search').setAttribute('aria-activedescendant',option.id);
+      option.scrollIntoView({block:'nearest'});
+    } else if(event.key==='Enter'&&!list.hidden) {
+      event.preventDefault();
+      if(championMatches.length)chooseChampion(championMatches[Math.max(0,championActive)].id);
+    } else if(event.key==='Tab')closeChampionOptions();
+  });
+  $('pickem-champion-options').addEventListener('pointerdown',event=>event.preventDefault());
+  $('pickem-champion-options').addEventListener('click',event=>{
+    const option=event.target.closest('[data-champion-id]');
+    if(option)chooseChampion(option.dataset.championId);
+  });
+  $('pickem-dialog').addEventListener('click',event=>{
+    if(!event.target.closest('#pickem-champion-picker'))closeChampionOptions();
+  });
   $('pickem-week').addEventListener('change',()=>{week=$('pickem-week').value;$('pickem-dialog').close();currentCategory='';load();});
   $('pickem-form').addEventListener('submit',async event=>{
     event.preventDefault();const c=category();
