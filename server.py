@@ -344,8 +344,6 @@ def create_player_session(team_id):
 
 def player_state(db, duo):
     state = safe_duo_for_player(duo)
-    state["discordWebhook"] = duo.get("discordWebhook", "")
-    state["discordRoleId"] = duo.get("discordRoleId", "")
     attacks = db.get("shellAttacks", [])
     state["pendingShellAttacks"] = [a for a in attacks if a.get("targetTeamId") == duo.get("id") and a.get("status") == "PENDING_SPIN"]
     state["outgoingShellAttacks"] = [a for a in attacks if a.get("attackerTeamId") == duo.get("id")][:20]
@@ -2095,48 +2093,32 @@ class CustomHandler(BaseHTTPRequestHandler):
     def send_discord_test(self, path, data):
         # Authenticate and capture only the delivery inputs while holding the lock.
         # Sending never saves this snapshot, so concurrent edits cannot be overwritten.
-        player_test = path == '/api/player/discord-webhook/test'
         with db_lock:
             db = load_db()
-            if player_test:
-                team_id = session_team(data.get("sessionToken"))
-                if not team_id:
-                    self._send_json({"success": False, "error": "Sesión caducada"}, 401)
-                    return
-                duo = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
-                if not duo:
-                    self._send_json({"success": False, "error": "Equipo no encontrado"}, 404)
-                    return
-                url = discord_shells.webhook_url(duo.get("discordWebhook", ""))
-                if not url:
-                    self._send_json({"success": False, "error": "No has configurado ningún webhook de Discord para tu equipo."}, 400)
-                    return
-                payload = discord_shells.message_test(duo.get("teamName", "Equipo"), duo.get("discordRoleId"))
-            else:
-                if not verify_admin_pin(db, data.get("authPin", "")):
-                    self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
-                    return
-                url = discord_live.webhook_url(os.environ.get("DISCORD_LIVE_WEBHOOK_URL", ""))
-                if not url:
-                    self._send_json({"success": False, "error": "Configura un webhook válido en DISCORD_LIVE_WEBHOOK_URL."}, 400)
-                    return
-                payload = {
-                    "content": "🔔 **Mensaje de prueba · Pepes Krisis Duo Q**\nLa conexión de la web con este canal de Discord funciona.\nEsto es una prueba; no anuncia ningún directo real.",
-                    "allowed_mentions": {"parse": []}
-                }
+            if not verify_admin_pin(db, data.get("authPin", "")):
+                self._send_json({"success": False, "error": "PIN incorrecto"}, 401)
+                return
+            url = discord_live.webhook_url(os.environ.get("DISCORD_LIVE_WEBHOOK_URL", ""))
+            if not url:
+                self._send_json({"success": False, "error": "Configura un webhook válido en DISCORD_LIVE_WEBHOOK_URL."}, 400)
+                return
+            payload = {
+                "content": "🔔 **Mensaje de prueba · Pepes Krisis Duo Q**\nLa conexión de la web con este canal de Discord funciona.\nEsto es una prueba; no anuncia ningún directo real.",
+                "allowed_mentions": {"parse": []}
+            }
 
         # Discord can take up to ten seconds; unrelated reads/writes remain available.
-        result = discord_shells.send_sync(url, payload) if player_test else discord_live.send_payload(url, payload)
+        result = discord_live.send_payload(url, payload)
         if result.get("success"):
             self._send_json({"success": True})
         else:
             fallback = "Error al enviar el mensaje de prueba a Discord."
-            self._send_json({"success": False, "error": result.get("error", fallback)}, 400 if player_test else 502)
+            self._send_json({"success": False, "error": result.get("error", fallback)}, 502)
 
     @http_errors
     def do_POST(self):
         path = urlparse(self.path).path
-        if path in ('/api/player/discord-webhook/test', '/api/discord/test'):
+        if path == '/api/discord/test':
             self.send_discord_test(path, self.read_body())
             return
         self._handle_serialized_post()
@@ -2522,33 +2504,6 @@ class CustomHandler(BaseHTTPRequestHandler):
                 if target_webhook:
                     discord_shells.notify_shell_spun_async(target_webhook, target.get("teamName", "Equipo"), attack.get("attackerName", "Rival"), selected_penalty)
             self._send_json({"success": True, "penalty": selected_penalty, "penaltyInstance": penalty_instance, "duo": player_state(db, target), "attack": attack, "returnedAttack": returned_attack})
-
-        elif parsed.path == '/api/player/discord-webhook':
-            team_id = session_team(data.get("sessionToken"))
-            if not team_id:
-                self._send_json({"success": False, "error": "Sesión caducada"}, 401)
-                return
-            raw_url = str(data.get("webhookUrl", "") or "").strip()
-            if raw_url:
-                valid_url = discord_shells.webhook_url(raw_url)
-                if not valid_url:
-                    self._send_json({"success": False, "error": "La URL no es un webhook válido de Discord (debe empezar por https://discord.com/api/webhooks/...)"}, 400)
-                    return
-            else:
-                valid_url = ""
-            duos = db.get("duos", [])
-            duo = next((d for d in duos if d.get("id") == team_id), None)
-            if not duo:
-                self._send_json({"success": False, "error": "Equipo no encontrado"}, 404)
-                return
-            raw_role_id = str(data.get("roleId", "") or "").strip()
-            if raw_role_id and not re.fullmatch(r"[0-9]{17,20}", raw_role_id):
-                self._send_json({"success": False, "error": "Pega el ID numérico del rol de Discord (entre 17 y 20 dígitos), no su nombre."}, 400)
-                return
-            duo["discordWebhook"] = valid_url
-            duo["discordRoleId"] = raw_role_id
-            save_db(db)
-            self._send_json({"success": True, "discordWebhook": valid_url, "discordRoleId": raw_role_id, "duo": player_state(db, duo)})
 
         elif parsed.path == '/api/config':
             auth_pin = str(data.get("authPin", "")).strip()

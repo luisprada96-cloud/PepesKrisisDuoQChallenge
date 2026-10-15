@@ -166,7 +166,6 @@ function renderDashboardData() {
   renderPendingShells();
   renderOutgoingShells();
   renderActiveDebuffs();
-  renderDiscordWebhookSettings();
 }
 
 function renderOutgoingShells() {
@@ -202,44 +201,8 @@ function renderPendingShells() {
   `).join('');
 }
 
-function renderDiscordWebhookSettings() {
-  const webhookInput = document.getElementById('player-discord-webhook');
-  const statusEl = document.getElementById('player-discord-status');
-  const btnTest = document.getElementById('btn-test-discord-webhook');
-  const btnDelete = document.getElementById('btn-delete-discord-webhook');
-  const badgeEl = document.getElementById('player-discord-badge');
-
-  if (!webhookInput) return;
-
-  const currentWebhook = activeDuo?.discordWebhook || '';
-  const currentRoleId = activeDuo?.discordRoleId || '';
-  const roleInput = document.getElementById('player-discord-role-id');
-  if (document.activeElement !== webhookInput) {
-    webhookInput.value = currentWebhook;
-  }
-  if (roleInput && document.activeElement !== roleInput) {
-    roleInput.value = currentRoleId;
-  }
-
-  if (currentWebhook) {
-    if (statusEl) {
-      statusEl.innerHTML = `<span style="color: var(--cyan-primary); font-weight: 700;"><i class="fa-solid fa-circle-check"></i> Webhook activo.</span> <span style="color: var(--text-muted);">(Alertas configuradas para vuestro canal)</span>`;
-    }
-    if (btnTest) btnTest.disabled = false;
-    if (btnDelete) btnDelete.style.display = 'inline-flex';
-    if (badgeEl) badgeEl.style.display = 'inline-flex';
-  } else {
-    if (statusEl) {
-      statusEl.innerHTML = `<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-exclamation" style="color: var(--gold-hextech);"></i> Sin webhook configurado. Vuestro dúo no recibirá avisos en Discord.</span>`;
-    }
-    if (btnTest) btnTest.disabled = true;
-    if (btnDelete) btnDelete.style.display = 'none';
-    if (badgeEl) badgeEl.style.display = 'none';
-  }
-}
-
 function selectPlayerPanel(tab) {
-  playerPanelTab = ['penalties', 'discord'].includes(tab) ? tab : 'shells';
+  playerPanelTab = tab === 'penalties' ? 'penalties' : 'shells';
   document.querySelectorAll('[data-player-panel-tab]').forEach(button => {
     const selected = button.dataset.playerPanelTab === playerPanelTab;
     button.setAttribute('aria-selected', String(selected));
@@ -505,95 +468,6 @@ function setupPlayerListeners() {
           btnSubmit.disabled = false;
           btnSubmit.innerHTML = `🐢⚡ ¡Lanzar Caparazón Azul!`;
         }
-      }
-    });
-  }
-
-  const discordForm = document.getElementById('player-discord-form');
-  const btnTestDiscord = document.getElementById('btn-test-discord-webhook');
-  const btnDeleteDiscord = document.getElementById('btn-delete-discord-webhook');
-
-  if (discordForm) {
-    discordForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const input = document.getElementById('player-discord-webhook');
-      const roleInput = document.getElementById('player-discord-role-id');
-      const val = (input?.value || '').trim();
-      const roleVal = (roleInput?.value || '').trim();
-      const btnSave = document.getElementById('btn-save-discord-webhook');
-      if (btnSave) {
-        btnSave.disabled = true;
-        btnSave.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Guardando...`;
-      }
-      try {
-        const res = await DataStore.savePlayerDiscordWebhook(val, playerSessionToken, roleVal);
-        if (res.success) {
-          if (activeDuo) {
-            activeDuo.discordWebhook = res.discordWebhook || '';
-            activeDuo.discordRoleId = res.discordRoleId || '';
-          }
-          sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
-          showPlayerToast('Webhook de Discord guardado correctamente.');
-          renderDiscordWebhookSettings();
-        } else {
-          showPlayerToast(res.error || 'Error al guardar el webhook.', true);
-        }
-      } catch (err) {
-        showPlayerToast('Error de conexión con el servidor.', true);
-      } finally {
-        if (btnSave) {
-          btnSave.disabled = false;
-          btnSave.innerHTML = `<i class="fa-solid fa-floppy-disk"></i> Guardar Webhook`;
-        }
-      }
-    });
-  }
-
-  if (btnTestDiscord) {
-    btnTestDiscord.addEventListener('click', async () => {
-      btnTestDiscord.disabled = true;
-      btnTestDiscord.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Enviando...`;
-      try {
-        const res = await DataStore.testPlayerDiscordWebhook(playerSessionToken);
-        if (res.success) {
-          showPlayerToast('¡Mensaje de prueba enviado con éxito a Discord!');
-        } else {
-          showPlayerToast(res.error || 'Error al enviar la prueba a Discord.', true);
-        }
-      } catch (err) {
-        showPlayerToast('Error de conexión con el servidor.', true);
-      } finally {
-        btnTestDiscord.disabled = false;
-        btnTestDiscord.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Enviar Mensaje de Prueba`;
-      }
-    });
-  }
-
-  if (btnDeleteDiscord) {
-    btnDeleteDiscord.addEventListener('click', async () => {
-      if (!confirm('¿Seguro que deseas eliminar el webhook de Discord de tu equipo?')) return;
-      btnDeleteDiscord.disabled = true;
-      try {
-        const res = await DataStore.savePlayerDiscordWebhook('', playerSessionToken, '');
-        if (res.success) {
-          if (activeDuo) {
-            activeDuo.discordWebhook = '';
-            activeDuo.discordRoleId = '';
-          }
-          const input = document.getElementById('player-discord-webhook');
-          if (input) input.value = '';
-          const roleInput = document.getElementById('player-discord-role-id');
-          if (roleInput) roleInput.value = '';
-          sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
-          showPlayerToast('Webhook de Discord eliminado.');
-          renderDiscordWebhookSettings();
-        } else {
-          showPlayerToast(res.error || 'Error al eliminar el webhook.', true);
-        }
-      } catch (err) {
-        showPlayerToast('Error de conexión.', true);
-      } finally {
-        btnDeleteDiscord.disabled = false;
       }
     });
   }
