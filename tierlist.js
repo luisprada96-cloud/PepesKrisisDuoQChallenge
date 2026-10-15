@@ -2,7 +2,20 @@
 (() => {
   const TIERS = ['S', 'A', 'B', 'C', 'D'];
   const PAGE_SIZE = 6;
-  let kind = new URLSearchParams(location.search).get('tipo') === 'integrantes' ? 'players' : 'teams';
+  const ROLES = [
+    { id: 'TOP', label: 'TOP', icon: 'fa-shield-halved', colorClass: 'role-TOP' },
+    { id: 'JUNGLE', label: 'JUNGLA', icon: 'fa-tree', colorClass: 'role-JUNGLE' },
+    { id: 'MIDDLE', label: 'MEDIO', icon: 'fa-wand-magic-sparkles', colorClass: 'role-MIDDLE' },
+    { id: 'BOTTOM', label: 'ADC', icon: 'fa-crosshairs', colorClass: 'role-BOTTOM' },
+    { id: 'UTILITY', label: 'SUPP', icon: 'fa-heart', colorClass: 'role-UTILITY' }
+  ];
+  const TIER_OFFSET = {
+    IRON: 0, BRONZE: 400, SILVER: 800, GOLD: 1200, PLATINUM: 1600,
+    EMERALD: 2000, DIAMOND: 2400, MASTER: 2800, GRANDMASTER: 2800, CHALLENGER: 2800
+  };
+  const DIVISION_OFFSET = { '': 0, 'IV': 0, 'III': 100, 'II': 200, 'I': 300 };
+  const kindParam = new URLSearchParams(location.search).get('tipo');
+  let kind = kindParam === 'roles' ? 'roles' : (kindParam === 'integrantes' ? 'players' : 'teams');
   const draftKey = () => kind === 'teams' ? 'pepes_tierlist_draft_v1' : 'pepes_tierlist_players_draft_v1';
   const noun = () => kind === 'players' ? 'integrante' : 'equipo';
   let items = [], posts = [], total = 0, page = 1, selected = '', ready = false, busy = false, view = 'gallery', loadVersion = 0;
@@ -16,6 +29,147 @@
   const itemFor = id => items.find(item => item.id === id);
   const feedback = message => { $('tierlist-feedback').textContent = message; };
   const error = message => { $('tierlist-form-error').textContent = message; $('tierlist-form-error').hidden = !message; };
+
+  function playerSlug(player) {
+    const name = String(player?.name || '').toLowerCase();
+    const display = String(player?.displayName || '').toLowerCase();
+    if (name.includes('crespo') || display.includes('crespo')) return 'pablo-crespo';
+    if (name.includes('casco') || display.includes('casco')) return 'pablo-casco';
+    if (display === 'papaportu' || name.includes('gatitagap')) return 'papaportu';
+    if (display === 'parradise' || name.includes('perrraka')) return 'parradise';
+    if (display === 'ikerpantv' || name.includes('atreyu')) return 'ikerpantv';
+    if (display === 'pato' || name.includes('glutenfree')) return 'pato';
+    if (display === 'sendi' || name.includes('sharkdyno')) return 'sendi';
+    if (display === 'chicha' || name.includes('chichillo')) return 'chicha';
+    if (display === 'mclovin' || name.includes('sena')) return 'mclovin';
+    if (display === 'fogell' || name.includes('angie')) return 'fogell';
+    if (display === 'taberneta' || name.includes('jagenau')) return 'taberneta';
+    if (display === 'ameteum' || name.includes('bicycle')) return 'ameteum';
+    if (display === 'joji' || name.includes('parrita enyoyer') || name.includes('parrita')) return 'joji';
+    if (display === 'luis' || name.includes('birentewil')) return 'luis';
+    if (display === 'unluckypingu' || name.includes('elpingu') || display.includes('pingu')) return 'unluckypingu';
+    if (display === 'unluckypanda' || name.includes('goldeparrita') || display.includes('panda')) return 'unluckypanda';
+    if (display === 'markel' || name.includes('markel')) return 'markel';
+    if (display === 'guille' || name.includes('unluckywilly')) return 'guille';
+    return (display || name).replace(/[^a-z0-9]/g, '');
+  }
+
+  function calcTotalLp(tier, division, lp) {
+    const t = String(tier || '').toUpperCase();
+    const d = String(division || '').toUpperCase();
+    const base = TIER_OFFSET[t] || 0;
+    const div = ['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(t) ? 0 : (DIVISION_OFFSET[d] || 0);
+    return base + div + (Number(lp) || 0);
+  }
+
+  function getTierBadgeColor(tier) {
+    const t = String(tier || '').toUpperCase();
+    switch (t) {
+      case 'CHALLENGER': return '#f4c430';
+      case 'GRANDMASTER': return '#e63946';
+      case 'MASTER': return '#9d4edd';
+      case 'DIAMOND': return '#70d6ff';
+      case 'EMERALD': return '#00f5d4';
+      case 'PLATINUM': return '#48cae4';
+      case 'GOLD': return '#ffd166';
+      case 'SILVER': return '#adb5bd';
+      case 'BRONZE': return '#cd7f32';
+      case 'IRON': return '#6c757d';
+      default: return '#94a3b8';
+    }
+  }
+
+  async function loadRolesTierlist() {
+    const container = $('tierlist-roles-board');
+    if (!container) return;
+    try {
+      container.innerHTML = '<p class="tierlist-loading">Cargando clasificación por roles…</p>';
+      const duos = typeof DataStore !== 'undefined' ? await DataStore.getDuos() : [];
+      const allPlayers = [];
+      for (const duo of duos) {
+        for (const pKey of ['player1', 'player2']) {
+          const p = duo[pKey];
+          if (!p || !p.name) continue;
+          const rank = p.rank || (pKey === 'player1' && !Object.prototype.hasOwnProperty.call(p, 'rank') ? duo : null) || {};
+          const tier = rank.tier || duo.tier || 'Unranked';
+          const division = rank.division ?? duo.division ?? '';
+          const lp = Number(rank.lp ?? duo.lp ?? 0);
+          const wins = Number(rank.wins ?? duo.wins ?? 0);
+          const losses = Number(rank.losses ?? duo.losses ?? 0);
+          const totalLp = calcTotalLp(tier, division, lp);
+          const slug = playerSlug(p);
+
+          allPlayers.push({
+            name: p.name,
+            displayName: p.displayName || p.name,
+            tag: p.tag || 'EUW',
+            teamName: duo.teamName,
+            role: String(p.mainRole || '').toUpperCase(),
+            tier,
+            division,
+            lp,
+            totalLp,
+            wins,
+            losses,
+            slug
+          });
+        }
+      }
+
+      const html = ROLES.map(roleDef => {
+        const rolePlayers = allPlayers.filter(p => p.role === roleDef.id);
+        rolePlayers.sort((a, b) => {
+          if (b.totalLp !== a.totalLp) return b.totalLp - a.totalLp;
+          if (b.wins !== a.wins) return b.wins - a.wins;
+          if (a.losses !== b.losses) return a.losses - b.losses;
+          return a.displayName.localeCompare(b.displayName);
+        });
+
+        const cardsHtml = rolePlayers.map((player, idx) => {
+          const pos = idx + 1;
+          const posClass = pos === 1 ? 'rank-pos-gold' : pos === 2 ? 'rank-pos-silver' : pos === 3 ? 'rank-pos-bronze' : 'rank-pos-neutral';
+          const totalGames = player.wins + player.losses;
+          const winrate = totalGames > 0 ? Math.round((player.wins / totalGames) * 100) : 0;
+          const isUnranked = String(player.tier).toUpperCase() === 'UNRANKED';
+          const rankText = isUnranked ? 'Sin clasificar' : `${player.tier}${player.division ? ' ' + player.division : ''} (${player.lp} LP)`;
+          const rankColor = getTierBadgeColor(player.tier);
+          const teamSlug = String(player.teamName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+          return `
+            <div class="role-player-card" title="${escape(player.displayName)} · ${escape(player.teamName)}">
+              <div class="role-player-avatar-wrap">
+                <img src="/assets/tierlist/player-${escape(player.slug)}.png" alt="${escape(player.displayName)}" onerror="this.onerror=null;this.src='/assets/tierlist/${escape(teamSlug)}.png';" loading="lazy">
+                <span class="role-pos-badge ${posClass}">${pos}º</span>
+              </div>
+              <div class="role-player-info">
+                <div class="role-player-name">${escape(player.displayName)}</div>
+                <div class="role-player-team">${escape(player.teamName)}</div>
+                <div class="role-player-rank" style="color: ${rankColor};">${escape(rankText)}</div>
+                <div class="role-player-stats">${player.wins}W / ${player.losses}L · ${winrate}% WR</div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <div class="tier-row tier-row-role">
+            <div class="tier-role-label ${roleDef.colorClass}">
+              <i class="fa-solid ${roleDef.icon}" aria-hidden="true"></i>
+              <span class="role-name">${roleDef.label}</span>
+              <span class="role-count">${rolePlayers.length}</span>
+            </div>
+            <div class="tier-items tier-role-items">
+              ${cardsHtml || '<span class="tier-row-empty">No hay integrantes con este rol principal</span>'}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.innerHTML = html;
+    } catch (_) {
+      container.innerHTML = '<p class="tierlist-error">No se pudo cargar la clasificación por roles. Pulsa Actualizar para intentarlo de nuevo.</p>';
+    }
+  }
 
   async function request(offset = 0, body) {
     const controller = new AbortController();
@@ -127,6 +281,7 @@
   }
   async function load() {
     if (busy) return;
+    if (kind === 'roles') return loadRolesTierlist();
     const version = ++loadVersion;
     try {
       const result = await request((page - 1) * PAGE_SIZE);
@@ -143,13 +298,26 @@
   }
 
   function updateUrl() {
-    const query = kind === 'players' ? '?tipo=integrantes' : '';
-    history.replaceState(null, '', `${location.pathname}${query}${view === 'editor' ? '#crear' : '#publicadas'}`);
+    const query = kind === 'roles' ? '?tipo=roles' : (kind === 'players' ? '?tipo=integrantes' : '');
+    const hash = kind === 'roles' ? '' : (view === 'editor' ? '#crear' : '#publicadas');
+    history.replaceState(null, '', `${location.pathname}${query}${hash}`);
   }
   function updateKindCopy() {
+    const isRoles = kind === 'roles';
     const players = kind === 'players';
     document.querySelector('.tierlist-page').dataset.kind = kind;
     document.querySelectorAll('[data-tierlist-kind]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.tierlistKind === kind)));
+    const viewTabs = document.querySelector('.tierlist-view-tabs');
+    if (viewTabs) viewTabs.hidden = isRoles;
+    $('tierlist-gallery').hidden = isRoles || view !== 'gallery';
+    $('tierlist-editor').hidden = isRoles || view !== 'editor';
+    if ($('tierlist-roles')) $('tierlist-roles').hidden = !isRoles;
+
+    if (isRoles) {
+      $('tierlist-description').textContent = 'Ranking oficial de los 18 integrantes ordenados en sus 5 posiciones según su ELO y rendimiento.';
+      return;
+    }
+
     $('tierlist-description').textContent = players ? 'Ordena a los 18 integrantes por habilidad y comparte tu veredicto.' : 'Coloca a los equipos y comparte tu pronóstico.';
     $('tierlist-editor-title').textContent = players ? '¿Quién tiene más manos?' : '¿Quién está para ganar?';
     $('tierlist-help').textContent = players ? 'Arrastra los integrantes a una fila. También puedes seleccionar un integrante y pulsar la letra de su fila.' : 'Arrastra los equipos a una fila. También puedes seleccionar un equipo y pulsar la letra de su fila.';
@@ -158,17 +326,23 @@
     document.querySelectorAll('[data-tierlist-shift]').forEach(button => button.setAttribute('aria-label', `Mover el ${noun()} seleccionado a la ${button.dataset.tierlistShift === '-1' ? 'izquierda' : 'derecha'}`));
   }
   function changeKind(value) {
-    if (busy || kind === value || !['teams','players'].includes(value)) return;
-    if (ready) saveDraft();
+    if (busy || kind === value || !['teams','players','roles'].includes(value)) return;
+    if (ready && kind !== 'roles') saveDraft();
     kind = value; loadVersion++; page = 1; selected = ''; ready = false;
     items = []; posts = []; total = 0;
     tiers = Object.fromEntries(TIERS.map(tier => [tier, []]));
     publishing = {canPublish:false,message:'Cargando…'};
     $('tierlist-author').value = '';
     $('tierlist-detail').close();
-    error(''); feedback(''); updateKindCopy(); drawEditor(); drawGallery();
-    $('tierlist-count').textContent = 'Cargando tierlists…';
-    updateUrl(); load();
+    error(''); feedback(''); updateKindCopy();
+    if (kind === 'roles') {
+      loadRolesTierlist();
+    } else {
+      drawEditor(); drawGallery();
+      $('tierlist-count').textContent = 'Cargando tierlists…';
+      load();
+    }
+    updateUrl();
   }
   document.querySelectorAll('[data-tierlist-kind]').forEach(button => button.addEventListener('click', () => changeKind(button.dataset.tierlistKind)));
 
@@ -244,10 +418,15 @@
       error(failure.name === 'AbortError' ? 'No se pudo confirmar la publicación. Consulta las tierlists publicadas antes de intentarlo otra vez.' : failure.message);
     } finally { busy = false; updateControls(); load(); }
   });
-  for (const name of ['player-session-changed','player-session-ended']) document.addEventListener(name, load);
-  window.addEventListener('focus', load);
-  setInterval(() => { if (!document.hidden && view === 'gallery') load(); }, 60000);
+  $('tierlist-roles-refresh')?.addEventListener('click', () => { feedback(''); loadRolesTierlist(); });
+  for (const name of ['player-session-changed','player-session-ended']) document.addEventListener(name, () => { if (kind === 'roles') loadRolesTierlist(); else load(); });
+  window.addEventListener('focus', () => { if (kind === 'roles') loadRolesTierlist(); else load(); });
+  setInterval(() => { if (!document.hidden) { if (kind === 'roles') loadRolesTierlist(); else if (view === 'gallery') load(); } }, 60000);
   updateKindCopy();
-  showView(location.hash === '#crear' ? 'editor' : 'gallery');
-  load();
+  if (kind === 'roles') {
+    loadRolesTierlist();
+  } else {
+    showView(location.hash === '#crear' ? 'editor' : 'gallery');
+    load();
+  }
 })();

@@ -41,6 +41,7 @@
     <div class="tierlist-tabs tierlist-kind-tabs" role="group" aria-label="Tipo de tierlist">
       <button type="button" data-tierlist-kind="teams" aria-pressed="true"><i class="fa-solid fa-users" aria-hidden="true"></i> Equipos</button>
       <button type="button" data-tierlist-kind="players" aria-pressed="false"><i class="fa-solid fa-user" aria-hidden="true"></i> Integrantes</button>
+      <button type="button" data-tierlist-kind="roles" aria-pressed="false"><i class="fa-solid fa-sitemap" aria-hidden="true"></i> Por roles</button>
     </div>
     <div class="tierlist-tabs tierlist-view-tabs" role="group" aria-label="Vista de tierlists">
       <button type="button" data-tierlist-view="gallery" aria-pressed="true" aria-controls="tierlist-gallery"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlists publicadas</button>
@@ -69,6 +70,18 @@
         <div class="tierlist-publish-area"><div><label for="tierlist-author">¿Quién ha hecho esta tierlist? <span>(opcional)</span></label><input type="text" id="tierlist-author" class="form-control" maxlength="60" placeholder="Tu nombre o apodo" autocomplete="nickname"><p>El equipo que la publica siempre aparecerá junto al autor.</p></div><div class="tierlist-publish-action"><p id="tierlist-publishing-status"></p><a href="player.html" id="tierlist-login">Iniciar sesión con mi equipo ↗</a><p class="tierlist-final-note">Al publicarla quedará visible para todos y no podrás editarla.</p><button type="submit" id="tierlist-publish" class="tierlist-primary" disabled>Publicar tierlist</button></div></div>
         <p id="tierlist-form-error" class="tierlist-error" role="alert" hidden></p>
       </form>
+    </section>
+    <section id="tierlist-roles" hidden aria-label="Tierlist oficial por roles">
+      <div class="tierlist-roles-heading">
+        <div>
+          <h2>Ranking por posiciones</h2>
+          <p>Los 18 integrantes ordenados en cada posición según su ELO absoluto, victorias y rendimiento.</p>
+        </div>
+        <button type="button" id="tierlist-roles-refresh" class="tierlist-secondary">Actualizar</button>
+      </div>
+      <div id="tierlist-roles-board" class="tier-board tier-board-roles" aria-label="Clasificación por roles">
+        <p class="tierlist-loading">Cargando clasificación por roles…</p>
+      </div>
     </section>
     <dialog id="tierlist-detail" class="tierlist-detail" aria-labelledby="tierlist-detail-title"><div class="tierlist-detail-heading"><div><h2 id="tierlist-detail-title"></h2><p id="tierlist-detail-meta"></p></div><button type="button" id="tierlist-detail-close" class="tierlist-secondary" aria-label="Cerrar tierlist">✕</button></div><div id="tierlist-detail-board" class="tier-board"></div></dialog>
   </main>
