@@ -154,6 +154,14 @@ def ballot_status(db, board, team_id, visitor, now=None):
             'ballot':own if own and team and own['teamId']==team_id else None}
 
 
+def team_duel_choice(board, team_id, category_id):
+    """One immutable side per team and duel, derived from confirmed ballots."""
+    answers = {b['answers'][category_id] for b in board['ballots']
+               if b['teamId'] == team_id and category_id in b['answers']}
+    return {'answer': next(iter(answers)) if len(answers) == 1 else None,
+            'conflict': len(answers) > 1}
+
+
 def submit(db, team_id, visitor, category_id, option_id, author='', now=None):
     now = time.time() if now is None else now
     key, _ = ensure_week(db,now)
@@ -167,6 +175,13 @@ def submit(db, team_id, visitor, category_id, option_id, author='', now=None):
         raise ValueError('Selecciona una opción válida.')
     if not isinstance(author,str) or len(author.strip())>60 or any(ord(c)<32 for c in author):
         raise ValueError('El nombre opcional debe tener como máximo 60 caracteres y una sola línea.')
+    if category.get('kind') == 'duel':
+        choice = team_duel_choice(board, team_id, category_id)
+        if choice['conflict']:
+            raise FileExistsError('Tu equipo tiene respuestas anteriores distintas para este duelo. Consulta a la administración.')
+        if choice['answer'] is not None and choice['answer'] != option_id:
+            label = next(o['label'] for o in category['options'] if o['id'] == choice['answer'])
+            raise FileExistsError(f'Tu equipo ya ha elegido {label} en este duelo. Ambos debéis seleccionar la misma opción.')
     ballot = status['ballot']
     if ballot and category_id in ballot['answers']:
         if ballot['answers'][category_id]!=option_id: raise FileExistsError('Ya has enviado tu predicción para esta categoría.')
@@ -561,6 +576,11 @@ def public_board(db, team_id=None, visitor=None, selected_week=None, now=None):
         c['options']=[{k:o[k] for k in ('id','label','disabled') if k in o} for o in c['options']]
         c['result']=copy.deepcopy(board['results'].get(c['id']))
         c['myAnswer']=(ballot or {}).get('answers',{}).get(c['id'])
+        if c.get('kind') == 'duel':
+            choice = team_duel_choice(board, status['teamId'], c['id']) if status['teamId'] else {'answer':None, 'conflict':False}
+            c['sharedWithTeam'] = True
+            c['teamAnswer'] = choice['answer']
+            c['teamAnswerConflict'] = choice['conflict']
         categories.append(c)
     predictions=[]
     if now>=bounds['closesAt']:

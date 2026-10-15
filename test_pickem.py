@@ -1088,4 +1088,118 @@ class PickemEndpointTests(unittest.TestCase):
                 self.assertEqual(sum('/ids?' in url for url in calls), 1)
 
 
+class PickemSharedDuelTests(unittest.TestCase):
+    setUp = PickemServiceTests.setUp
+    duel = 'joji_parradise_deaths'
+
+    def submit(self, visitor, option, team='a'):
+        return pickem.submit(self.db, team, visitor, self.duel, option, now=NOW)
+
+    def category(self, team=None, visitor=None):
+        board = pickem.public_board(self.db, team, visitor, now=NOW)
+        return next(c for c in board['categories'] if c['id'] == self.duel)
+
+    def test_first_choice_locks_both_ballots_and_same_choice_is_idempotent(self):
+        first, changed = self.submit('one', 'joji')
+        self.assertTrue(changed)
+        before = copy.deepcopy(self.board['ballots'])
+        with self.assertRaisesRegex(FileExistsError, 'misma opción'):
+            self.submit('two', 'parradise')
+        self.assertEqual(self.board['ballots'], before, 'rejection cannot consume the second ballot')
+        second, changed = self.submit('two', 'joji')
+        self.assertTrue(changed)
+        self.assertNotEqual(first['id'], second['id'])
+        self.assertEqual([b['answers'][self.duel] for b in self.board['ballots']], ['joji', 'joji'])
+        self.assertFalse(self.submit('two', 'joji')[1])
+        with self.assertRaises(FileExistsError): self.submit('one', 'parradise')
+        with self.assertRaises(FileExistsError): self.submit('third', 'joji')
+
+    def test_lock_is_private_to_team_and_other_categories_stay_independent(self):
+        self.submit('one', 'joji')
+        choice = self.category('a', 'two')
+        self.assertTrue(choice['sharedWithTeam'])
+        self.assertEqual(choice['teamAnswer'], 'joji')
+        self.assertIsNone(choice['myAnswer'], 'teammate must confirm in their own ballot')
+        self.assertIsNone(self.category()['teamAnswer'])
+        self.assertIsNone(self.category('b', 'other')['teamAnswer'])
+        self.submit('other', 'parradise', team='b')
+        self.assertEqual(self.category('b', 'other')['teamAnswer'], 'parradise')
+        pickem.submit(self.db, 'a', 'one', CATEGORY, '0-19', now=NOW)
+        pickem.submit(self.db, 'a', 'two', CATEGORY, '20-29', now=NOW)
+        self.assertEqual(self.category('a', 'two')['teamAnswer'], 'joji')
+        self.submit('two', 'joji')
+
+    def test_earlier_ballots_are_respected_without_rewriting_and_conflicts_are_flagged(self):
+        self.submit('one', 'joji')
+        raw = json.loads(json.dumps(self.db))
+        pickem.submit(raw, 'a', 'two', self.duel, 'joji', now=NOW)
+        self.assertEqual(self.board['ballots'][0]['answers'][self.duel], 'joji')
+        self.board['ballots'].append({**copy.deepcopy(self.board['ballots'][0]), 'id':'legacy', 'visitor':'two', 'answers':{self.duel:'parradise'}})
+        before = copy.deepcopy(self.board['ballots'])
+        self.assertTrue(self.category('a', 'one')['teamAnswerConflict'])
+        self.assertFalse(self.category()['teamAnswerConflict'], 'guests cannot see private conflicts')
+        with self.assertRaisesRegex(FileExistsError, 'administración'): self.submit('two', 'joji')
+        self.assertEqual(self.board['ballots'], before, 'never silently overwrite old predictions')
+
+    def test_rule_covers_future_duel_categories_without_locking_each_other(self):
+        definition = copy.deepcopy(next(c for c in self.board['categories'] if c['id'] == self.duel))
+        definition['id'] = 'future_duel'
+        self.board['categories'].append(definition)
+        self.submit('one', 'joji')
+        pickem.submit(self.db, 'a', 'one', 'future_duel', 'parradise', now=NOW)
+        with self.assertRaises(FileExistsError):
+            pickem.submit(self.db, 'a', 'two', 'future_duel', 'joji', now=NOW)
+        pickem.submit(self.db, 'a', 'two', 'future_duel', 'parradise', now=NOW)
+        self.submit('two', 'joji')
+
+
+class PickemSharedDuelEndpointTests(unittest.TestCase):
+    setUp = PickemEndpointTests.setUp
+    tearDown = PickemEndpointTests.tearDown
+    client = PickemEndpointTests.client
+    login = PickemEndpointTests.login
+    call = PickemEndpointTests.call
+
+    def test_concurrent_opposite_choices_lock_only_one_side_and_keep_second_slot(self):
+        clients = [self.client()[0] for _ in range(2)]
+        auth = self.login(clients[0])
+        self.call(clients[1], headers=auth)
+        barrier = threading.Barrier(2)
+        def send(pair):
+            import urllib.request
+            import urllib.error
+            client, option = pair
+            body = {'week':WEEK, 'categoryId':'joji_parradise_deaths', 'optionId':option, 'teamId':'b'}
+            barrier.wait()
+            req = urllib.request.Request(self.base+'/api/pickem', data=json.dumps(body).encode(),
+                                         headers={'Content-Type':'application/json', **auth})
+            try:
+                with client.open(req, timeout=5) as response: return response.status
+            except urllib.error.HTTPError as error: return error.code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            codes = list(pool.map(send, zip(clients, ['joji','parradise'])))
+        self.assertEqual(sorted(codes), [200,409])
+        raw = server.load_db()['pickem']['weeks'][WEEK]['ballots']
+        self.assertEqual(len(raw), 1)
+        self.assertEqual(raw[0]['teamId'], 'a', 'request cannot spoof the authenticated team')
+        winner = raw[0]['answers']['joji_parradise_deaths']
+        loser = clients[codes.index(409)]
+        body = {'week':WEEK, 'categoryId':'joji_parradise_deaths', 'optionId':winner}
+        self.call(loser, body, auth)
+        stored = server.load_db()['pickem']['weeks'][WEEK]['ballots']
+        self.assertEqual(len(stored), 2)
+        self.assertEqual({b['answers']['joji_parradise_deaths'] for b in stored}, {winner})
+
+    def test_failed_persistence_never_locks_an_unconfirmed_choice(self):
+        client, _ = self.client()
+        auth = self.login(client)
+        body = {'week':WEEK, 'categoryId':'joji_parradise_deaths', 'optionId':'joji'}
+        with patch.object(server, 'save_db', side_effect=StorageError('Unavailable')):
+            self.call(client, body, auth, status=503)
+        board, _ = self.call(client, headers=auth)
+        self.assertIsNone(next(c for c in board['categories'] if c['kind'] == 'duel')['teamAnswer'])
+        result, _ = self.call(client, {**body, 'optionId':'parradise'}, auth)
+        self.assertEqual(next(c for c in result['categories'] if c['kind'] == 'duel')['teamAnswer'], 'parradise')
+
+
 if __name__ == '__main__': unittest.main()
