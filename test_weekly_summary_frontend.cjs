@@ -22,14 +22,15 @@ const path=require('node:path');
       highlights:{rising:{...players[0],teamName:'krisis'},falling:null,attacker:team,completed:{...players[0],teamName:'krisis'}},
       clips:{available:true,posts:5,votes:35,winner:{status:'AWARDED',title:'Robo de Nashor',teamName:'krisis',teamId:'a',votes:24,shells:3,url:'https://clips.twitch.tv/Winner'}}};
     const current={...structuredClone(archived),week:weeks[0],status:'CURRENT',clips:{available:true,posts:0,votes:0,winner:null}};
-    let fail=false;
+    let fail=false, openingOnly=false;
     await context.route('**/*',route=>{
       const url=new URL(route.request().url());
       if(url.origin!=='http://pepes.test')return route.abort();
       if(url.pathname==='/api/weekly-summary') {
         if(fail)return route.fulfill({status:503,contentType:'application/json',body:'{"error":"No disponible"}'});
         const week=url.searchParams.get('week');
-        return route.fulfill({contentType:'application/json',body:JSON.stringify({weeks,summary:week===weeks[1]?archived:current})});
+        if(openingOnly && week && week!==weeks[0])return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({error:'Resumen semanal no encontrado.'})});
+        return route.fulfill({contentType:'application/json',body:JSON.stringify({weeks:openingOnly?[weeks[0]]:weeks,currentWeek:weeks[0],summary:!openingOnly&&week===weeks[1]?archived:current})});
       }
       if(url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:'{}'});
       const file=url.pathname.slice(1);
@@ -82,6 +83,14 @@ const path=require('node:path');
     assert.equal(await page.locator('#weekly-content img').count(),0);
     assert.equal(await page.locator('[data-weekly-clip]').count(),0);
     assert.equal(await page.evaluate(()=>window.injected),undefined);
+    openingOnly=true;
+    await page.goto('http://pepes.test/resumen.html?week='+weeks[1]);
+    await page.locator('#weekly-report').waitFor({state:'visible'});
+    assert.equal(await page.locator('#weekly-week option').count(),1,'preseason weeks absent from selector');
+    assert.equal(await page.locator('#weekly-week').inputValue(),weeks[0]);
+    assert.equal(await page.locator('#weekly-state').textContent(),'Semana en curso');
+    assert.equal(new URL(page.url()).searchParams.get('week'),weeks[0],'old bookmark falls back to available tournament week');
+    assert.equal(await page.locator('#weekly-status').textContent(),'');
     assert.deepEqual(errors,[]);
     if(process.env.WEEKLY_SCREENSHOT)await page.screenshot({path:process.env.WEEKLY_SCREENSHOT,fullPage:true});
     console.log('Weekly recap browser checks passed: archive/current/team views, clip embed, missing data, inventory cap, errors, escaping and mobile.');

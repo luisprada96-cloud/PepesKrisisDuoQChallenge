@@ -92,7 +92,7 @@
     const weekSelect = document.getElementById('weekly-week');
     weekSelect.replaceChildren(...payload.weeks.map(week => {
       const monday = new Date(`${week}T12:00:00Z`).getTime() / 1000;
-      return new Option(`${date(monday)}${week === payload.weeks[0] ? ' · En curso' : ''}`, week);
+      return new Option(`${date(monday)}${week === (payload.currentWeek || payload.weeks[0]) ? ' · En curso' : week > (payload.currentWeek || payload.weeks[0]) ? ' · Próximamente' : ''}`, week);
     }));
     weekSelect.value = selectedWeek;
     weekSelect.disabled = false;
@@ -101,9 +101,10 @@
     if (!summary.teams.some(t => t.id === selectedTeam)) selectedTeam = summary.teams[0]?.id || '';
     teamSelect.value = selectedTeam;
     document.getElementById('weekly-period').textContent = period(summary);
-    document.getElementById('weekly-state').textContent = summary.status === 'CURRENT' ? 'Semana en curso' : 'Semana cerrada';
+    document.getElementById('weekly-state').textContent = summary.status === 'CURRENT' ? 'Semana en curso' : summary.status === 'UPCOMING' ? 'Próximamente' : 'Semana cerrada';
     document.getElementById('weekly-footer').textContent = summary.status === 'CURRENT'
       ? 'De lunes a domingo · Horario de Madrid. Nuevo resumen cada lunes.'
+      : summary.status === 'UPCOMING' ? 'El resumen comenzará con el torneo · Horario de Madrid.'
       : 'Resumen de una semana anterior · Horario de Madrid.';
     document.getElementById('weekly-report').hidden = false;
     renderContent();
@@ -114,7 +115,13 @@
     const version = ++requestVersion;
     const status = document.getElementById('weekly-status');
     try {
-      let payload = await DataStore.getWeeklySummary(selectedWeek);
+      let payload;
+      try {payload = await DataStore.getWeeklySummary(selectedWeek);}
+      catch (error) {
+        if (error.status !== 404 || !selectedWeek) throw error;
+        payload = await DataStore.getWeeklySummary();
+        followLatest = true;
+      }
       if (followLatest && payload.weeks.length > 1 && payload.summary.week !== payload.weeks[1]) payload = await DataStore.getWeeklySummary(payload.weeks[1]);
       if (version !== requestVersion) return;
       const next = JSON.stringify(payload);

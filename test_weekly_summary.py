@@ -161,6 +161,52 @@ class WeeklySummaryTests(unittest.TestCase):
             weekly.maintain(db,end+8*86400)
             self.assertEqual(len(db['weeklySummaries']),2)
 
+    def test_selector_hides_pre_tournament_archives_without_deleting_them(self):
+        db=database()
+        weekly.maintain(db,END)
+        db['config']={'startDate':'2026-10-15T18:00:00+02:00'}
+        before=copy.deepcopy(db['weeklySummaries'])
+        result=weekly.public_payload(db,now=weekly.timestamp('2026-10-15T20:00'))
+        self.assertEqual(result['weeks'],['2026-10-12'])
+        self.assertEqual(result['currentWeek'],'2026-10-12')
+        self.assertEqual(result['summary']['week'],'2026-10-12')
+        self.assertEqual(result['summary']['status'],'CURRENT')
+        self.assertEqual(db['weeklySummaries'],before)
+        with self.assertRaises(LookupError):
+            weekly.public_payload(db,WEEK,weekly.timestamp('2026-10-15T20:00'))
+
+    def test_new_tournament_weeks_are_archived_normally_without_regenerating_test_weeks(self):
+        db=database()
+        weekly.maintain(db,END)
+        before=copy.deepcopy(db['weeklySummaries'][WEEK])
+        db['config']={'startDate':'2026-10-15T18:00:00+02:00'}
+        now=weekly.timestamp('2026-10-26T12:00')
+        weekly.maintain(db,now,refresh=True)
+        self.assertNotIn('2026-10-05',db['weeklySummaries'])
+        self.assertEqual(db['weeklySummaries'][WEEK],before)
+        result=weekly.public_payload(db,now=now)
+        self.assertEqual(result['weeks'],['2026-10-26','2026-10-19','2026-10-12'])
+        archived=weekly.public_payload(db,'2026-10-12',now)
+        self.assertEqual(archived['summary']['status'],'ARCHIVED')
+
+    def test_first_archive_origin_uses_madrid_tournament_week_instead_of_old_clip_board(self):
+        db=database()
+        db.pop('weeklySummaryFirstWeek')
+        # Sunday UTC is already Monday in Madrid.
+        db['config']={'startDate':'2026-10-11T23:30:00Z'}
+        now=weekly.timestamp('2026-10-19T00:01')
+        weekly.maintain(db,now)
+        self.assertEqual(db['weeklySummaryFirstWeek'],'2026-10-12')
+        self.assertEqual(set(db['weeklySummaries']),{'2026-10-12'})
+
+    def test_before_opening_week_previews_first_week_and_never_lists_preseason(self):
+        db=database()
+        db['config']={'startDate':'2026-10-15T18:00'}
+        result=weekly.public_payload(db,now=START+100)
+        self.assertEqual(result['weeks'],['2026-10-12'])
+        self.assertEqual(result['summary']['status'],'UPCOMING')
+        self.assertEqual(result['summary']['totals']['games'],0)
+
     def test_public_payload_has_no_credentials_or_votes_tokens(self):
         db=database();db['duos'][0]['passwordHash']='PRIVATE';db['config']={'riotApiKey':'PRIVATE'}
         clips.board_for(db,now=END)

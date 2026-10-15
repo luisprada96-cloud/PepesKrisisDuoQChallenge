@@ -217,18 +217,24 @@ def build_summary(db, week, clips=None, previous=None):
             'clips': clips or {'available': False, 'posts': None, 'votes': None, 'byTeam': {}, 'winner': None}}
 
 
+def tournament_first_week(db):
+    start = timestamp((db.get('config') or {}).get('startDate'))
+    return week_key(start) if start > 0 else None
+
+
 def maintain(db, now=None, refresh=False):
     """Archive before the old clips board is replaced; caller persists atomically."""
     now = time.time() if now is None else now
     current = week_key(now)
     changed = False
+    first = tournament_first_week(db)
     if 'weeklySummaryFirstWeek' not in db:
         board_week = (db.get('clips') or {}).get('week', current)
-        db['weeklySummaryFirstWeek'] = min(board_week, current)
+        db['weeklySummaryFirstWeek'] = first or min(board_week, current)
         changed = True
     ledger = db.setdefault('weeklySummaries', {})
     board = db.get('clips')
-    week = db['weeklySummaryFirstWeek']
+    week = max(db['weeklySummaryFirstWeek'], first) if first else db['weeklySummaryFirstWeek']
     while week < current:
         old = ledger.get(week)
         # Clip totals must be captured before pruning even when no one visits the recap.
@@ -247,16 +253,19 @@ def maintain(db, now=None, refresh=False):
 def public_payload(db, week=None, now=None):
     now = time.time() if now is None else now
     current = week_key(now)
-    available = [current] + sorted(db.get('weeklySummaries', {}), reverse=True)
+    first = tournament_first_week(db)
+    latest = max(current, first) if first else current
+    available = sorted({latest} | {w for w in db.get('weeklySummaries', {})
+                                  if (not first or w >= first) and w <= current}, reverse=True)
     selected = week or available[0]
     if selected not in available:
         raise LookupError('Resumen semanal no encontrado.')
-    if selected == current:
+    if selected == latest:
         board = db.get('clips') or {}
-        stats = clip_stats(db, board) if board.get('week') == current else None
-        summary = build_summary(db, current, stats)
-        summary['status'] = 'CURRENT'
+        stats = clip_stats(db, board) if board.get('week') == selected else None
+        summary = build_summary(db, selected, stats)
+        summary['status'] = 'UPCOMING' if selected > current else 'CURRENT'
     else:
         summary = copy.deepcopy(db['weeklySummaries'][selected])
         summary['status'] = 'ARCHIVED'
-    return {'weeks': available, 'summary': summary, 'timezone': 'Europe/Madrid'}
+    return {'weeks': available, 'currentWeek': current, 'summary': summary, 'timezone': 'Europe/Madrid'}
