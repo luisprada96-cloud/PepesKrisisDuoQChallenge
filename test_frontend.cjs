@@ -97,6 +97,7 @@ const discordTestRequests = [];
         else if (url.pathname === '/api/events') result = [{type: 'SHELL_LAUNCHED', attacker: 'Lanzamiento oculto'}, {type: 'SHELL_SPUN', attacker: 'Atacante', target: 'Receptor', ...assignedPenalty, penalty: {...assignedPenalty.penalty,desc:'Castigo abierto'}}, {type: 'PENALTY_ADMIN_CORRECTION', target: 'Corrección oculta'}];
         else if (url.pathname === '/api/sync/status') result = {riot:{lastSuccessAt:1791100000000,lastApiSuccessAt:'2026-10-04T14:44:00+00:00',pending:2},twitch:{lastSuccessAt:1791100000000,error:'Fallo técnico de Twitch'}};
         else if (url.pathname === '/api/admin/login') result = request.postDataJSON().pin === 'wrong' ? {success:false,error:'PIN incorrecto'} : {success: true, duos, config: {penaltyWeights: {}}, penaltyCatalog: []};
+        else if (url.pathname === '/api/admin/pickem') result = {success:true,week:'2026-10-12',weeks:['2026-10-12'],periods:{'2026-10-12':{startsAt:1792072800,endsAt:1792360800}},categories:[],predictions:[],closesAt:1792360740,endsAt:1792360800};
         else if (url.pathname === '/api/sync') { syncCount++; result = {success: true, job: {running: true}}; }
         else if (url.pathname === '/api/discord/test') { discordTestRequests.push(request.postDataJSON()); result = {success:true}; }
         else if (url.pathname === '/api/player/login') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}, sessionToken: 'fake'};

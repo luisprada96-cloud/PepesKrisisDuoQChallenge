@@ -109,6 +109,7 @@
       <div class="player-panel-tabs" role="tablist" aria-label="Secciones del equipo">
         <button type="button" id="player-shells-tab" role="tab" aria-selected="true" aria-controls="player-shells-panel" data-player-panel-tab="shells"><i class="fa-solid fa-gift" aria-hidden="true"></i> Pepazos</button>
         <button type="button" id="player-penalties-tab" role="tab" aria-selected="false" aria-controls="player-penalties-panel" tabindex="-1" data-player-panel-tab="penalties"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mis castigos <span id="player-penalties-count" class="player-tab-count">0</span></button>
+        <button type="button" id="player-obs-tab" role="tab" aria-selected="false" aria-controls="player-obs-panel" tabindex="-1" data-player-panel-tab="obs"><i class="fa-solid fa-video" aria-hidden="true"></i> Alertas OBS</button>
       </div>
 
       <section id="player-shells-panel" class="player-panel-content" role="tabpanel" aria-labelledby="player-shells-tab">
@@ -201,6 +202,25 @@
           <div id="inline-roulette-desc" style="display: none; margin-top: 0.8rem; font-size: 0.85rem; font-weight: 700; color: var(--gold-hextech); background: rgba(245, 197, 66, 0.1); padding: 0.6rem; border-radius: 6px; border: 1px dashed var(--gold-hextech);"></div>
         </div>
       </section>
+      </section>
+
+      <section id="player-obs-panel" class="admin-card player-panel-content player-obs" role="tabpanel" aria-labelledby="player-obs-tab" hidden>
+        <h2 class="admin-card-title"><i class="fa-solid fa-video" aria-hidden="true"></i> Alertas de pepazos en tu stream</h2>
+        <p class="player-penalties-intro">Muestra una animación con sonido cuando vuestro equipo recibe un pepazo, también si os lo devuelven. El aviso llega antes de abrir la ruleta.</p>
+        <label for="player-obs-url">URL para la fuente Navegador de OBS</label>
+        <input id="player-obs-url" class="form-control" type="text" readonly spellcheck="false">
+        <div class="player-obs-actions">
+          <button type="button" id="player-obs-copy" class="btn-refresh"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copiar URL</button>
+          <a id="player-obs-open" class="btn-refresh" href="overlay.html" target="_blank" rel="noopener noreferrer">Abrir overlay y probar ↗</a>
+        </div>
+        <p id="player-obs-feedback" class="player-penalties-intro" role="status" aria-live="polite"></p>
+        <ol class="player-obs-steps">
+          <li>En una escena fuera de emisión, añade una fuente <strong>Navegador</strong>, pega esta URL y usa <strong>1920 × 1080</strong>.</li>
+          <li>Abre <strong>Interactuar</strong>. Tu equipo aparece preseleccionado; introduce su contraseña habitual y pulsa <strong>Conectar equipo</strong>.</li>
+          <li>Ajusta el volumen y pulsa <strong>Probar animación y sonido</strong>. La prueba no consume pepazos ni cambia castigos.</li>
+          <li>Desmarca <strong>Apagar fuente cuando no sea visible</strong> y <strong>Actualizar navegador cuando la escena se active</strong>. Comprueba el audio con una grabación corta.</li>
+        </ol>
+        <p class="player-penalties-intro">Doble clic en el fondo de Interactuar para abrir los ajustes; Escape los oculta. La sesión de OBS es independiente de Mi Panel y caduca a las 24 horas o al reiniciar el servidor: revisa la conexión antes de cada directo. La URL no contiene contraseñas y no da acceso por sí sola.</p>
       </section>
 
       <!-- Active Debuffs (Castigos Recibidos) Section -->

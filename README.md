@@ -124,6 +124,10 @@ Los participantes se identifican con las credenciales existentes en Mi Panel. En
 
 El audio de `alerts.js` se sintetiza con Web Audio: unos ocho segundos de alarma acelerada y una explosión corta, con volumen reforzado. Requiere activar el sonido con un clic; si el navegador suspende el audio, la barra vuelve a ofrecer activarlo. Funciona también en segundo plano mientras el navegador mantenga la pestaña activa internamente. Una pestaña cerrada, suspendida o un dispositivo dormido no pueden garantizar avisos. Los pepazos que ya estaban pendientes al abrir la página se muestran sin volver a sonar.
 
+### Overlay transparente para OBS
+
+`overlay.html` utiliza el canal autenticado de avisos del equipo para mostrar una animación con sonido cuando recibe un pepazo, sin esperar a abrirlo. Admite todos los equipos y los ataques devueltos, cola de avisos, deduplicación y reconexión. Incluye una prueba local de imagen y sonido que no lanza ataques ni modifica el torneo. La configuración de la fuente y sus límites están en [OVERLAY_OBS.md](OVERLAY_OBS.md).
+
 ### Almacenamiento y recuperación
 
 `storage.py` escribe primero un archivo temporal, lo sincroniza y lo sustituye atómicamente. Antes conserva la versión válida anterior en `db.json.previous.bak` (y lo mismo para secretos). Si detecta JSON corrupto, se detiene con un error y conserva tanto el original como la copia; nunca lo reemplaza por datos vacíos. Esta copia rotatoria debe complementarse con copias externas periódicas.

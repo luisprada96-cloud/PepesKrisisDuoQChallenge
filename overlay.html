@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pepazos · Overlay OBS</title>
+  <link rel="stylesheet" href="overlay.css">
+  <script src="overlay.js" defer></script>
+</head>
+<body>
+  <section id="settings" hidden aria-label="Configurar overlay">
+    <span class="eyebrow">DUO Q CHALLENGE / OBS</span>
+    <h1>Que lluevan pepazos.</h1>
+    <p>Configura esta fuente con la escena fuera de emisión. Cada equipo usa su contraseña habitual.</p>
+    <form id="login">
+      <label>Equipo<select id="team" required><option value="">Cargando equipos…</option></select></label>
+      <label>Contraseña del equipo<input id="password" type="password" autocomplete="off" required></label>
+      <button id="submit">Conectar equipo</button>
+    </form>
+    <p id="status" role="status">Preparando overlay…</p>
+    <label>Volumen <input id="volume" type="range" min="0" max="100" value="40"></label>
+    <div class="actions">
+      <button id="preview" type="button">Probar animación y sonido</button>
+      <button id="hide" type="button">Ocultar panel</button>
+      <button id="logout" type="button" hidden>Cerrar sesión</button>
+    </div>
+    <small>En OBS: clic derecho en la fuente → Interactuar. Doble clic en el fondo para abrir este panel; Escape para ocultarlo.</small>
+  </section>
+  <div id="warning" hidden>Overlay sin conexión · abre Interactuar para revisar</div>
+  <main id="alert" hidden aria-live="polite">
+    <div class="halo"></div>
+    <svg class="shell" viewBox="0 0 300 240" aria-hidden="true">
+      <defs><linearGradient id="blue" x2="0" y2="1"><stop stop-color="#80edff"/><stop offset="1" stop-color="#2454f3"/></linearGradient></defs>
+      <path d="M65 110 45 50 100 80 150 12 179 80 252 47 233 116" fill="#ecfbff" stroke="#173353" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M45 170C26 52 266 52 255 170Z" fill="url(#blue)" stroke="#173353" stroke-width="8"/>
+      <path d="M112 83 95 128 126 167M187 83 203 128 173 167M95 128H203M150 78V125" fill="none" stroke="#173d9b" stroke-width="6"/>
+      <ellipse cx="150" cy="174" rx="116" ry="34" fill="#f2fbff" stroke="#173353" stroke-width="8"/>
+      <ellipse cx="150" cy="185" rx="62" ry="16" fill="#13345d"/>
+    </svg>
+    <div class="message"><span class="eyebrow">PEPAZO RECIBIDO</span><h2>¡PEPAZO!</h2><p id="attacker"></p><span id="target"></span></div>
+  </main>
+</body>
+</html>

@@ -114,6 +114,14 @@ function renderDashboardData() {
   if (rouletteBusy) return;
   if (!activeDuo) return;
 
+  const obsUrl = new URL('overlay.html', window.location.href);
+  obsUrl.searchParams.set('team', activeDuo.id);
+  obsUrl.searchParams.set('instance', `team-${activeDuo.id}`);
+  const obsInput = document.getElementById('player-obs-url');
+  const obsLink = document.getElementById('player-obs-open');
+  if (obsInput) obsInput.value = obsUrl.href;
+  if (obsLink) obsLink.href = obsUrl.href;
+
   const teamNameEl = document.getElementById('dash-team-name');
   const playersEl = document.getElementById('dash-players-text');
   const tierBadgeEl = document.getElementById('dash-tier-badge');
@@ -202,7 +210,7 @@ function renderPendingShells() {
 }
 
 function selectPlayerPanel(tab) {
-  playerPanelTab = tab === 'penalties' ? 'penalties' : 'shells';
+  playerPanelTab = ['penalties', 'obs'].includes(tab) ? tab : 'shells';
   document.querySelectorAll('[data-player-panel-tab]').forEach(button => {
     const selected = button.dataset.playerPanelTab === playerPanelTab;
     button.setAttribute('aria-selected', String(selected));
@@ -364,6 +372,17 @@ window.spinShellHandler = async function(attackId, outside = false) {
 RouletteWindow.onSpin(attackId => window.spinShellHandler(attackId, true));
 
 function setupPlayerListeners() {
+  document.getElementById('player-obs-copy')?.addEventListener('click', async () => {
+    const input = document.getElementById('player-obs-url');
+    const feedback = document.getElementById('player-obs-feedback');
+    try {
+      await navigator.clipboard.writeText(input.value);
+      feedback.textContent = 'URL copiada. Pégala en la fuente Navegador de OBS.';
+    } catch (_) {
+      input.focus(); input.select();
+      feedback.textContent = 'Copia la URL seleccionada con Ctrl+C (o el menú Copiar).';
+    }
+  });
   const tabs = Array.from(document.querySelectorAll('[data-player-panel-tab]'));
   tabs.forEach((button, index) => {
     button.addEventListener('click', () => selectPlayerPanel(button.dataset.playerPanelTab));

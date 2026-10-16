@@ -2095,6 +2095,12 @@ body {
 .player-penalty-empty i { color:var(--win-green); }
 .player-history-pagination { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:.75rem; margin-top:1.25rem; font-size:.85rem; }
 .player-history-pagination button:disabled { opacity:.4; cursor:default; }
+.player-obs label { display:block; margin:1.2rem 0 .5rem; font-weight:700; }
+.player-obs input { display:block; width:100%; min-width:0; }
+.player-obs-actions { display:flex; flex-wrap:wrap; gap:.75rem; margin:.8rem 0; }
+.player-obs-actions a { text-decoration:none; }
+.player-obs-steps { padding-left:1.4rem; color:var(--text-muted); line-height:1.7; }
+.player-obs-steps li { margin:.75rem 0; }
 @media (max-width:768px) {
   .player-penalty-groups, .player-penalty-history { grid-template-columns:1fr; }
   .player-panel-tabs button { flex:1; padding:.65rem; font-size:.85rem; }
