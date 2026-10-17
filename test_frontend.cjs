@@ -109,7 +109,7 @@ const discordTestRequests = [];
         return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(result)});
       }
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['roulette.html','roulette.css','roulette-core.js','roulette-window.js','roulette-popup.js','torneo.html','torneo.js','premios.html','premios.js','navigation.js','index.html','admin.html','player.html','app.js','match-history.js','admin.js','player.js','data.js','alerts.js','styles.css'].includes(filename)) return route.fulfill({status:404, body:''});
+      if (!['roulette.html','roulette.css','roulette-core.js','roulette-window.js','roulette-popup.js','torneo.html','torneo.js','premios.html','premios.js','navigation.js','index.html','admin.html','player.html','app.js','match-history.js','admin.js','admin-overlay.js','player.js','data.js','alerts.js','styles.css'].includes(filename)) return route.fulfill({status:404, body:''});
       return route.fulfill({contentType: filename.endsWith('.js') ? 'text/javascript' : filename.endsWith('.css') ? 'text/css' : 'text/html', body: fs.readFileSync(path.join(__dirname, filename))});
     });
     await page.goto('http://pepes.test/');

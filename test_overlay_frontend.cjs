@@ -32,6 +32,7 @@ const path = require('node:path');
       if (url.pathname.startsWith('/api/')) {
         requests.push(url.pathname);
         if (url.pathname === '/api/duos') return route.fulfill({json:teams});
+        if (url.pathname === '/api/overlay/effects') return route.fulfill({json:{effects:[]}});
         const body = req.postDataJSON();
         if (url.pathname === '/api/player/login') {
           assert.equal(body.password,'test-password'); chosen = body.teamId;
@@ -58,7 +59,7 @@ const path = require('node:path');
     assert.equal(await page.locator('#settings').isVisible(), false);
     assert.match(await page.locator('#attacker').textContent(), /Dúo de prueba/);
     assert.equal(await page.locator('#alert').innerText().then(text => /caparaz/i.test(text)), false);
-    assert.deepEqual(requests, ['/api/duos']);
+    assert.deepEqual(requests, ['/api/duos','/api/overlay/effects']);
     assert.ok(Math.abs(await page.evaluate(() => window.overlayAudioDuration) - 10) < .03,
       'The decoded soundtrack must last ten seconds.');
     await page.waitForTimeout(6800);
@@ -119,7 +120,7 @@ const path = require('node:path');
     await page.locator('#hide').click();
     await page.waitForTimeout(3000);
     await page.screenshot({path:path.join(__dirname,'preview','overlay-pepazo.png'),omitBackground:true});
-    assert.ok(requests.every(p=>['/api/duos','/api/player/login','/api/player/state','/api/player/logout'].includes(p)));
+    assert.ok(requests.every(p=>['/api/duos','/api/overlay/effects','/api/player/login','/api/player/state','/api/player/logout'].includes(p)));
     assert.deepEqual(errors,[]);
     console.log('PASS: teams, private session, baseline, isolation, fragmented SSE, safe text, queue, duplicates, reconnect, reload and expiry.');
   } finally {await browser.close();}

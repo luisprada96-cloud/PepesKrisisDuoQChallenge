@@ -90,6 +90,7 @@ async function loadAdminData() {
   fillConfigForm();
   refreshAdminWeeklyDiagnostics();
   refreshAdminPickem();
+  if (typeof refreshOverlayLibrary === 'function') refreshOverlayLibrary();
 }
 
 const adminPickemDate = timestamp => new Date(timestamp * 1000).toLocaleString('es-ES', {

@@ -53,6 +53,23 @@
       </p>
     </div>
 
+    <section id="admin-overlay-effects" class="admin-card" hidden>
+      <h2 class="admin-card-title">Animaciones de pepazos · OBS</h2>
+      <p>Todas las animaciones activas tienen la misma probabilidad. Cada pepazo sortea una vez y ambos integrantes ven el mismo efecto.</p>
+      <p>Sube un vídeo WebM con fondo transparente y sonido incorporado (VP8/VP9 + Opus), de 0,5 a 30 segundos y hasta 12 MiB. El nombre del atacante se añade automáticamente al final.</p>
+      <form id="overlay-upload-form">
+        <label for="overlay-upload-file">Nueva animación</label>
+        <input id="overlay-upload-file" type="file" accept="video/webm,.webm" required>
+        <label for="overlay-upload-name">Nombre</label>
+        <input id="overlay-upload-name" class="form-control" maxlength="80" required>
+        <video id="overlay-upload-preview" controls preload="metadata" hidden aria-label="Vista previa de la nueva animación"></video>
+        <p id="overlay-upload-status" role="status"></p>
+        <button id="overlay-upload-submit" class="btn-primary" type="submit" disabled>Subir y activar</button>
+      </form>
+      <p id="overlay-library-status" role="status"></p>
+      <div id="overlay-library-list" class="overlay-library-grid"></div>
+    </section>
+
     <section id="admin-diagnostics" class="admin-card" hidden>
       <h2 class="admin-card-title"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i> Estado de los datos y sincronización</h2>
       <p id="connection-status" class="connection-status" role="status" hidden></p>
@@ -376,5 +393,6 @@
   <script src="data.js"></script>
   <script src="app.js"></script>
   <script src="admin.js"></script>
+  <script src="admin-overlay.js"></script>
 </body>
 </html>

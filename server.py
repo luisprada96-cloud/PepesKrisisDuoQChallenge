@@ -5,6 +5,7 @@ Features: Real ELO Tracking, Match-V5, Player Panels, Pepazos Gamification & Aut
 """
 
 import os
+import overlay_effects
 import sys
 import json
 import time
@@ -341,7 +342,7 @@ def receiver_notification_state(token):
             return None
         return {
             "team": {"id": team_id, "name": duo.get("teamName", "Equipo")},
-            "attacks": [{key: a.get(key) for key in ("id", "attackerName", "launchedAt")}
+            "attacks": [{key: a.get(key) for key in ("id", "attackerName", "launchedAt", "overlayEffect")}
                         for a in reversed(db.get("shellAttacks", []))
                         if a.get("targetTeamId") == team_id and a.get("status") == "PENDING_SPIN"]
         }
@@ -366,6 +367,7 @@ def create_pending_shell(db, attacker, target, wheel_snapshot=None, returned_fro
         "attackerTeamId": attacker["id"], "attackerName": attacker["teamName"],
         "targetTeamId": target["id"], "targetName": target["teamName"],
         "status": "PENDING_SPIN",
+        "overlayEffect": overlay_effects.choose(db),
         "launchedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "wheelSnapshot": without_retired_weights(wheel_snapshot if wheel_snapshot is not None else db.get("config", {}).get("penaltyWeights", default_penalty_weights()))
     }
@@ -1922,8 +1924,10 @@ class CustomHandler(BaseHTTPRequestHandler):
     def _send_bytes(self, content_bytes, content_type, code=200, headers=None):
         self.send_response(code)
         self.send_header('Content-Type', content_type)
-        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
-        self.send_header('Pragma', 'no-cache')
+        if not headers or 'Cache-Control' not in headers:
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        if not headers or 'Cache-Control' not in headers:
+            self.send_header('Pragma', 'no-cache')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Referrer-Policy', 'same-origin')
         self.send_header('Content-Length', str(len(content_bytes)))
@@ -2023,6 +2027,40 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == '/api/overlay/effects':
+            with db_lock:
+                effects = overlay_effects.library(load_db())
+            self._send_json({'effects': [effect for effect in effects if effect['active']]})
+            return
+        if path.startswith('/api/overlay/media/'):
+            digest = path.removeprefix('/api/overlay/media/')
+            with db_lock:
+                exists = any(effect['id'] == digest and effect['kind'] == 'video' for effect in overlay_effects.library(load_db()))
+            if not exists:
+                self._send_json({'error': 'Vídeo no encontrado'}, 404)
+                return
+            payload = overlay_effects.media_bytes(digest, DB_FILE, remote_backend)
+            if payload is None:
+                self._send_json({'error': 'Vídeo no encontrado'}, 404)
+                return
+            headers = {'Cache-Control': 'public, max-age=31536000, immutable', 'Accept-Ranges': 'bytes'}
+            requested = self.headers.get('Range')
+            if requested:
+                match = re.fullmatch(r'bytes=(\d*)-(\d*)', requested)
+                if not match or not any(match.groups()):
+                    self._send_bytes(b'', 'video/webm', 416, {'Content-Range': f'bytes */{len(payload)}'})
+                    return
+                left, right = match.groups()
+                start = int(left) if left else max(0, len(payload) - int(right))
+                end = min(int(right), len(payload)-1) if right and left else len(payload)-1
+                if start > end or start >= len(payload):
+                    self._send_bytes(b'', 'video/webm', 416, {'Content-Range': f'bytes */{len(payload)}'})
+                    return
+                headers['Content-Range'] = f'bytes {start}-{end}/{len(payload)}'
+                self._send_bytes(payload[start:end+1], 'video/webm', 206, headers)
+            else:
+                self._send_bytes(payload, 'video/webm', headers=headers)
+            return
         if path == '/api/pickem':
             visitor_token = self.clips_visitor('pepes_pickem_visitor')
             new_token = visitor_token is None
@@ -2152,7 +2190,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
         public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
         public_files.update({'porra.html', 'porra.js', 'porra.css'})
-        public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3'})
+        public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3', 'admin-overlay.js'})
         public_files.update({'campeones.html', 'campeones.js', 'campeones.css'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
@@ -2193,9 +2231,51 @@ class CustomHandler(BaseHTTPRequestHandler):
             fallback = "Error al enviar el mensaje de prueba a Discord."
             self._send_json({"success": False, "error": result.get("error", fallback)}, 502)
 
+    def upload_overlay(self):
+        if not self.clips_origin_allowed():
+            self._send_json({'error': 'Origen no permitido'}, 403)
+            return
+        pin = self.headers.get('X-Admin-Pin', '')
+        with db_lock:
+            valid = verify_admin_pin(load_db(), pin)
+        if not valid:
+            self._send_json({'error': 'PIN incorrecto'}, 401)
+            return
+        length = int(self.headers.get('Content-Length', '0'))
+        if not 32 <= length <= overlay_effects.MAX_BYTES:
+            self._send_json({'error': 'El vídeo debe ocupar como máximo 12 MiB'}, 413)
+            return
+        if self.headers.get('Content-Type', '').split(';')[0] != 'video/webm':
+            self._send_json({'error': 'Selecciona un vídeo WebM'}, 400)
+            return
+        self.connection.settimeout(30)
+        blob = self.rfile.read(length)  # Never hold the tournament lock while receiving a file.
+        try:
+            if len(blob) != length:
+                raise ValueError('El vídeo no se recibió completo.')
+            effect = overlay_effects.validate_upload(urllib.parse.unquote(self.headers.get('X-Overlay-Name', '')),
+                                                     self.headers.get('X-Overlay-Duration'), blob)
+            with db_lock:
+                db = load_db()
+                if not verify_admin_pin(db, pin):
+                    self._send_json({'error': 'PIN incorrecto'}, 401)
+                    return
+                overlay_effects.add(db, effect)
+                # Store immutable bytes first; a later catalogue save failure leaves only an unreferenced blob.
+                overlay_effects.media_bytes(effect['id'], DB_FILE, remote_backend, blob)
+                save_db(db)
+                effects = overlay_effects.library(db)
+        except ValueError as error:
+            self._send_json({'error': str(error)}, 400)
+            return
+        self._send_json({'success': True, 'effects': effects})
+
     @http_errors
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == '/api/admin/overlay/upload':
+            self.upload_overlay()
+            return
         if path == '/api/discord/test':
             self.send_discord_test(path, self.read_body())
             return
@@ -2206,6 +2286,26 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         data = self.read_body()
         db = load_db()
+
+        if parsed.path == '/api/admin/overlay':
+            if not self.clips_origin_allowed():
+                self._send_json({'error': 'Origen no permitido'}, 403)
+                return
+            if not verify_admin_pin(db, str(data.get('authPin', '')).strip()):
+                self._send_json({'error': 'PIN incorrecto'}, 401)
+                return
+            if data.get('action') == 'toggle':
+                try:
+                    overlay_effects.set_active(db, data.get('id'), data.get('active'))
+                except ValueError as error:
+                    self._send_json({'error': str(error)}, 400)
+                    return
+                save_db(db)
+            elif data.get('action', 'list') != 'list':
+                self._send_json({'error': 'Acción inválida'}, 400)
+                return
+            self._send_json({'success': True, 'effects': overlay_effects.library(db)})
+            return
 
         if parsed.path == '/api/admin/pickem':
             if not verify_admin_pin(db, str(data.get('authPin', '')).strip()):

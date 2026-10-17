@@ -27,3 +27,6 @@ client_secret*.json
 
 neon-setup/
 neon_backup_*.json
+
+# Runtime overlay media (stored outside source control)
+overlay-media/

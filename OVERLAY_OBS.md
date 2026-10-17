@@ -110,3 +110,57 @@ Para reconstruir el MP3 en desarrollo, `build_overlay_audio.py` acepta
 `--ffmpeg`, `--first` y `--second` con las rutas locales de FFmpeg y los dos clips
 originales. No sube archivos ni necesita claves. Los clips originales no son
 necesarios para ejecutar la web; la mezcla final está incluida en el repositorio.
+
+## Biblioteca de animaciones y sorteo compartido
+
+En Administración → Animaciones de pepazos, subir un WebM con VP8/VP9, fondo
+transparente y audio Opus incorporado. La página permite revisar el vídeo antes
+de enviarlo. Debe indicar una duración entre 0,5 y 30 s y ocupar como máximo
+12 MiB. La biblioteca admite 30 efectos y 100 MiB de vídeo en total.
+
+Los vídeos entran activos automáticamente. Todos los efectos activos, incluido
+el misil integrado, tienen exactamente la misma probabilidad. Se pueden activar
+o desactivar; debe quedar uno activo. La prueba del overlay también elige al azar.
+
+El servidor sortea al crear cada ataque, incluidos los pepazos devueltos, y guarda
+una copia del efecto en `shellAttacks[].overlayEffect`. Los dos integrantes reciben
+la misma copia por SSE. Leer, reconectar o desactivar un efecto no cambia los
+pepazos que ya lo tenían asignado. No se borran vídeos desde el panel, por lo que
+sus URL siguen funcionando para avisos asignados anteriormente.
+
+Cada vídeo se reproduce completo y después muestra el atacante durante 3,5 s.
+El misil integrado mantiene sus 10 s originales. Si un vídeo falla al cargar o el
+navegador no permite reproducirlo, se usa el misil como respaldo, sin repetir el
+sorteo. El volumen y la cola también funcionan para vídeos. Los ataques antiguos
+sin efecto guardado usan el misil.
+
+El nuevo reproductor necesita cargarse una vez tras este despliegue (reiniciar OBS
+o actualizar la fuente). Desde entonces, subir nuevas animaciones desde el panel
+no requiere recargar, cambiar URL ni volver a iniciar sesión en los OBS conectados:
+el siguiente pepazo lleva directamente la URL y duración de su efecto sorteado.
+
+### Persistencia y despliegue (Luis)
+
+La biblioteca guarda solo metadatos en el documento del torneo. Los bytes de los
+vídeos se guardan por separado: en `overlay-media/` junto a `db.json` en local, y en
+una tabla `overlay_media` de Neon en producción. La tabla se crea automáticamente
+al subir el primer vídeo; el usuario de la base necesita permiso para crearla.
+No se necesitan nuevos servicios, claves ni dependencias Python. Las URL de vídeo
+usan el hash del archivo y caché inmutable, con soporte de peticiones Range.
+
+La copia de seguridad local debe incluir también `overlay-media/`; una exportación
+JSON no contiene los vídeos. En Neon, conservar la tabla `overlay_media` junto a
+`tournament_state`. Los archivos de vídeo son públicos para reproducirlos en OBS;
+la subida y el cambio de estado requieren PIN administrativo y mismo origen.
+
+Dockerfile y `.dockerignore` ya incluyen el módulo y la nueva interfaz de
+administración. El despliegue sigue siendo manual por Luis. No habilitar autodeploy.
+
+### Pruebas de biblioteca
+
+`python -B -m unittest test_overlay_effects` usa datos temporales: sorteo, persistencia,
+autorización, límites, duplicados, errores, reproducción de bytes/rangos y que las
+lecturas no vuelvan a sortear. La integración Neon se prueba con conexión simulada.
+`node test_overlay_library_frontend.cjs` usa un WebM sintético transparente y un
+servidor temporal: subida real desde administración, dos overlays conectados antes
+de subirlo, mismo efecto, alfa, nombre, reconexión y vista móvil. No toca producción.

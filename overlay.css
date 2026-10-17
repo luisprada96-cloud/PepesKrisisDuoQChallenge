@@ -32,3 +32,8 @@ h1{font-size:36px;margin:12px 0}#settings p,small{color:#bfcee4;line-height:1.5}
 .message h2{font-size:clamp(52px,6vw,115px);margin:4px 0}
 .message p{font-size:clamp(28px,3.1vw,60px);line-height:1.15;margin:5px 0 10px;color:#fff3bd;font-weight:900}
 .sender-label{font-size:clamp(11px,1vw,18px);letter-spacing:4px;color:#ffd89b;font-weight:700}
+
+#effect-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#alert.video-effect .rocket-path,#alert.video-effect .flight-label,#alert.video-effect .explosion{display:none}
+#alert.video-effect .message{animation:none;opacity:0;top:50%;transform:translateY(-50%)}
+#alert.video-effect.video-hold .message{opacity:1}

@@ -77,3 +77,6 @@
 
 !player_accounts.py
 !riot_accounts_sync.py
+
+!admin-overlay.js
+!overlay_effects.py

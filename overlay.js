@@ -11,7 +11,7 @@
   let connected = false, volume = .4;
   let soundBuffer, soundLoad, activeSource, activeGain;
   const DURATION_MS = 10000;
-  let flightAnimation;
+  let flightAnimation, playbackGeneration = 0;
   function flyRocket() {
     flightAnimation?.cancel();
     // Smooth Catmull-Rom spline, resampled by distance for a steady flight speed.
@@ -101,18 +101,59 @@
     source.onended = () => { gain.disconnect(); if (activeSource === source) { activeSource = null; activeGain = null; } };
     source.start();
   }
+  function clearVideo() {
+    const video = $('effect-video');
+    video.onended = video.onerror = video.onplaying = null;
+    video.pause(); video.removeAttribute('src'); video.load(); video.hidden = true;
+    $('alert').classList.remove('video-effect', 'video-hold');
+  }
   function playNext() {
     if (playing || !queue.length) return;
     const attack = queue.shift(); playing = true;
+    const run = ++playbackGeneration;
     $('attacker').textContent = attack.attackerName || 'Un rival';
     $('target').textContent = team?.name || 'Equipo de prueba';
     $('alert').hidden = false;
-    flyRocket();
-    sound();
-    animationTimer = setTimeout(() => {
+    const finish = () => {
+      if (run !== playbackGeneration) return;
+      playbackGeneration++;
+      clearTimeout(animationTimer); clearVideo();
       $('alert').hidden = true; playing = false;
       animationTimer = setTimeout(playNext, 250);
-    }, DURATION_MS);
+    };
+    let usingBuiltin = false;
+    const builtin = () => {
+      if (run !== playbackGeneration || usingBuiltin) return;
+      usingBuiltin = true;
+      clearTimeout(animationTimer); clearVideo();
+      flyRocket(); sound();
+      animationTimer = setTimeout(finish, DURATION_MS);
+    };
+    const effect = attack.overlayEffect;
+    if (effect?.kind !== 'video' || !/^\/api\/overlay\/media\/[a-f0-9]{64}$/.test(effect.url || '')) {
+      builtin(); return;
+    }
+    stopSound(); flightAnimation?.cancel();
+    $('alert').classList.add('video-effect');
+    const video = $('effect-video'); video.hidden = false; video.volume = volume;
+    let began = false, ended = false;
+    const holdSender = () => {
+      if (run !== playbackGeneration || ended) return;
+      ended = true; clearTimeout(animationTimer); video.pause(); video.hidden = true;
+      $('alert').classList.add('video-hold');
+      animationTimer = setTimeout(finish, 3500);
+    };
+    video.onended = holdSender;
+    video.onerror = builtin; // A failed asset uses the fixed fallback, never another draw.
+    video.onplaying = () => {
+      if (run !== playbackGeneration || began) return;
+      began = true; clearTimeout(animationTimer);
+      // An invalid/unfinished file must not block the rest of the alert queue.
+      animationTimer = setTimeout(holdSender, Math.min(30000, Math.max(500, Number(effect.durationMs) || 10000)) + 500);
+    };
+    video.src = effect.url;
+    animationTimer = setTimeout(builtin, 10000);
+    video.play().catch(builtin);
   }
   function receive(state) {
     if (state.team?.id !== team?.id || !Array.isArray(state.attacks)) return;
@@ -126,7 +167,7 @@
   }
   function stopConnection() {
     generation++; controller?.abort(); clearTimeout(retry);
-    clearTimeout(animationTimer); stopSound(); flightAnimation?.cancel(); queue = []; playing = false; $('alert').hidden = true;
+    clearTimeout(animationTimer); playbackGeneration++; clearVideo(); stopSound(); flightAnimation?.cancel(); queue = []; playing = false; $('alert').hidden = true;
   }
   function expired() {
     stopConnection(); token = ''; team = null; localStorage.removeItem(key);
@@ -201,9 +242,13 @@
     } catch (error) { status(error.message); }
     finally { $('submit').disabled = false; }
   });
-  $('volume').addEventListener('input', () => { volume = Number($('volume').value)/100; if (activeGain) activeGain.gain.value = volume; save(); });
+  $('volume').addEventListener('input', () => { volume = Number($('volume').value)/100; if (activeGain) activeGain.gain.value = volume; $('effect-video').volume = volume; save(); });
   $('preview').addEventListener('click', async () => {
-    await enableAudio(); queue.push({attackerName:'Dúo de prueba'}); hideSettings(); playNext();
+    await enableAudio();
+    let effects = [];
+    try { effects = (await api('/overlay/effects')).effects || []; } catch (_) { /* Local fallback remains available. */ }
+    const overlayEffect = effects.length ? effects[Math.floor(Math.random()*effects.length)] : null;
+    queue.push({attackerName:'Dúo de prueba', overlayEffect}); hideSettings(); playNext();
   });
   $('hide').addEventListener('click', hideSettings);
   $('logout').addEventListener('click', () => {

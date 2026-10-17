@@ -131,6 +131,8 @@ El audio de `alerts.js` se sintetiza con Web Audio: unos ocho segundos de alarma
 
 ### Overlay transparente para OBS
 
+Administración incluye una biblioteca de WebM con sonido. Todas las animaciones activas tienen la misma probabilidad; el servidor guarda el sorteo en cada pepazo para compartirlo entre los dos integrantes. Los nuevos vídeos se utilizan en los overlays conectados sin cambiar su URL ni recargarlos. Los archivos se conservan en Neon en producción y en un directorio de medios en local.
+
 `overlay.html` muestra un misil con Pepo, sirena tipo alarma nuclear, voces y explosión en una secuencia de 10 segundos; el atacante queda destacado al final. Utiliza el canal autenticado de avisos del equipo para mostrar una animación con sonido cuando recibe un pepazo, sin esperar a abrirlo. Admite todos los equipos y los ataques devueltos, cola de avisos, deduplicación y reconexión. Incluye una prueba local de imagen y sonido que no lanza ataques ni modifica el torneo. La configuración de la fuente y sus límites están en [OVERLAY_OBS.md](OVERLAY_OBS.md).
 
 ### Almacenamiento y recuperación
