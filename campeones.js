@@ -5,6 +5,16 @@
   const key = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es');
   let board = null, selected = '', timer, revision = 0, controller, disconnected = false;
   const detail = champion => `${champion.name} · ${champion.games === 1 ? '1 aparición' : `${champion.games} apariciones`} en el torneo.`;
+  function renderPanel(champion) {
+    $('champion-modal-title').textContent = champion.name;
+    $('champion-modal-summary').textContent = detail(champion);
+    const players = champion.players || [];
+    $('champion-modal-players').innerHTML = players.length ? `<div class="champion-players-table-wrap"><table class="champion-players-table"><thead><tr><th scope="col">Jugador / dúo</th><th scope="col">Partidas</th><th scope="col">KDA</th><th scope="col">K / D / A</th></tr></thead><tbody>${players.map(player => {
+      const known = player.statsGames > 0 && Number.isFinite(player.kda);
+      const partial = known && player.statsGames < player.games;
+      return `<tr><td><strong>${escape(player.name)}</strong><span class="champion-player-team">${escape(player.teamName)}</span></td><td>${escape(player.games)}</td><td><strong class="champion-player-kda">${known ? player.kda.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'}</strong>${!known ? '<small>Estadísticas pendientes</small>' : partial ? `<small>Parcial: ${escape(player.statsGames)} de ${escape(player.games)} partidas</small>` : ''}</td><td>${known ? `${escape(player.kills)} / ${escape(player.deaths)} / ${escape(player.assists)}` : '—'}</td></tr>`;
+    }).join('')}</tbody></table></div>` : `<p class="champion-players-empty">${champion.games ? 'El detalle de jugadores todavía no está disponible.' : 'Ningún participante ha jugado este campeón en el torneo todavía.'}</p>`;
+  }
   function render() {
     if (!board) return;
     const query = key($('champions-search').value.trim());
@@ -19,7 +29,7 @@
     const focused = document.activeElement?.closest('[data-champion-id]')?.dataset.championId;
     $('champions-grid').innerHTML = rows.map(champion => {
       const tooltip = champion.games ? `${champion.games} ${champion.games === 1 ? 'aparición' : 'apariciones'}` : 'Aún sin jugar';
-      return `<button type="button" class="champion-tile${champion.played ? ' is-played' : ''}${champion.id === selected ? ' is-selected' : ''}" data-champion-id="${escape(champion.id)}" aria-label="${escape(champion.name)}" aria-describedby="champion-tooltip-${escape(champion.id)}"><span class="champion-art"><span class="champion-placeholder" aria-hidden="true" hidden>${escape(champion.name.slice(0,2))}</span><img src="https://ddragon.leagueoflegends.com/cdn/${encodeURIComponent(board.catalogVersion)}/img/champion/${encodeURIComponent(champion.id)}.png" alt="" loading="lazy" width="120" height="120"></span>${champion.played ? '<span class="champion-check" aria-hidden="true">✓</span>' : ''}<span class="champion-name">${escape(champion.name)}</span><span class="champion-tooltip" role="tooltip" id="champion-tooltip-${escape(champion.id)}">${tooltip}</span></button>`;
+      return `<button type="button" class="champion-tile${champion.played ? ' is-played' : ''}${champion.id === selected ? ' is-selected' : ''}" data-champion-id="${escape(champion.id)}" aria-label="${escape(champion.name)}" aria-haspopup="dialog" aria-controls="champion-modal" aria-describedby="champion-tooltip-${escape(champion.id)}"><span class="champion-art"><span class="champion-placeholder" aria-hidden="true" hidden>${escape(champion.name.slice(0,2))}</span><img src="https://ddragon.leagueoflegends.com/cdn/${encodeURIComponent(board.catalogVersion)}/img/champion/${encodeURIComponent(champion.id)}.png" alt="" loading="lazy" width="120" height="120"></span>${champion.played ? '<span class="champion-check" aria-hidden="true">✓</span>' : ''}<span class="champion-name">${escape(champion.name)}</span><span class="champion-tooltip" role="tooltip" id="champion-tooltip-${escape(champion.id)}">${tooltip}</span></button>`;
     }).join('');
     if (focused) [...$('champions-grid').querySelectorAll('[data-champion-id]')].find(tile => tile.dataset.championId === focused)?.focus({preventScroll:true});
     $('champions-empty').hidden = !!rows.length;
@@ -27,6 +37,7 @@
     $('champions-status').classList.toggle('is-error',disconnected);
     const current = board.champions.find(champion => champion.id === selected);
     if (current) $('champions-detail').textContent = detail(current);
+    if (current && $('champion-modal').open) renderPanel(current);
   }
   async function refresh() {
     clearTimeout(timer); controller?.abort();
@@ -57,13 +68,25 @@
   document.addEventListener('DOMContentLoaded',() => {
     $('champions-search').addEventListener('input',render);
     $('champions-refresh').addEventListener('click',refresh);
+    const modal = $('champion-modal');
+    $('champion-modal-close').addEventListener('click', () => modal.close());
+    modal.addEventListener('click', event => {
+      const rect = modal.getBoundingClientRect();
+      if (event.target === modal && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) modal.close();
+    });
+    modal.addEventListener('close', () => {
+      [...$('champions-grid').querySelectorAll('[data-champion-id]')].find(tile => tile.dataset.championId === selected)?.focus({preventScroll:true});
+    });
     $('champions-grid').addEventListener('click',event => {
       const tile = event.target.closest('[data-champion-id]');
       if (!tile || !board) return;
       selected = tile.dataset.championId;
       $('champions-grid').querySelectorAll('.is-selected').forEach(item => item.classList.remove('is-selected'));
       tile.classList.add('is-selected');
-      $('champions-detail').textContent = detail(board.champions.find(champion => champion.id === selected));
+      const champion = board.champions.find(champion => champion.id === selected);
+      if (!champion) return;
+      $('champions-detail').textContent = detail(champion);
+      renderPanel(champion); modal.showModal();
     });
     $('champions-grid').addEventListener('error',event => {
       if (event.target.tagName !== 'IMG') return;

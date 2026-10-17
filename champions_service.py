@@ -2,7 +2,7 @@
 import json
 import math
 import unicodedata
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from pickem_service import champion_key
@@ -11,6 +11,13 @@ from weekly_summary import game_time, timestamp
 CATALOG = json.loads((Path(__file__).parent / 'assets' / 'pickem' / 'champions.json').read_text(encoding='utf-8'))
 OPTIONS = CATALOG['champions']
 LOOKUP = {champion_key(value): row['id'] for row in OPTIONS for value in (row['id'], row['label'])}
+
+
+def combat_stats(stats):
+    values = [stats.get(key) for key in ('kills', 'deaths', 'assists')]
+    if all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in values):
+        return values
+    return None
 
 
 def build_album(db, minimum_duration=600):
@@ -59,16 +66,32 @@ def build_album(db, minimum_duration=600):
                     markers.add((mid, 'account', str(uid)))
                 if participant:
                     markers.add((mid, 'participant', str(participant)))
-                candidates.append((bool(stats.get('championName')), champion, mid, markers))
+                combat = combat_stats(stats)
+                person = (duo.get('id'), key)
+                name = player.get('displayName') or player.get('name') or stats.get('riotIdGameName') or ('Integrante 1' if key == 'player1' else 'Integrante 2')
+                candidates.append((bool(stats.get('championName')), combat is not None, champion, markers,
+                                   person, name, duo.get('teamName') or 'Equipo', combat))
     # Prefer full participant evidence over a duplicated legacy row.
-    seen = set()
-    for _, champion, mid, markers in sorted(candidates, key=lambda row: row[0], reverse=True):
+    seen, players = set(), defaultdict(dict)
+    for _, _, champion, markers, person, name, team, combat in sorted(candidates, key=lambda row: row[:2], reverse=True):
         duplicate = bool(markers & seen)
         seen.update(markers)
         if not duplicate:
             counts[champion] += 1
+            row = players[champion].setdefault(person, {'name': name, 'teamName': team, 'games': 0,
+                                                       'statsGames': 0, 'kills': 0, 'deaths': 0, 'assists': 0})
+            row['games'] += 1
+            if combat is not None:
+                row['statsGames'] += 1
+                for key, value in zip(('kills', 'deaths', 'assists'), combat):
+                    row[key] += value
+    for champion_players in players.values():
+        for row in champion_players.values():
+            row['kda'] = (row['kills'] + row['assists']) / max(1, row['deaths']) if row['statsGames'] else None
     champions = [{'id': row['id'], 'name': row['label'], 'games': counts[row['id']],
-                  'played': counts[row['id']] > 0} for row in OPTIONS]
+                  'played': counts[row['id']] > 0,
+                  'players': sorted(players[row['id']].values(), key=lambda player: (-player['games'], player['name'].casefold(), player['teamName'].casefold()))}
+                 for row in OPTIONS]
     def order(row):
         name = ''.join(c for c in unicodedata.normalize('NFKD', row['name']) if not unicodedata.combining(c))
         return -row['games'], name.casefold(), row['id']

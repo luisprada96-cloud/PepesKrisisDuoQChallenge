@@ -59,12 +59,21 @@
       </div>
       <p id="champions-status" class="champions-status" role="status" aria-live="polite">Cargando campeones…</p>
       <p id="champions-warning" class="champions-warning" hidden></p>
-      <p id="champions-detail" class="champions-detail" aria-live="polite">Pasa el ratón, da foco o toca un campeón para ver sus apariciones.</p>
+      <p id="champions-detail" class="champions-detail" aria-live="polite">Pulsa un campeón para ver quién lo ha jugado, sus partidas y su KDA.</p>
       <div id="champions-grid" class="champions-grid" aria-label="Álbum de campeones"></div>
       <p id="champions-empty" class="champions-empty" hidden>No hay campeones que coincidan con tu búsqueda.</p>
       <p class="champions-footnote">Solo cuentan los integrantes inscritos y sus partidas Solo/Duo dentro del torneo. Una aparición es un jugador usando ese campeón; no se incluyen rivales externos, remakes ni partidas de menos de 10 minutos.</p>
     </section>
     <noscript><p>Activa JavaScript para consultar las apariciones de los campeones.</p></noscript>
   </main>
+  <dialog id="champion-modal" class="champion-modal" aria-labelledby="champion-modal-title">
+    <div class="champion-modal-header">
+      <div><span class="champions-eyebrow">PARTICIPANTES DEL TORNEO</span><h2 id="champion-modal-title"></h2></div>
+      <button id="champion-modal-close" class="btn-refresh" type="button" aria-label="Cerrar detalle de campeón" autofocus>✕</button>
+    </div>
+    <p id="champion-modal-summary" class="champions-detail"></p>
+    <div id="champion-modal-players"></div>
+    <p class="champions-footnote">KDA acumulado = (asesinatos + asistencias) ÷ muertes, con divisor mínimo de 1. Solo se usan partidas del torneo con estadísticas completas.</p>
+  </dialog>
 </body>
 </html>

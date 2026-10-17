@@ -30,6 +30,39 @@ def counts(result):
 
 
 class AlbumTests(unittest.TestCase):
+    def test_champion_players_aggregate_accounts_and_totals_not_match_kda_averages(self):
+        first = game(first='Diana', second='Diana')
+        first['player1Stats'].update(kills=10,deaths=1,assists=0)
+        first['player2Stats'].update(kills=1,deaths=0,assists=4)
+        second = game('EUW1_TWO', first='Diana')
+        second['player1Stats'].update(puuid='other-account', kills=2,deaths=5,assists=6)
+        db = database(first, second, copy.deepcopy(first))
+        duo = db['duos'][0];duo['teamName']='LosELOgidos'
+        duo['player1'].update(displayName='UnluckyPingu',accounts=[{'name':'One','puuid':'one'},{'name':'Other','puuid':'other-account'}])
+        duo['player2']['displayName']='UnluckyPanda'
+        result = album.build_album(db)
+        diana = next(champion for champion in result['champions'] if champion['id']=='Diana')
+        self.assertEqual(diana['games'],3)
+        self.assertEqual(len(diana['players']),2)
+        pingu,panda=diana['players']
+        self.assertEqual((pingu['name'],pingu['teamName'],pingu['games']),('UnluckyPingu','LosELOgidos',2))
+        self.assertEqual((pingu['kills'],pingu['deaths'],pingu['assists'],pingu['kda']),(12,6,6,3))
+        self.assertEqual((panda['games'],panda['kda']),(1,5))
+        self.assertNotIn('puuid',json.dumps(result))
+
+    def test_missing_combat_stats_are_not_zero_kda_and_complete_duplicates_win(self):
+        incomplete=game(first='Diana')
+        complete=copy.deepcopy(incomplete);complete['player1Stats'].update(kills=5,deaths=0,assists=2)
+        db=database(incomplete,complete,game('second',first='Diana'))
+        diana=next(row for row in album.build_album(db)['champions'] if row['id']=='Diana')
+        player=diana['players'][0]
+        self.assertEqual((player['games'],player['statsGames'],player['kda']),(2,1,7))
+        lux=next(row for row in album.build_album(db)['champions'] if row['id']=='Lux')
+        self.assertIsNone(lux['players'][0]['kda'])
+        self.assertEqual(lux['players'][0]['statsGames'],0)
+        empty=next(row for row in album.build_album(db)['champions'] if row['id']=='Aatrox')
+        self.assertEqual(empty['players'],[])
+
     def test_catalog_sort_zeroes_and_no_mutation(self):
         db=database(game(),game('EUW1_TWO','Ahri','Zed'))
         before=copy.deepcopy(db)
