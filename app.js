@@ -162,7 +162,6 @@ function renderParticipantCell(duo, playerKey) {
   const twitch = participantTwitch(duo, playerKey);
   return `<div class="participant-cell">
     <strong class="participant-name">${escapeHtml(name)}</strong>
-    ${participantAccountsMarkup(player)}
     <div data-player-rank="${playerKey}">${renderPlayerRank(duo, playerKey)}</div>
     ${twitch.url ? `<a class="twitch-link${twitch.live ? ' is-live' : ''}" href="${escapeHtml(twitch.url)}" target="_blank" rel="noopener noreferrer" aria-label="${twitch.live ? 'Ver en directo a' : 'Ver en Twitch a'} ${escapeHtml(name)}">
       <i class="fa-brands fa-twitch" aria-hidden="true"></i>${twitch.live ? '<span class="live-dot" aria-hidden="true"></span> EN DIRECTO' : 'Ver en Twitch'}

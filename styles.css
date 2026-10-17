@@ -2125,6 +2125,4 @@ body {
 .admin-account-row .admin-account-choice { display: flex; gap: .3rem; align-items: center; padding-bottom: .65rem; }
 .admin-account-row input[readonly] { opacity: .8; }
 .admin-account-settings > small { display: block; margin-top: .55rem; color: var(--text-muted); }
-.participant-accounts { font-size: .75rem; color: var(--text-muted); max-width: 260px; }
-.participant-accounts ul { padding-left: 1rem; margin: .3rem 0; }
 @media (max-width: 600px) { .admin-account-row { grid-template-columns: auto minmax(0,1fr) 70px; } .admin-account-row button { grid-column: 2 / 4; justify-self: start; } }

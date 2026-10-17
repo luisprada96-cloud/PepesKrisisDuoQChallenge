@@ -273,13 +273,3 @@ function participantEloAccount(player = {}) {
   const choices = player.accounts || [];
   return choices.find(a => a.id === player.eloAccountId) || choices[0] || player;
 }
-
-function participantAccountsMarkup(player = {}) {
-  const choices = player.accounts || [];
-  if (choices.length < 2) return '';
-  return `<details class="participant-accounts"><summary>${choices.length} cuentas</summary><ul>${choices.map(a => {
-    const label = `${a.name}#${a.tag || 'EUW'}`;
-    const url = `https://www.op.gg/summoners/euw/${encodeURIComponent(a.name)}-${encodeURIComponent(a.tag || 'EUW')}`;
-    return `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>${a.id === player.eloAccountId ? ' · ELO' : ''}</li>`;
-  }).join('')}</ul></details>`;
-}
