@@ -11,6 +11,7 @@ let playerPanelTab = 'shells';
 let playerPenaltyView = 'pending';
 let playerHistoryPage = 1;
 const PLAYER_HISTORY_PAGE_SIZE = 20;
+const PLAYER_STREAK_REWARD_WINS = 4;
 let playerSessionToken = sessionStorage.getItem('pepes_player_token') || '';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -146,13 +147,13 @@ function renderDashboardData() {
   const shells = activeDuo.blueShells || 0;
   if (shellsCountEl) shellsCountEl.textContent = shells;
 
-  // Streak calculations (1 shell per 3 consecutive wins)
+  // One pepazo per block of four wins, matching SHELL_WIN_STREAK on the server.
   const streak = activeDuo.streak || 0;
-  const progressInCycle = streak % 3;
-  const progressPercent = Math.min(100, Math.round((progressInCycle / 3) * 100));
+  const progressInCycle = streak % PLAYER_STREAK_REWARD_WINS;
+  const progressPercent = Math.min(100, Math.round((progressInCycle / PLAYER_STREAK_REWARD_WINS) * 100));
 
   if (streakTextEl) {
-    const remaining = 3 - progressInCycle;
+    const remaining = PLAYER_STREAK_REWARD_WINS - progressInCycle;
     streakTextEl.textContent = `${streak}W racha activa • ${remaining} victoria${remaining !== 1 ? 's' : ''} más para +1 Pepazo`;
   }
   if (streakBarEl) {

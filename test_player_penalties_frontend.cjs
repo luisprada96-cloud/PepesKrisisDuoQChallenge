@@ -49,6 +49,11 @@ const path = require('node:path');
     await page.locator('#player-shells-tab').waitFor();
     assert.equal(await page.locator('#player-shells-panel').isVisible(), true);
     assert.equal(await page.locator('#player-penalties-panel').isVisible(), false);
+    for (const [streak, remaining, width] of [[0,4,'0%'],[3,1,'75%'],[4,4,'0%']]) {
+      await page.evaluate(streak => {activeDuo.streak = streak; renderDashboardData();}, streak);
+      assert.match(await page.locator('#dash-streak-text').textContent(), new RegExp(`${remaining} victoria`));
+      assert.equal(await page.locator('#dash-streak-bar').evaluate(el => el.style.width), width);
+    }
     await page.locator('#player-obs-tab').click();
     assert.equal(await page.locator('#player-obs-panel').isVisible(),true);
     const obsUrl = new URL(await page.locator('#player-obs-url').inputValue());
