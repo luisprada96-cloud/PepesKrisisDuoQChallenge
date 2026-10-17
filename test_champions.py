@@ -30,6 +30,29 @@ def counts(result):
 
 
 class AlbumTests(unittest.TestCase):
+    def test_winrate_uses_individual_results_and_deduplicates_unknowns(self):
+        first = game('win', first='Diana', second='Diana', result='WIN')
+        first['player1Stats']['win'] = True
+        first['player2Stats']['win'] = False
+        second = game('loss', first='Diana')
+        second['player1Stats']['win'] = False
+        unknown = game('unknown', first='Diana', result='LOSS')
+        db = database(first, second, unknown, copy.deepcopy(first))
+        diana = next(row for row in album.build_album(db)['champions'] if row['id']=='Diana')
+        p1,p2 = diana['players']
+        self.assertEqual((p1['games'],p1['resultGames'],p1['wins'],p1['losses'],p1['winrate']),(3,2,1,1,50))
+        self.assertEqual((p2['games'],p2['winrate']),(1,0))
+        lux = next(row for row in album.build_album(db)['champions'] if row['id']=='Lux')
+        self.assertIsNone(lux['players'][0]['winrate'])
+
+    def test_duplicate_can_complete_outcome_without_losing_combat_stats(self):
+        complete = game(first='Diana')
+        complete['player1Stats'].update(kills=5,deaths=1,assists=2)
+        result_only = copy.deepcopy(complete)
+        result_only['player1Stats']={'championName':'Diana','puuid':'one','win':True}
+        row = next(row for row in album.build_album(database(complete,result_only))['champions'] if row['id']=='Diana')['players'][0]
+        self.assertEqual((row['games'],row['statsGames'],row['kda'],row['winrate']),(1,1,7,100))
+
     def test_champion_players_aggregate_accounts_and_totals_not_match_kda_averages(self):
         first = game(first='Diana', second='Diana')
         first['player1Stats'].update(kills=10,deaths=1,assists=0)

@@ -67,20 +67,32 @@ def build_album(db, minimum_duration=600):
                 if participant:
                     markers.add((mid, 'participant', str(participant)))
                 combat = combat_stats(stats)
+                outcome = stats.get('win') if isinstance(stats.get('win'), bool) else None
                 person = (duo.get('id'), key)
                 name = player.get('displayName') or player.get('name') or stats.get('riotIdGameName') or ('Integrante 1' if key == 'player1' else 'Integrante 2')
                 candidates.append((bool(stats.get('championName')), combat is not None, champion, markers,
-                                   person, name, duo.get('teamName') or 'Equipo', combat))
+                                   person, name, duo.get('teamName') or 'Equipo', combat, outcome))
     # Prefer full participant evidence over a duplicated legacy row.
+    outcomes = {}
+    for candidate in candidates:
+        if candidate[-1] is not None:
+            for marker in candidate[3]:
+                outcomes.setdefault(marker, candidate[-1])
     seen, players = set(), defaultdict(dict)
-    for _, _, champion, markers, person, name, team, combat in sorted(candidates, key=lambda row: row[:2], reverse=True):
+    for _, _, champion, markers, person, name, team, combat, outcome in sorted(candidates, key=lambda row: row[:2], reverse=True):
         duplicate = bool(markers & seen)
         seen.update(markers)
         if not duplicate:
             counts[champion] += 1
             row = players[champion].setdefault(person, {'name': name, 'teamName': team, 'games': 0,
-                                                       'statsGames': 0, 'kills': 0, 'deaths': 0, 'assists': 0})
+                                                       'statsGames': 0, 'kills': 0, 'deaths': 0, 'assists': 0,
+                                                       'resultGames': 0, 'wins': 0, 'losses': 0})
             row['games'] += 1
+            if outcome is None:
+                outcome = next((outcomes[marker] for marker in markers if marker in outcomes), None)
+            if outcome is not None:
+                row['resultGames'] += 1
+                row['wins' if outcome else 'losses'] += 1
             if combat is not None:
                 row['statsGames'] += 1
                 for key, value in zip(('kills', 'deaths', 'assists'), combat):
@@ -88,6 +100,7 @@ def build_album(db, minimum_duration=600):
     for champion_players in players.values():
         for row in champion_players.values():
             row['kda'] = (row['kills'] + row['assists']) / max(1, row['deaths']) if row['statsGames'] else None
+            row['winrate'] = 100 * row['wins'] / row['resultGames'] if row['resultGames'] else None
     champions = [{'id': row['id'], 'name': row['label'], 'games': counts[row['id']],
                   'played': counts[row['id']] > 0,
                   'players': sorted(players[row['id']].values(), key=lambda player: (-player['games'], player['name'].casefold(), player['teamName'].casefold()))}

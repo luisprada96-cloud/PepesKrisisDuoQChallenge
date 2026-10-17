@@ -9,8 +9,8 @@ const path=require('node:path');
     const context=await browser.newContext({viewport:{width:1440,height:1000}});
     const catalog=JSON.parse(fs.readFileSync(path.join(__dirname,'assets/pickem/champions.json'),'utf8'));
     let fail=false, picks={Ahri:4,Lux:2,MonkeyKing:1}, requests=[];
-    const participants=[{name:'UnluckyPingu',teamName:'LosELOgidos',games:3,statsGames:3,kills:15,deaths:3,assists:6,kda:7},
-      {name:'UnluckyPanda',teamName:'LosELOgidos',games:1,statsGames:1,kills:4,deaths:0,assists:7,kda:11}];
+    const participants=[{name:'UnluckyPingu',teamName:'LosELOgidos',games:3,statsGames:3,kills:15,deaths:3,assists:6,kda:7,resultGames:3,wins:2,losses:1,winrate:100*2/3},
+      {name:'UnluckyPanda',teamName:'LosELOgidos',games:1,statsGames:1,kills:4,deaths:0,assists:7,kda:11,resultGames:1,wins:0,losses:1,winrate:0}];
     const board=()=>{
       const champions=catalog.champions.map(row=>({id:row.id,name:row.label,games:picks[row.id]||0,played:!!picks[row.id],players:row.id==='Ahri'?participants:[]}));
       champions.sort((a,b)=>b.games-a.games||a.name.localeCompare(b.name,'es'));
@@ -56,6 +56,8 @@ const path=require('node:path');
     assert.equal(await page.getByRole('dialog').isVisible(),true);
     assert.match(await page.locator('#champion-modal-summary').textContent(),/KDA general: 10,67/);
     assert.equal(await page.locator('.champion-players-table tbody tr').count(),2);
+    assert.match(await page.locator('.champion-player-winrate').first().textContent(),/66,7 %.*2 V \/ 1 D/);
+    assert.match(await page.locator('.champion-player-winrate').nth(1).textContent(),/0 %.*0 V \/ 1 D/);
     assert.match(await page.locator('.champion-players-table tbody tr').first().innerText(),/UnluckyPingu.*LosELOgidos.*3.*7,00.*15 \/ 3 \/ 6/s);
     assert.match(await page.locator('.champion-players-table tbody tr').nth(1).innerText(),/UnluckyPanda.*11,00/s);
     await page.keyboard.press('Escape');
@@ -95,15 +97,16 @@ const path=require('node:path');
       await page.keyboard.press('Escape');
     }
     participants[1].name='<img src=x onerror=alert(1)>';
-    participants[1].statsGames=0;participants[1].kda=null;
+    participants[1].statsGames=0;participants[1].kda=null;participants[1].resultGames=0;participants[1].winrate=null;
     await page.locator('#champions-refresh').click();
     await page.waitForFunction(()=>!document.querySelector('#champions-refresh').disabled);
     await page.locator('[data-champion-id=Ahri]').click();
     assert.equal(await page.locator('#champion-modal-players img').count(),0);
     assert.match(await page.locator('#champion-modal-players').textContent(),/<img src/);
     assert.match(await page.locator('.champion-players-table tbody tr').nth(1).textContent(),/Estadísticas pendientes/);
+    assert.match(await page.locator('.champion-player-winrate').nth(1).textContent(),/Resultados pendientes/);
     await page.keyboard.press('Escape');
-    participants[1].name='UnluckyPanda';participants[1].statsGames=1;participants[1].kda=11;
+    participants[1].name='UnluckyPanda';participants[1].statsGames=1;participants[1].kda=11;participants[1].resultGames=1;participants[1].winrate=0;
     await page.locator('#champions-refresh').click();
     await page.waitForFunction(()=>!document.querySelector('#champions-refresh').disabled);
     await page.setViewportSize({width:1440,height:1000});
