@@ -5,6 +5,10 @@
 !overlay.html
 !overlay.js
 !overlay.css
+!campeones.html
+!campeones.js
+!campeones.css
+!champions_service.py
 !shell_rules.py
 !tierlists_service.py
 !tierlist.html

@@ -26,6 +26,7 @@ import discord_shells
 import tierlists_service
 import final_predictions
 import pickem_service
+import champions_service
 from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individual_shell_criteria
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
@@ -2061,6 +2062,9 @@ class CustomHandler(BaseHTTPRequestHandler):
         if path == '/api/duos':
             self._send_json(public_duo_summaries())
             return
+        elif path == '/api/champions':
+            self._send_json(champions_service.build_album(load_db(), MIN_RIOT_MATCH_DURATION_SECONDS))
+            return
         elif path == '/api/sync/status':
             status = sync_jobs.snapshot()
             db = load_db()
@@ -2109,6 +2113,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
         public_files.update({'porra.html', 'porra.js', 'porra.css'})
         public_files.update({'overlay.html', 'overlay.js', 'overlay.css'})
+        public_files.update({'campeones.html', 'campeones.js', 'campeones.css'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files and filename not in tierlist_assets:

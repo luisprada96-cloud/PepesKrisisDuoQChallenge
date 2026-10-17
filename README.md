@@ -31,6 +31,10 @@ La interfaz, ruletas, avisos, Discord y documentación utilizan «pepazo» y «p
 
 ## 🚀 Estructura del Proyecto
 
+### Álbum de campeones
+
+La pestaña `campeones.html` muestra todo el catálogo local de campeones, ordenado por apariciones de los integrantes inscritos. Los ya jugados aparecen en gris y con una marca; al pasar el ratón, enfocar con teclado o tocar se ve su recuento. `GET /api/champions` calcula los totales en lectura, sin nuevas llamadas a Riot ni modificar premios. Filtra fechas del torneo, Solo/Duo, partidas de prueba, exclusiones y duración inferior a 10 minutos, y deduplica partidas y participantes. No cuenta los rivales externos. Si faltan estadísticas o importaciones muestra un aviso de recuento parcial. El panel se actualiza cada 30 segundos y conserva el último resultado si falla la conexión.
+
 - `index.html` / `app.js` — Página principal del ranking y modal de historial.
 - `player.html` / `player.js` — Panel de control del jugador (gestión de pepazos y ataques).
 - `admin.html` / `admin.js` — Panel de administración protegidos por PIN.

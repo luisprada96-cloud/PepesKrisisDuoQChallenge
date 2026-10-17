@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Campeones | Pepes Krisis Duo Q Challenge</title>
+  <meta name="description" content="El álbum de campeones del challenge: descubre cuáles han jugado los participantes y cuántas veces.">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="campeones.css">
+  <script src="navigation.js" defer></script>
+  <script src="data.js" defer></script>
+  <script src="alerts.js" defer></script>
+  <script src="campeones.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Navegación principal">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo" aria-label="Pepes Krisis Duo Q · Inicio">
+          <i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i>
+          <span class="brand-text text-gradient-cyan"><span class="brand-full">Pepes Krisis Duo Q</span><span class="brand-short">Pepes Krisis</span></span>
+        </a>
+        <div class="nav-actions">
+          <button type="button" class="nav-toggle" id="nav-menu-toggle" aria-controls="primary-navigation" aria-expanded="false" aria-label="Abrir menú de navegación" hidden><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="nav-menu-label">Menú</span></button>
+          <a href="player.html" class="btn-player-panel" id="nav-player-link" aria-label="Mi Panel" title="Mi Panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><span class="nav-action-label">Mi Panel</span></a>
+          <a href="admin.html" class="btn-admin" id="nav-admin-link" aria-label="Panel Admin" title="Panel Admin"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span class="nav-action-label">Panel Admin</span></a>
+        </div>
+        <ul class="nav-links" id="primary-navigation">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo</a></li>
+          <li><a href="premios.html" class="nav-link"><i class="fa-solid fa-award" aria-hidden="true"></i> Premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="pickem.html" class="nav-link"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
+          <li><a href="campeones.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-chess-knight" aria-hidden="true"></i> Campeones</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+          <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
+          <li><a href="porra.html" class="nav-link"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Porra final</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+  <main class="container champions-page">
+    <div class="champions-heading">
+      <span class="champions-eyebrow">EL ÁLBUM DEL CHALLENGE</span>
+      <h1 class="text-gradient-cyan">¿Los jugaremos todos?</h1>
+      <p>Todos los campeones, de más a menos jugados. Los que ya han salido pasan a gris.</p>
+    </div>
+    <section class="champions-overview" aria-label="Progreso de campeones">
+      <div><span class="champions-stat-label">CAMPEONES JUGADOS</span><strong id="champions-progress">—</strong></div>
+      <div><span class="champions-stat-label">APARICIONES</span><strong id="champions-picks">—</strong></div>
+      <div class="champions-progress-wrap"><span id="champions-progress-label">Preparando el álbum…</span><progress id="champions-progress-bar" value="0" max="1" aria-label="Campeones distintos jugados"></progress></div>
+    </section>
+    <section class="champions-board" aria-label="Campeones del torneo">
+      <div class="champions-toolbar">
+        <label class="champions-search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><span class="sr-only">Buscar campeón</span><input id="champions-search" type="search" placeholder="Buscar campeón…" autocomplete="off" aria-label="Buscar campeón"></label>
+        <div class="champions-legend"><span><i class="legend-color" aria-hidden="true"></i> Sin jugar</span><span><i class="legend-gray" aria-hidden="true"></i> Ya jugado</span></div>
+        <button id="champions-refresh" class="btn-refresh" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i> Actualizar</button>
+      </div>
+      <p id="champions-status" class="champions-status" role="status" aria-live="polite">Cargando campeones…</p>
+      <p id="champions-warning" class="champions-warning" hidden></p>
+      <p id="champions-detail" class="champions-detail" aria-live="polite">Pasa el ratón, da foco o toca un campeón para ver sus apariciones.</p>
+      <div id="champions-grid" class="champions-grid" aria-label="Álbum de campeones"></div>
+      <p id="champions-empty" class="champions-empty" hidden>No hay campeones que coincidan con tu búsqueda.</p>
+      <p class="champions-footnote">Solo cuentan los integrantes inscritos y sus partidas Solo/Duo dentro del torneo. Una aparición es un jugador usando ese campeón; no se incluyen rivales externos, remakes ni partidas de menos de 10 minutos.</p>
+    </section>
+    <noscript><p>Activa JavaScript para consultar las apariciones de los campeones.</p></noscript>
+  </main>
+</body>
+</html>
