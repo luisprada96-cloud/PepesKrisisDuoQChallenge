@@ -7,8 +7,19 @@
   const detail = champion => `${champion.name} · ${champion.games === 1 ? '1 aparición' : `${champion.games} apariciones`} en el torneo.`;
   function renderPanel(champion) {
     $('champion-modal-title').textContent = champion.name;
-    $('champion-modal-summary').textContent = detail(champion);
     const players = champion.players || [];
+    const totals = players.reduce((total, player) => {
+      if (player.statsGames > 0 && Number.isFinite(player.kda)) {
+        total.games += player.statsGames;
+        total.kills += player.kills;
+        total.deaths += player.deaths;
+        total.assists += player.assists;
+      }
+      return total;
+    }, {games:0,kills:0,deaths:0,assists:0});
+    const generalKda = totals.games ? ((totals.kills + totals.assists) / Math.max(1,totals.deaths)).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) : champion.games ? 'pendiente' : '—';
+    const partial = totals.games > 0 && totals.games < champion.games ? ` (parcial: ${totals.games} de ${champion.games} apariciones)` : '';
+    $('champion-modal-summary').textContent = `${detail(champion)} · KDA general: ${generalKda}${partial}`;
     $('champion-modal-players').innerHTML = players.length ? `<div class="champion-players-table-wrap"><table class="champion-players-table"><thead><tr><th scope="col">Jugador / dúo</th><th scope="col">Partidas</th><th scope="col">KDA</th><th scope="col">K / D / A</th></tr></thead><tbody>${players.map(player => {
       const known = player.statsGames > 0 && Number.isFinite(player.kda);
       const partial = known && player.statsGames < player.games;
