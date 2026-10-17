@@ -170,7 +170,7 @@ class PenaltyAssignmentEndpointTests(unittest.TestCase):
             else:
                 correct = url.endswith('EUW1_CORRECT')
                 payload = {'info': {'gameStartTimestamp':1800000000000 + (200000 if correct else 0),
-                    'gameEndTimestamp':1800000100000 + (200000 if correct else 0), 'gameDuration':100,
+                    'gameEndTimestamp':1800001200000 + (200000 if correct else 0), 'gameDuration':1200,
                     'participants': [{'puuid':'p1','championName':'Ahri','summoner1Id':14,'summoner2Id':12},
                                      {'puuid':'p2','championName':'Lux','summoner1Id':14 if correct else 4,'summoner2Id':12}]}}
             return io.BytesIO(json.dumps(payload).encode())

@@ -141,10 +141,11 @@ function renderPlayerInsightCard(player, insight) {
   const hasStats = Number(insight?.gamesAnalyzed) > 0 && totals;
   const kda = hasStats ? (((Number(totals.kills) || 0) + (Number(totals.assists) || 0)) / Math.max(1, Number(totals.deaths) || 0)).toFixed(2) : '—';
   const role = POSITION_LABELS[player?.mainRole] || 'Sin configurar';
+  const opggUrl = normalizeOpggUrl(player?.opggUrl);
   return `<article class="player-insight-card${hasStats ? '' : ' is-empty'}">
     ${player?.avatar ? `<img class="insight-player-avatar" src="${escapeHtml(player.avatar)}" alt="${escapeHtml(playerName)}" onerror="this.style.visibility='hidden';">` : '<span class="insight-player-avatar insight-avatar-placeholder" aria-hidden="true"><i class="fa-solid fa-user"></i></span>'}
     <div class="insight-content">
-      <div class="insight-heading"><h3>${escapeHtml(riotId)}</h3></div>
+      <div class="insight-heading"><h3>${escapeHtml(riotId)}</h3>${opggUrl ? `<a class="opgg-profile-link" href="${escapeHtml(opggUrl)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(`Ver ${riotId} en OP.GG (nueva pestaña)`)}">OP.GG <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i></a>` : ''}</div>
       <div class="insight-metrics participant-insight-metrics">
         <div><span>KDA</span><strong>${kda}</strong></div>
         <div><span>Rol principal</span><strong>${role}</strong></div>

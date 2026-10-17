@@ -232,7 +232,7 @@ class EndpointRegressionTests(unittest.TestCase):
                 pages.append(offset)
                 payload = [f"EUW1_{i}" for i in range(100)] if offset == 0 else ['EUW1_999']
             else:
-                payload = {"info": {"participants": [{"puuid": "p1", "championName": "Ahri", "win": True}], "gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800000100000, "gameDuration": 100}}
+                payload = {"info": {"participants": [{"puuid": "p1", "championName": "Ahri", "win": True}], "gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800001200000, "gameDuration": 1200}}
             return io.BytesIO(json.dumps(payload).encode())
         with patch.object(server, 'get_riot_api_key', return_value='fake'), patch.object(server.urllib.request, 'urlopen', side_effect=response), patch.object(server.time, 'sleep'):
             server.sync_riot_data()

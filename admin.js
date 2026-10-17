@@ -399,6 +399,10 @@ function renderParticipantSettings(duo, playerKey, index) {
       <label for="${prefix}-twitch-url-${escapeHtml(duo.id)}">Canal de Twitch (opcional)</label>
       <input type="url" class="form-control" id="${prefix}-twitch-url-${escapeHtml(duo.id)}" value="${escapeHtml(participantTwitch(duo, playerKey).url)}" placeholder="https://www.twitch.tv/nombre_del_canal">
     </div>
+    <div class="form-group">
+      <label for="${prefix}-opgg-url-${escapeHtml(duo.id)}">Perfil de OP.GG (opcional)</label>
+      <input type="url" class="form-control" id="${prefix}-opgg-url-${escapeHtml(duo.id)}" value="${escapeHtml(normalizeOpggUrl(player.opggUrl))}" maxlength="2048" placeholder="https://op.gg/lol/summoners/euw/...">
+    </div>
   </fieldset>`;
 }
 
@@ -470,7 +474,7 @@ function renderAdminDuosList() {
         ${renderParticipantSettings(duo, 'player2', 2)}
       </div>
       <button type="button" class="btn-refresh" data-team-action="profiles" data-team-id="${escapeHtml(duo.id)}" style="align-self: flex-start;">
-        <i class="fa-solid fa-save"></i> Guardar nombres y Twitch
+        <i class="fa-solid fa-save"></i> Guardar nombres y enlaces
       </button>
       <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.08);">
         <div class="form-group" style="flex: 2 1 260px; margin: 0;">
@@ -684,6 +688,7 @@ async function addNewDuo() {
   for (const i of [1, 2]) {
     const nameInput = document.getElementById(`new-p${i}-display-name`);
     const twitchInput = document.getElementById(`new-p${i}-twitch-url`);
+    const opggInput = document.getElementById(`new-p${i}-opgg-url`);
     const displayName = nameInput.value.trim();
     const rawUrl = twitchInput.value.trim();
     const twitchUrl = normalizeTwitchUrl(rawUrl);
@@ -697,7 +702,14 @@ async function addNewDuo() {
       twitchInput.focus();
       return;
     }
-    profiles[`player${i}`] = {displayName, twitchUrl};
+    const rawOpgg = opggInput.value.trim();
+    const opggUrl = normalizeOpggUrl(rawOpgg);
+    if (rawOpgg && !opggUrl) {
+      alert('Introduce una URL HTTPS válida de OP.GG.');
+      opggInput.focus();
+      return;
+    }
+    profiles[`player${i}`] = {displayName, twitchUrl, opggUrl};
   }
   if (!teamName || !p1NameTag || !p2NameTag || !p1Role || !p2Role) {
     alert('Por favor rellena todos los campos del nuevo dúo.');
@@ -812,7 +824,8 @@ async function handleSaveParticipantProfiles(id) {
   for (const i of [1, 2]) {
     const nameInput = document.getElementById(`p${i}-display-name-${id}`);
     const twitchInput = document.getElementById(`p${i}-twitch-url-${id}`);
-    if (!nameInput || !twitchInput) return;
+    const opggInput = document.getElementById(`p${i}-opgg-url-${id}`);
+    if (!nameInput || !twitchInput || !opggInput) return;
     const displayName = nameInput.value.trim();
     const rawUrl = twitchInput.value.trim();
     const twitchUrl = normalizeTwitchUrl(rawUrl);
@@ -826,7 +839,14 @@ async function handleSaveParticipantProfiles(id) {
       twitchInput.focus();
       return;
     }
-    profiles[`player${i}`] = {displayName, twitchUrl};
+    const rawOpgg = opggInput.value.trim();
+    const opggUrl = normalizeOpggUrl(rawOpgg);
+    if (rawOpgg && !opggUrl) {
+      alert('Introduce una URL HTTPS válida de OP.GG.');
+      opggInput.focus();
+      return;
+    }
+    profiles[`player${i}`] = {displayName, twitchUrl, opggUrl};
   }
   const result = await DataStore.saveDuo({id, ...profiles}, adminSessionPin);
   if (!result || result.success === false) {
@@ -835,7 +855,7 @@ async function handleSaveParticipantProfiles(id) {
   }
   await refreshAdminData();
   renderAdminDuosList();
-  alert(`Nombres y canales de Twitch guardados para "${duo.teamName}".`);
+  alert(`Nombres y enlaces de Twitch y OP.GG guardados para "${duo.teamName}".`);
 }
 
 let pendingDeleteId = null;

@@ -43,6 +43,17 @@ function normalizeTwitchUrl(value) {
   }
 }
 
+function normalizeOpggUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.length > 2048 || /[\u0000-\u001f\u007f\\]/.test(raw)) return '';
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !(host === 'op.gg' || host.endsWith('.op.gg')) || url.username || url.password || url.port) return '';
+    return url.href;
+  } catch (_) { return ''; }
+}
+
 function participantTwitch(duo, playerKey) {
   const player = duo[playerKey] || {};
   const ownChannel = Object.prototype.hasOwnProperty.call(player, 'twitchUrl');

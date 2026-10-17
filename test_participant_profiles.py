@@ -5,6 +5,7 @@ import json
 import unittest
 import urllib.error
 import urllib.parse
+import urllib.request
 from unittest.mock import patch
 
 import server
@@ -78,6 +79,42 @@ class ParticipantProfileTests(unittest.TestCase):
             with self.subTest(profile=profile):
                 self.post('/api/duos', {'authPin': '9999', 'duo': {'id': 'a', 'player1': profile}}, expected=400)
                 self.assertEqual(server.load_db()['duos'][0], before)
+
+    def test_opgg_links_can_be_added_preserved_and_removed(self):
+        before = self.configure()
+        url = 'https://www.op.gg/lol/summoners/euw/Prueba-EUW'
+        result = self.post('/api/duos', {'authPin':'9999','duo':{'id':'a',
+            'player1':{'opggUrl':'  '+url+'  '},'player2':{'opggUrl':'https://op.gg/summoners/euw/Dos-EUW'}}})
+        self.assertEqual(result['duo']['player1']['opggUrl'],url)
+        self.assertEqual(server.load_db()['duos'][0]['player1']['opggUrl'],url)
+        with urllib.request.urlopen(self.base+'/api/duos',timeout=3) as response:
+            public=next(team for team in json.load(response) if team['id']=='a')
+        self.assertEqual(public['player1']['opggUrl'],url)
+        for field in ('history','blueShells','activeDebuffs'):
+            self.assertEqual(result['duo'][field],before[field])
+        self.post('/api/duos',{'authPin':'9999','duo':{'id':'a','player1':{'displayName':'Editado'}}})
+        self.assertEqual(server.load_db()['duos'][0]['player1']['opggUrl'],url)
+        result = self.post('/api/duos',{'authPin':'9999','duo':{'id':'a','player1':{'opggUrl':''}}})
+        self.assertEqual(result['duo']['player1']['opggUrl'],'')
+        self.assertTrue(result['duo']['player2']['opggUrl'])
+        self.post('/api/duos',{'authPin':'wrong','duo':{'id':'a','player1':{'opggUrl':url}}},expected=401)
+        self.assertEqual(server.load_db()['duos'][0]['player1']['opggUrl'],'')
+
+    def test_invalid_opgg_links_are_rejected_without_saving(self):
+        before=self.configure()
+        for url in ('javascript:alert(1)','http://op.gg/summoners/euw/Test',
+                    'https://example.com/user','https://op.gg.evil.com/user',
+                    'https://evilop.gg/user','https://user@op.gg/user',
+                    'https://op.gg:8443/user','https://op.gg/user\n<script>',
+                    'https://op.gg/\\evil','https://op.gg/'+('a'*2048)):
+            with self.subTest(url=url):
+                self.post('/api/duos',{'authPin':'9999','duo':{'id':'a','player1':{'opggUrl':url}}},expected=400)
+                self.assertEqual(server.load_db()['duos'][0],before)
+        created=self.post('/api/duos',{'authPin':'9999','duo':{'id':'new-opgg','teamName':'Nuevo',
+            'player1':{'name':'Uno','mainRole':'TOP','opggUrl':'https://op.gg/lol/summoners/euw/Uno-EUW'},
+            'player2':{'name':'Dos','mainRole':'JUNGLE'}}})
+        self.assertEqual(created['duo']['player1']['opggUrl'],'https://op.gg/lol/summoners/euw/Uno-EUW')
+        self.assertNotIn('opggUrl',created['duo']['player2'])
 
     def test_explicit_empty_link_disables_legacy_fallback(self):
         self.configure()

@@ -106,7 +106,7 @@ class FavoriteImportTests(unittest.TestCase):
             else:
                 m = next(m for m in matches if url.endswith("/" + m["matchId"]))
                 participants = [{**m[key + "Stats"], "summoner1Id": 14, "summoner2Id": 12} for key in ("player1", "player2")]
-                payload = {"info": {"participants": participants, "gameStartTimestamp": m["gameStartTimestamp"], "gameEndTimestamp": m["gameEndTimestamp"], "gameDuration": 100}}
+                payload = {"info": {"participants": participants, "gameStartTimestamp": m["gameStartTimestamp"], "gameEndTimestamp": m["gameEndTimestamp"], "gameDuration": 1200}}
             return io.BytesIO(json.dumps(payload).encode())
         with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open", side_effect=reply), patch.object(server.time, "sleep"):
             self.assertTrue(server.sync_riot_data()["success"])

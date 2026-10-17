@@ -28,8 +28,8 @@ def game(mid):
 
 
 def detail():
-    return {"info": {"gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800000100000,
-            "gameDuration": 100, "participants": [
+    return {"info": {"gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800001200000,
+            "gameDuration": 1200, "participants": [
                 {"puuid": "p1", "participantId": 1, "championName": "Ahri", "win": True,
                  "profileIcon": 30, "summoner1Id": 14, "summoner2Id": 12},
                 {"puuid": "p2", "participantId": 2, "championName": "Lux", "win": True,
@@ -142,7 +142,7 @@ class IncrementalSyncTests(unittest.TestCase):
         db["duos"] = duos
         server.save_db(db)
 
-    def responses(self, ids, calls, fail_once=None, lp=10):
+    def responses(self, ids, calls, fail_once=None, lp=10, durations=None):
         def respond(request, **kwargs):
             url = request.full_url
             calls.append(url)
@@ -163,12 +163,44 @@ class IncrementalSyncTests(unittest.TestCase):
                     fail_once.remove(mid)
                     raise urllib.error.URLError("Temporary match error")
                 payload = detail()
+                if durations and mid in durations:
+                    payload['info']['gameDuration'] = durations[mid]
+                    payload['info']['gameEndTimestamp'] = payload['info']['gameStartTimestamp'] + durations[mid] * 1000
             return io.BytesIO(json.dumps(payload).encode())
         return respond
 
     def sync(self, ids, calls, **kwargs):
         with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open", side_effect=self.responses(ids, calls, **kwargs)), patch.object(server.time, "sleep"):
             return server.sync_riot_data()
+
+    def test_short_matches_are_excluded_once_and_ten_minutes_is_allowed(self):
+        self.prepare()
+        before = server.load_db()['duos'][0]['blueShells']
+        calls = []
+        durations = {'EUW1_REMAKE':76, 'EUW1_SHORT':599, 'EUW1_VALID':600}
+        self.assertTrue(self.sync(list(durations), calls, durations=durations)['success'])
+        duo = server.load_db()['duos'][0]
+        self.assertEqual([m['matchId'] for m in duo['history']], ['EUW1_VALID'])
+        self.assertEqual(set(duo['excludedRiotMatches']), {'EUW1_REMAKE','EUW1_SHORT'})
+        self.assertEqual(duo['riotMatchDiscovery']['pendingMatchIds'], [])
+        self.assertEqual(duo['blueShells'], before)
+        self.assertEqual(duo['playerInsights']['player1']['gamesAnalyzed'], 1)
+        calls = []
+        self.assertTrue(self.sync(list(durations), calls, durations=durations)['success'])
+        self.assertFalse(any(url.endswith('/EUW1_REMAKE') or url.endswith('/EUW1_SHORT') for url in calls))
+
+    def test_exclusion_added_during_scan_prevents_stale_match_reimport(self):
+        self.prepare()
+        original = server.load_db()
+        scanned = copy.deepcopy(original)
+        scanned['duos'][0]['history'] = [game('EUW1_REMOVED')]
+        current = server.load_db()
+        current['duos'][0]['excludedRiotMatches'] = {'EUW1_REMOVED': {'reason':'duration_below_minimum','durationSeconds':76}}
+        server.save_db(current)
+        server.merge_riot_result(original, scanned)
+        duo = server.load_db()['duos'][0]
+        self.assertEqual(duo['history'], [])
+        self.assertIn('EUW1_REMOVED',duo['excludedRiotMatches'])
 
     def test_real_api_success_is_persisted_and_exposed_after_job_restart(self):
         self.prepare()

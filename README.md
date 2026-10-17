@@ -15,6 +15,7 @@ La interfaz, ruletas, avisos, Discord y documentación utilizan «pepazo» y «p
 - **⏳ Calendario oficial (hora de Madrid)**: inicio el 15/10/2026 a las 18:00 y cierre el 15/11/2026 a las 23:59. La cuenta atrás de portada cambia automáticamente de inicio a cierre y después muestra el torneo finalizado. Las fechas se guardan con zona horaria explícita, incluyendo el cambio de horario de octubre; el formulario de administración siempre muestra y recibe horas de Madrid.
 
 - **🎮 Sincronización en Tiempo Real con Riot API**: Seguimiento automático de Elo, Tier, División, LP, Victorias, Derrotas y Racha activa cada 5 minutos.
+  - Las partidas con duración confirmada inferior a 10 minutos se excluyen del historial del challenge antes de calcular rachas, estadísticas, premios o castigos. `excludedRiotMatches` conserva sus IDs para no reimportarlas ni dejarlas pendientes; exactamente 10 minutos sí cuenta. Los rangos y los totales oficiales de Riot no se reescriben.
 - **🐢 Sistema de Pepazos**:
   - Cada bloque de 4 victorias consecutivas, pentakill, al menos 20 kills, al menos 30 asistencias o 0 muertes con más de 20 kills + asistencias otorga 1 pepazo. Los logros individuales no exigen victoria y no suman estadísticas entre jugadores.
   - Cada criterio se premia una vez por equipo y partida, con un máximo de 2 premios por partida (incluida la racha) y 5 pepazos en inventario. Los excedentes se pierden. Se priorizan racha, pentakill, kills, asistencias y KDA perfecto.
@@ -224,6 +225,8 @@ La tabla principal muestra «Integrante 1» e «Integrante 2» con su rango Solo
 La clasificación, winrate y evolución de ELO del dúo mantienen el cálculo existente a partir del jugador 1. En pantallas estrechas la tabla permite desplazamiento horizontal para consultar ambos integrantes.
 
 ### Nombres y Twitch de los participantes
+
+Cada participante también puede guardar `opggUrl`, una URL HTTPS opcional de OP.GG que introduce el administrador al crear o editar el equipo. En su tarjeta del acordeón aparece el botón OP.GG, que abre el perfil en otra pestaña. El botón se oculta si no hay enlace; dejar el campo vacío lo elimina y omitirlo en una actualización conserva el anterior. Frontend y servidor validan el dominio, sin consultar ni importar estadísticas de OP.GG.
 
 Cada integrante guarda `displayName` (nombre visible, independiente del Riot ID), `twitchUrl` (opcional) y `twitchIsLive` (confirmado por Twitch). Administración permite introducirlos al crear un dúo y editar ambos perfiles en los equipos existentes. En la clasificación se muestra el nombre encima de su rango y su enlace de Twitch debajo; el botón rojo indica que ese integrante está en directo. El contador de equipos en directo cuenta un equipo si al menos uno de sus integrantes emite.
 

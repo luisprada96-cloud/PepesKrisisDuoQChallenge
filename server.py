@@ -54,6 +54,7 @@ DB_FILE = os.path.join(DATA_DIR, "db.json")
 SECRETS_FILE = os.path.join(DATA_DIR, "secrets.json")
 TWITCH_SYNC_INTERVAL = 300
 RIOT_MATCH_DETAIL_BATCH_PER_DUO = 40
+MIN_RIOT_MATCH_DURATION_SECONDS = 600
 VALID_MAIN_ROLES = {"TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"}
 MAX_SHELLS_INVENTORY = 5
 MAX_SHELLS_PER_MATCH = 2
@@ -752,6 +753,21 @@ def twitch_channel_from_url(value):
     except Exception:
         return ''
 
+def normalize_opgg_url(value):
+    raw = str(value or '').strip()
+    if not raw or len(raw) > 2048 or any(ord(char) < 32 or ord(char) == 127 or char == '\\' for char in raw):
+        return ''
+    try:
+        url = urllib.parse.urlsplit(raw)
+        host = (url.hostname or '').lower()
+        if (url.scheme != 'https' or not (host == 'op.gg' or host.endswith('.op.gg'))
+                or url.username or url.password or url.port not in (None, 443)):
+            return ''
+        return raw
+    except ValueError:
+        return ''
+
+
 def participant_twitch_channel(duo, player_key):
     player = duo.get(player_key) or {}
     # Legacy team links belong to the first participant until explicitly edited.
@@ -1389,11 +1405,16 @@ def merge_riot_result(original, scanned):
                 incoming_rank = (incoming.get(key) or {}).get("rank") or {}
                 if rank.get("observedAt") and rank == incoming_rank:
                     record_player_elo(duo[key], calc_total_lp(rank.get("tier"), rank.get("division"), rank.get("lp")), rank["observedAt"])
-            matches = {m["matchId"]: m for m in duo.get("history", []) if m.get("matchId")}
+            excluded = {**incoming.get("excludedRiotMatches", {}), **duo.get("excludedRiotMatches", {})}
+            if excluded:
+                duo["excludedRiotMatches"] = excluded
+            matches = {m["matchId"]: m for m in duo.get("history", []) if m.get("matchId") and m["matchId"] not in excluded}
             unkeyed = [m for m in duo.get("history", []) if not m.get("matchId")]
             for match in incoming.get("history", []):
                 mid = match.get("matchId")
                 if not mid:
+                    continue
+                if mid in excluded:
                     continue
                 existing = matches.get(mid, {})
                 merged = {**existing, **copy.deepcopy(match)}
@@ -1404,7 +1425,7 @@ def merge_riot_result(original, scanned):
             duo["history"] = sort_history_chronologically(list(matches.values()) + unkeyed)
             if incoming.get("riotMatchDiscovery") and duo.get("riotMatchDiscovery") == old.get("riotMatchDiscovery"):
                 duo["riotMatchDiscovery"] = copy.deepcopy(incoming["riotMatchDiscovery"])
-                known_ids = {m.get("matchId") for m in duo["history"] if not m.get("isTest")}
+                known_ids = {m.get("matchId") for m in duo["history"] if not m.get("isTest")} | set(excluded)
                 duo["riotMatchDiscovery"]["pendingMatchIds"] = [mid for mid in duo["riotMatchDiscovery"]["pendingMatchIds"] if mid not in known_ids]
             # History can arrive after the roulette draw. Resolve only empty
             # references before evaluating it, preserving existing player draws.
@@ -1473,6 +1494,7 @@ def discover_riot_matches(duo, puuid, fetch_json, min_timestamp):
     boundary = previous.get("latestMatchId")
     known = {m["matchId"] for m in duo.get("history", [])
              if isinstance(m, dict) and m.get("matchId") and not m.get("isTest")}
+    known.update(duo.get("excludedRiotMatches", {}))
     discovered = []
     seen = set()
     latest = boundary
@@ -1678,6 +1700,15 @@ def sync_riot_data():
                     mdetail = fetch_json(url_detail)
                     info = mdetail.get("info", {})
                     duration_sec = int(info.get("gameDuration", 0) or 0)
+                    if 0 < duration_sec < MIN_RIOT_MATCH_DURATION_SECONDS:
+                        duo.setdefault("excludedRiotMatches", {})[mid] = {
+                            "reason": "duration_below_minimum", "durationSeconds": duration_sec,
+                            "minimumDurationSeconds": MIN_RIOT_MATCH_DURATION_SECONDS
+                        }
+                        # Keep an exclusion instead of a retry gap or a counted match.
+                        existing_by_id.pop(mid, None)
+                        existing_history = [m for m in existing_history if m.get("matchId") != mid]
+                        continue
                     mins, secs = divmod(duration_sec, 60)
                     game_end_ms = info.get("gameEndTimestamp") or info.get("gameStartTimestamp") or 0
 
@@ -1725,7 +1756,7 @@ def sync_riot_data():
                     record_failure(ex_m)
                     safe_print(f"[Riot Sync Match Detail Error] {mid}: {ex_m}")
 
-            discovery["pendingMatchIds"] = [mid for mid in new_match_ids if mid not in existing_by_id]
+            discovery["pendingMatchIds"] = [mid for mid in new_match_ids if mid not in existing_by_id and mid not in duo.get("excludedRiotMatches", {})]
             pending_imports += len(discovery["pendingMatchIds"])
             if new_matches:
                 existing_history = new_matches + existing_history
@@ -2277,7 +2308,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 data.update({key: submitted[key] for key in editable if key in submitted})
                 for player_key in ("player1", "player2"):
                     if player_key in submitted:
-                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole", "displayName", "twitchUrl"}}}
+                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole", "displayName", "twitchUrl", "opggUrl"}}}
                         if any((data.get(player_key) or {}).get(field) != (existing_duo.get(player_key) or {}).get(field) for field in ("name", "tag")):
                             data[player_key]["rank"] = None
                             data[player_key].pop("flashBaseline", None)
@@ -2317,6 +2348,13 @@ class CustomHandler(BaseHTTPRequestHandler):
                     self._send_json({"success": False, "error": "Indica un nombre de entre 1 y 60 caracteres para cada integrante."}, 400)
                     return
                 player["displayName"] = display_name
+                if "opggUrl" in player:
+                    raw_opgg = str(player.get("opggUrl") or '').strip()
+                    opgg_url = normalize_opgg_url(raw_opgg)
+                    if raw_opgg and not opgg_url:
+                        self._send_json({"success": False, "error": "El enlace de OP.GG debe ser una URL HTTPS válida de op.gg."}, 400)
+                        return
+                    player["opggUrl"] = opgg_url
                 if "twitchUrl" in player:
                     raw_url = str(player.get("twitchUrl") or "").strip()
                     channel = twitch_channel_from_url(raw_url)
