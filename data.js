@@ -73,6 +73,11 @@ function penaltyAssignmentText(instance, duo = {}) {
   };
   const flashInstruction = key => {
     if (instance?.penalty?.baseId !== 'swap_flash') return '';
+    const choices = duo[key]?.accounts || [];
+    if (choices.length > 1) return choices.map(a => {
+      const slot = a.flashBaseline?.slot;
+      return `${a.name}#${a.tag || 'EUW'}: ${slot === 1 || slot === 2 ? `Flash en ${slot === 1 ? 'F' : 'D'}` : 'Referencia pendiente: primera partida con Flash'}`;
+    }).join(' / ');
     const slot = req.flashBaselines?.[key]?.slot;
     return slot === 1 || slot === 2 ? `Flash en ${slot === 1 ? 'F' : 'D'} (posición ${slot === 1 ? 2 : 1})` : 'Referencia pendiente: primera partida con Flash';
   };
@@ -263,3 +268,18 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   poll();
 });
+
+function participantEloAccount(player = {}) {
+  const choices = player.accounts || [];
+  return choices.find(a => a.id === player.eloAccountId) || choices[0] || player;
+}
+
+function participantAccountsMarkup(player = {}) {
+  const choices = player.accounts || [];
+  if (choices.length < 2) return '';
+  return `<details class="participant-accounts"><summary>${choices.length} cuentas</summary><ul>${choices.map(a => {
+    const label = `${a.name}#${a.tag || 'EUW'}`;
+    const url = `https://www.op.gg/summoners/euw/${encodeURIComponent(a.name)}-${encodeURIComponent(a.tag || 'EUW')}`;
+    return `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>${a.id === player.eloAccountId ? ' · ELO' : ''}</li>`;
+  }).join('')}</ul></details>`;
+}

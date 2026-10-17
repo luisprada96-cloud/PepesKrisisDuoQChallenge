@@ -1,4 +1,5 @@
 """Weekly public recaps from stored evidence, never from additional Riot calls."""
+import player_accounts
 import copy
 import time
 from collections import Counter
@@ -110,7 +111,7 @@ def build_summary(db, week, clips=None, previous=None):
             played = player_wins = 0
             for match in games:
                 stats = match.get(key + 'Stats')
-                if not isinstance(stats, dict) or (player.get('puuid') and stats.get('puuid') and player['puuid'] != stats['puuid']):
+                if not isinstance(stats, dict) or not player_accounts.owns_stats(player, stats):
                     continue
                 if not all(isinstance(stats.get(k), (int, float)) for k in totals):
                     continue
@@ -135,7 +136,7 @@ def build_summary(db, week, clips=None, previous=None):
             if not all(isinstance(p, dict) and all(isinstance(p.get(f), (int, float)) for f in combined) for p in stats):
                 continue
             # Only a complete pair can be called the duo's best match.
-            if any((duo.get(key) or {}).get('puuid') and p.get('puuid') and duo[key]['puuid'] != p['puuid']
+            if any(not player_accounts.owns_stats(duo.get(key) or {}, p)
                    for key, p in zip(('player1', 'player2'), stats)):
                 continue
             detail_games += 1
@@ -177,7 +178,7 @@ def build_summary(db, week, clips=None, previous=None):
                 penalties['manual' if manual else 'completed'] += 1
                 key = debuff.get('requirements', {}).get('assignedPlayer')
                 assigned_account = debuff.get('requirements', {}).get('assignedAccount') or {}
-                same_account = not assigned_account.get('name') or account(assigned_account) == account(duo.get(key) or {})
+                same_account = not assigned_account.get('name') or any(account(assigned_account) == account(a) for a in player_accounts.accounts(duo.get(key) or {}))
                 if not manual and same_account and (debuff.get('scope') or debuff.get('penalty', {}).get('scope')) == 'ONE' and key in ('player1', 'player2'):
                     players[0 if key == 'player1' else 1]['penaltiesCompleted'] += 1
             if (not completed or not resolved or resolved >= end) and (debuff.get('status') != 'CANCELLED' or retired >= end):
@@ -190,7 +191,12 @@ def build_summary(db, week, clips=None, previous=None):
         current = {t['id']: t for t in teams}
         for old in previous.get('teams', []):
             team = current.get(old['id'])
-            if not team or team['games'] < old['games'] or [p['account'] for p in old['players']] != [p['account'] for p in team['players']]:
+            source_team = next((d for d in db.get('duos', []) if d['id'] == old['id']), {})
+            changed_sources = any(
+                float((source_team.get(k) or {}).get('eloAccountSelectedAt') or 0) >= end or
+                any(float(a.get('registeredAt') or 0) >= end for a in player_accounts.accounts(source_team.get(k) or {}))
+                for k in ('player1','player2'))
+            if changed_sources or not team or team['games'] < old['games'] or [p['account'] for p in old['players']] != [p['account'] for p in team['players']]:
                 current[old['id']] = copy.deepcopy(old)
             else:
                 # Preserve labels and observations captured before renames or history cleanup.

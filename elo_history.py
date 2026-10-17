@@ -1,11 +1,12 @@
 """Daily observations, never reconstructed from match wins/losses."""
 from datetime import datetime
 import copy
+from player_accounts import elo_identity
 
 
 def record_elo(duo, total_lp, timestamp, source="riot"):
     player = duo.get("player1") or {}
-    account = [str(player.get("name", "")).lower(), str(player.get("tag", "")).lower()]
+    account = elo_identity(player)
     if duo.get("eloHistoryAccount") != account:
         duo["eloHistory"] = []
         duo["eloHistoryAccount"] = account
@@ -26,7 +27,7 @@ def ensure_player_elo_histories(duo):
         player = duo.get(key)
         if not player or not player.get("name"):
             continue
-        account = [str(player.get("name", "")).lower(), str(player.get("tag", "")).lower()]
+        account = elo_identity(player)
         if player.get("eloHistoryAccount") != account:
             player["eloHistory"] = []
             player["eloHistoryAccount"] = account

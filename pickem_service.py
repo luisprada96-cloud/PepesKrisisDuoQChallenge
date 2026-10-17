@@ -1,4 +1,5 @@
 """Weekly Pick'em ballots and atomic shell prizes from stored participant games."""
+import player_accounts
 import copy
 import hashlib
 import json
@@ -107,7 +108,8 @@ def category_definitions(db, week=None):
 
 def roster_key(db):
     return sorted([[d['id'], *[str((d.get(k) or {}).get(f) or '').strip().casefold()
-                              for k in ('player1','player2') for f in ('name','tag')]] for d in db.get('duos',[])])
+                              for k in ('player1','player2') for f in ('name','tag')],
+                    *[repr(player_accounts.configuration(d.get(k) or {})) for k in ('player1','player2')]] for d in db.get('duos',[])])
 
 
 def calendar_key(db, now):
@@ -332,15 +334,20 @@ def capture_rankings(db):
         observations = board.get('rankObservations', {})
         for duo in db.get('duos', []):
             player = duo.get('player1') or {}
-            identity = account(player)
+            rank_player = player_accounts.elo_account_at(player, bounds['endsAt'])
+            identity = account(rank_player)
             candidates = []
             # The team leaderboard uses the first account's rank, just like the main table.
-            if duo.get('rankObservedAt') and not ('rank' in player and player['rank'] is None):
+            if duo.get('rankObservedAt') and account(player_accounts.elo_account(player)) == identity and not ('rank' in player and player['rank'] is None):
                 candidates.append({**{k: duo.get(k) for k in ('tier','division','lp','wins','losses')},
                                    'observedAt': duo['rankObservedAt']})
-            for owner in (duo, player):
-                if owner.get('eloHistoryAccount') == [str(player.get('name','')).lower(), str(player.get('tag','')).lower()]:
+            for owner in (duo, player, rank_player):
+                if owner.get('eloHistoryAccount') == player_accounts.elo_identity(player):
                     candidates += owner.get('eloHistory', [])
+            if rank_player is not player:
+                candidates += rank_player.get('eloHistory', [])
+                if rank_player.get('rank'):
+                    candidates.append(rank_player['rank'])
             candidates = [p for p in candidates if p.get('source','riot') == 'riot' and p.get('tier')
                           and bounds['startsAt'] <= weeks.timestamp(p.get('observedAt')) < bounds['endsAt']]
             if not candidates: continue
@@ -366,7 +373,7 @@ def weekly_rank_result(db, board, category, lowest=False):
     for duo in db.get('duos', []):
         if duo['id'] not in available: continue
         rank = observations.get(duo['id'])
-        if not rank or rank['account'] != account(duo.get('player1') or {}):
+        if not rank or rank['account'] != account(player_accounts.elo_account_at(duo.get('player1') or {}, period(db, board['week'])['endsAt'])):
             return {'status':'NO_DATA', 'optionIds':[], 'summary':'Sin observaciones de ELO suficientes antes del cierre. Esta categoría no suma un acierto.'}
         candidates.append((duo['id'], rank))
     if lowest and available - {oid for oid,_ in candidates}:
@@ -386,6 +393,10 @@ def player_option(options, duo, key, stats):
     """Match saved Riot identities, including retired accounts, rather than a reused slot."""
     player = duo.get(key) or {}
     candidates = [o for (team,slot,_),o in options.items() if team==duo['id'] and slot==key]
+    if len(player_accounts.accounts(player)) > 1 and player_accounts.account_for_stats(player, stats):
+        owner = next((o for o in candidates if o.get('account') == account(player)), None)
+        if owner is not None:
+            return owner
     option = next((o for o in candidates if o.get('puuid') and o['puuid']==stats.get('puuid')),None)
     if option is None and stats.get('riotIdGameName'):
         option = next((o for o in candidates if o['account']==account({'name':stats['riotIdGameName'],'tag':stats.get('riotIdTagline')})),None)

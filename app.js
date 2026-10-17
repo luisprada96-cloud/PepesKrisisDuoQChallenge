@@ -162,6 +162,7 @@ function renderParticipantCell(duo, playerKey) {
   const twitch = participantTwitch(duo, playerKey);
   return `<div class="participant-cell">
     <strong class="participant-name">${escapeHtml(name)}</strong>
+    ${participantAccountsMarkup(player)}
     <div data-player-rank="${playerKey}">${renderPlayerRank(duo, playerKey)}</div>
     ${twitch.url ? `<a class="twitch-link${twitch.live ? ' is-live' : ''}" href="${escapeHtml(twitch.url)}" target="_blank" rel="noopener noreferrer" aria-label="${twitch.live ? 'Ver en directo a' : 'Ver en Twitch a'} ${escapeHtml(name)}">
       <i class="fa-brands fa-twitch" aria-hidden="true"></i>${twitch.live ? '<span class="live-dot" aria-hidden="true"></span> EN DIRECTO' : 'Ver en Twitch'}
@@ -179,7 +180,7 @@ function renderPlayerRank(duo, playerKey) {
   const isUnranked = tier.toUpperCase() === 'UNRANKED';
   const hasDivision = !isUnranked && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier.toUpperCase());
   const label = isUnranked ? 'Sin clasificar' : `${tier}${hasDivision && rank.division ? ' ' + rank.division : ''}`;
-  return `<div class="tier-pill player-rank-pill" title="${escapeHtml(player.name)}#${escapeHtml(player.tag || 'EUW')}">
+  return `<div class="tier-pill player-rank-pill" title="${escapeHtml(participantEloAccount(player).name)}#${escapeHtml(participantEloAccount(player).tag || 'EUW')}">
     <span style="color: ${getTierColor(tier)};">${escapeHtml(label)}</span>
     ${isUnranked ? '' : `<span class="player-rank-lp">(${Number(rank.lp) || 0} LP)</span>`}
   </div>`;

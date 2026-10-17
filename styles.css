@@ -2115,3 +2115,16 @@ body {
   .player-panel-tabs button { flex:1; padding:.65rem; font-size:.85rem; }
   .player-penalty-group, .player-penalty-card { padding:.8rem; }
 }
+
+/* Participant account sources and the independent ELO selection. */
+.admin-account-settings { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid rgba(255,255,255,.12); }
+.admin-account-title { font-weight: 600; margin-bottom: .65rem; }
+.admin-account-row { display: grid; grid-template-columns: auto minmax(0,1fr) minmax(65px,.35fr) auto; gap: .55rem; align-items: end; margin-bottom: .65rem; }
+.admin-account-row label { min-width: 0; font-size: .8rem; }
+.admin-account-row .form-control { width: 100%; min-width: 0; box-sizing: border-box; }
+.admin-account-row .admin-account-choice { display: flex; gap: .3rem; align-items: center; padding-bottom: .65rem; }
+.admin-account-row input[readonly] { opacity: .8; }
+.admin-account-settings > small { display: block; margin-top: .55rem; color: var(--text-muted); }
+.participant-accounts { font-size: .75rem; color: var(--text-muted); max-width: 260px; }
+.participant-accounts ul { padding-left: 1rem; margin: .3rem 0; }
+@media (max-width: 600px) { .admin-account-row { grid-template-columns: auto minmax(0,1fr) 70px; } .admin-account-row button { grid-column: 2 / 4; justify-self: start; } }
