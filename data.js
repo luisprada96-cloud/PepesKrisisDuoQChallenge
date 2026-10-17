@@ -73,6 +73,11 @@ function penaltyAssignmentText(instance, duo = {}) {
   };
   const flashInstruction = key => {
     if (instance?.penalty?.baseId !== 'swap_flash') return '';
+    const choices = duo[key]?.accounts || [];
+    if (choices.length > 1) return choices.map(a => {
+      const slot = a.flashBaseline?.slot;
+      return `${a.name}#${a.tag || 'EUW'}: ${slot === 1 || slot === 2 ? `Flash en ${slot === 1 ? 'F' : 'D'}` : 'Referencia pendiente: primera partida con Flash'}`;
+    }).join(' / ');
     const slot = req.flashBaselines?.[key]?.slot;
     return slot === 1 || slot === 2 ? `Flash en ${slot === 1 ? 'F' : 'D'} (posición ${slot === 1 ? 2 : 1})` : 'Referencia pendiente: primera partida con Flash';
   };
@@ -263,3 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   poll();
 });
+
+function participantEloAccount(player = {}) {
+  const choices = player.accounts || [];
+  return choices.find(a => a.id === player.eloAccountId) || choices[0] || player;
+}

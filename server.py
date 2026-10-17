@@ -27,6 +27,8 @@ import tierlists_service
 import final_predictions
 import pickem_service
 import champions_service
+import player_accounts
+import riot_accounts_sync
 from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individual_shell_criteria
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
@@ -256,6 +258,11 @@ def migrate_flash_penalty_weights(db):
 
 def safe_duo_for_player(duo):
     result = dict(duo)
+    for key in ("player1", "player2"):
+        if result.get(key):
+            result[key] = copy.deepcopy(result[key])
+        for account in (result.get(key) or {}).get("accounts", []):
+            account.pop("matchDiscovery", None)
     result.pop("password", None)
     result.pop("passwordHash", None)
     result.pop("riotMatchDiscovery", None)
@@ -458,7 +465,7 @@ def flash_account(player):
 
 def same_flash_account(left, right):
     if left.get("puuid") and right.get("puuid"):
-        return left["puuid"] == right["puuid"]
+        return bool(player_accounts.known_puuids(left) & player_accounts.known_puuids(right))
     identity = lambda account: (str(account.get("name", "")).strip().casefold(), str(account.get("tag") or "EUW").strip().casefold())
     return bool(left.get("name")) and identity(left) == identity(right)
 
@@ -477,10 +484,11 @@ def record_flash_baselines(duo, match):
     if match.get("isTest") or not match.get("matchId") or not match.get("gameStartTimestamp"):
         return
     for key in ("player1", "player2"):
-        player = duo.get(key) or {}
+        owner = duo.get(key) or {}
+        stats = match.get(f"{key}Stats") or {}
+        player = player_accounts.account_for_stats(owner, stats) or owner
         if not player.get("name") or player_flash_baseline(player):
             continue
-        stats = match.get(f"{key}Stats") or {}
         spells = stats.get("summonerSpellIds") or []
         if not stats.get("puuid") or (player.get("puuid") and player["puuid"] != stats["puuid"]):
             continue
@@ -489,6 +497,8 @@ def record_flash_baselines(duo, match):
         player["flashBaseline"] = {"slot": spells.index(4) + 1, "matchId": match["matchId"],
                                    "gameStartTimestamp": match["gameStartTimestamp"],
                                    "account": {**flash_account(player), "puuid": stats["puuid"]}}
+        if owner.get("accounts") and len(owner["accounts"]) == 1:
+            owner["flashBaseline"] = copy.deepcopy(player["flashBaseline"])
 
 
 def fill_pending_flash_baselines(duo):
@@ -545,6 +555,11 @@ def penalty_player_matches(duo, match, requirements):
     if not account:
         return requirements.get("assignmentVersion", 0) < 2  # Older random-champion assignments.
     stats = match.get(f"{key}Stats") or {}
+    player = duo.get(key) or {}
+    if len(player_accounts.accounts(player)) > 1:
+        bound = any(same_flash_account(account, a) or (account.get("puuid") in player_accounts.known_puuids(a) if account.get("puuid") else False)
+                    for a in player_accounts.accounts(player))
+        return bound and player_accounts.account_for_stats(player, stats) is not None
     if account.get("puuid"):
         return stats.get("puuid") == account["puuid"]
     player = duo.get(key) or {}
@@ -658,7 +673,7 @@ def load_db():
         elo_migrated = False
         for duo in data.get("duos", []):
             player = duo.get("player1") or {}
-            account = [str(player.get("name", "")).lower(), str(player.get("tag", "")).lower()]
+            account = player_accounts.elo_identity(player)
             if not duo.get("eloHistory") or duo.get("eloHistoryAccount") != account:
                 record_elo(duo, calc_total_lp(duo.get("tier"), duo.get("division"), duo.get("lp")), time.time(), "initial")
                 elo_migrated = True
@@ -1130,6 +1145,7 @@ def evaluate_active_penalties(duo, match):
         scope = debuff.get("scope") or penalty.get("scope") or "ONE"
         req = debuff.get("requirements", {})
         results = {}
+        flash_evidence = {}
         for player_key in ("player1", "player2"):
             stats = match.get(f"{player_key}Stats") or {}
             if base_id == "autofill":
@@ -1146,6 +1162,11 @@ def evaluate_active_penalties(duo, match):
                 results[player_key] = len(spells) == 2 and all(spells) and 4 not in spells
             elif base_id == "swap_flash":
                 baseline = req.get("flashBaselines", {}).get(player_key) or {}
+                owner = duo.get(player_key) or {}
+                if len(player_accounts.accounts(owner)) > 1:
+                    source = player_accounts.account_for_stats(owner, stats)
+                    baseline = player_flash_baseline(source or {}) or {}
+                flash_evidence[player_key] = copy.deepcopy(baseline)
                 slot = baseline.get("slot")
                 spells = stats.get("summonerSpellIds") or []
                 results[player_key] = bool(
@@ -1172,7 +1193,7 @@ def evaluate_active_penalties(duo, match):
                                   "assignedPlayer": req.get("assignedPlayer"),
                                   "assignedAccount": copy.deepcopy(req.get("assignedAccount"))}
             if base_id == "swap_flash":
-                debuff["evidence"]["flashBaselines"] = copy.deepcopy(req.get("flashBaselines", {}))
+                debuff["evidence"]["flashBaselines"] = {key: value for key, value in flash_evidence.items() if key in req.get("flashAccounts", req.get("flashBaselines", {}))}
                 debuff["evidence"]["summonerSpellIds"] = {key: list((match.get(f"{key}Stats") or {}).get("summonerSpellIds") or []) for key in req.get("flashBaselines", {})}
             completed += 1
     return completed
@@ -1386,9 +1407,11 @@ def merge_riot_result(original, scanned):
                 continue
             # An account edited during a network request invalidates that result.
             if any((duo.get(k) or {}).get(f) != (old.get(k) or {}).get(f)
-                   for k in ("player1", "player2") for f in ("name", "tag")):
+                   for k in ("player1", "player2") for f in ("name", "tag")) or any(
+                   player_accounts.configuration(duo.get(k) or {}) != player_accounts.configuration(old.get(k) or {})
+                   for k in ("player1", "player2")):
                 continue
-            for field in ("tier", "division", "lp", "wins", "losses"):
+            for field in ("tier", "division", "lp", "wins", "losses", "initialTotalLp"):
                 if field in incoming and duo.get(field) == old.get(field):
                     duo[field] = incoming[field]
             if "tier" in duo:
@@ -1399,13 +1422,15 @@ def merge_riot_result(original, scanned):
             for key in ("player1", "player2"):
                 if not duo.get(key):
                     continue
-                for field in ("puuid", "avatar", "rank", "flashBaseline"):
+                for field in ("puuid", "avatar", "rank", "flashBaseline", "accounts"):
                     if field in (incoming.get(key) or {}) and duo[key].get(field) == (old.get(key) or {}).get(field):
                         duo[key][field] = incoming[key][field]
                 rank = duo[key].get("rank") or {}
                 incoming_rank = (incoming.get(key) or {}).get("rank") or {}
                 if rank.get("observedAt") and rank == incoming_rank:
                     record_player_elo(duo[key], calc_total_lp(rank.get("tier"), rank.get("division"), rank.get("lp")), rank["observedAt"])
+                    if len(duo[key].get("accounts", [])) == 1:
+                        duo[key]["accounts"][0]["eloHistory"] = copy.deepcopy(duo[key].get("eloHistory", []))
             excluded = {**incoming.get("excludedRiotMatches", {}), **duo.get("excludedRiotMatches", {})}
             if excluded:
                 duo["excludedRiotMatches"] = excluded
@@ -1565,6 +1590,14 @@ def sync_riot_data():
 
     for duo in db.get("duos", []):
         try:
+            if any(len(player_accounts.accounts(duo.get(k) or {})) > 1 for k in ("player1", "player2")):
+                scanned_duo = copy.deepcopy(duo)
+                pending_imports += riot_accounts_sync.sync_team(scanned_duo, fetch_json, record_failure, sys.modules[__name__])
+                player_accounts.validate_ownership([d for d in db.get("duos", []) if d["id"] != duo["id"]] + [scanned_duo])
+                duo.clear()
+                duo.update(scanned_duo)
+                updated = True
+                continue
             p1_name = duo["player1"]["name"]
             p1_tag = duo["player1"].get("tag", "EUW")
             puuid1 = duo["player1"].get("puuid")
@@ -1762,6 +1795,13 @@ def sync_riot_data():
             if new_matches:
                 existing_history = new_matches + existing_history
             duo["history"] = sort_history_chronologically(existing_history)
+            for key in ("player1", "player2"):
+                player = duo.get(key) or {}
+                if player.get("accounts"):
+                    account = player["accounts"][0]
+                    for field in ("puuid", "rank", "avatar", "flashBaseline"):
+                        if field in player:
+                            account[field] = copy.deepcopy(player[field])
             backfill_status = update_stats_backfill_status(duo, include_timestamp=True)
             update_match_details_backfill(duo)
             remaining_backfill = backfill_status["remaining"]
@@ -2315,6 +2355,8 @@ class CustomHandler(BaseHTTPRequestHandler):
                     if player_key in submitted:
                         data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole", "displayName", "twitchUrl", "opggUrl"}}}
                         if any((data.get(player_key) or {}).get(field) != (existing_duo.get(player_key) or {}).get(field) for field in ("name", "tag")):
+                            if (existing_duo.get(player_key) or {}).get("accounts"):
+                                raise ValueError("Conserva la identidad del integrante y añade su nueva cuenta en Cuentas de LoL.")
                             data[player_key]["rank"] = None
                             data[player_key].pop("flashBaseline", None)
                             data[player_key].pop("puuid", None)
@@ -2340,6 +2382,26 @@ class CustomHandler(BaseHTTPRequestHandler):
                     self._send_json({"success": False, "error": "Pega el ID numérico del rol de Discord (entre 17 y 20 dígitos), no su nombre."}, 400)
                     return
                 data["discordRoleId"] = role_id
+
+            for key in ("player1", "player2"):
+                edits = copy.deepcopy((submitted if existing_duo else data).get(key) or {})
+                if "accounts" in edits or "eloAccountId" in edits:
+                    if not existing_duo:
+                        data[key].pop("accounts", None)
+                        data[key].pop("eloAccountId", None)
+                    player_accounts.update_accounts(data.setdefault(key, {}), edits)
+                    if key == "player1" and existing_duo and "initialTotalLp" in existing_duo:
+                        data[key]["accounts"][0].setdefault("initialTotalLp", existing_duo["initialTotalLp"])
+            player_accounts.validate_ownership([d for d in duos if d.get("id") != new_id] + [data])
+            if existing_duo and player_accounts.configuration(data.get("player1") or {})[1] != player_accounts.configuration(existing_duo.get("player1") or {})[1]:
+                selected = player_accounts.elo_account(data["player1"])
+                rank = selected.get("rank") or {}
+                data.update(tier=rank.get("tier", "Unranked"), division=rank.get("division", ""), lp=rank.get("lp",0),
+                            wins=rank.get("wins",0), losses=rank.get("losses",0), rankObservedAt=rank.get("observedAt",0))
+                data["eloHistory"] = copy.deepcopy(selected.get("eloHistory", []))
+                data["eloHistoryAccount"] = player_accounts.identity(selected)
+                data["initialTotalLp"] = selected.get("initialTotalLp", (selected.get("eloHistory") or [{}])[0].get("totalLp", calc_total_lp(data["tier"],data["division"],data["lp"])))
+                data["netLp"] = calc_total_lp(data["tier"],data["division"],data["lp"]) - data["initialTotalLp"]
 
             player1 = data.get("player1") or {}
             player2 = data.get("player2") or {}

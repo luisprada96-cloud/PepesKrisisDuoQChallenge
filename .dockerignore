@@ -74,3 +74,6 @@
 !porra.html
 !porra.js
 !porra.css
+
+!player_accounts.py
+!riot_accounts_sync.py

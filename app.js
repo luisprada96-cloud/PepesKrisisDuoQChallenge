@@ -179,7 +179,7 @@ function renderPlayerRank(duo, playerKey) {
   const isUnranked = tier.toUpperCase() === 'UNRANKED';
   const hasDivision = !isUnranked && !['MASTER', 'GRANDMASTER', 'CHALLENGER'].includes(tier.toUpperCase());
   const label = isUnranked ? 'Sin clasificar' : `${tier}${hasDivision && rank.division ? ' ' + rank.division : ''}`;
-  return `<div class="tier-pill player-rank-pill" title="${escapeHtml(player.name)}#${escapeHtml(player.tag || 'EUW')}">
+  return `<div class="tier-pill player-rank-pill" title="${escapeHtml(participantEloAccount(player).name)}#${escapeHtml(participantEloAccount(player).tag || 'EUW')}">
     <span style="color: ${getTierColor(tier)};">${escapeHtml(label)}</span>
     ${isUnranked ? '' : `<span class="player-rank-lp">(${Number(rank.lp) || 0} LP)</span>`}
   </div>`;

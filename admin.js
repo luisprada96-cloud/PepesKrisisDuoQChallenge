@@ -386,6 +386,50 @@ function fillConfigForm() {
   }
 }
 
+function registeredAccounts(player) {
+  return player.accounts?.length ? player.accounts : [{id: '', name: player.name || '', tag: player.tag || 'EUW'}];
+}
+
+function renderAccountRow(account, selected, group, saved = true) {
+  return `<div class="admin-account-row" data-account-id="${escapeHtml(account.id || '')}" data-account-saved="${saved}">
+    <label class="admin-account-choice"><input type="radio" name="${escapeHtml(group)}" value="${escapeHtml(account.id || '')}" ${selected ? 'checked' : ''}> ELO</label>
+    <label>Nombre de invocador<input class="form-control" data-account-name value="${escapeHtml(account.name || '')}" maxlength="60" ${saved ? 'readonly' : ''}></label>
+    <label>Tag<input class="form-control" data-account-tag value="${escapeHtml(account.tag || 'EUW')}" maxlength="10" ${saved ? 'readonly' : ''}></label>
+    ${saved ? '' : '<button type="button" class="btn-refresh" data-remove-account>Quitar</button>'}
+  </div>`;
+}
+
+function renderAccountSettings(duo, playerKey, index) {
+  const player = duo[playerKey] || {};
+  const choices = registeredAccounts(player);
+  const group = `elo-p${index}-${duo.id}`;
+  const selected = player.eloAccountId || choices[0]?.id || '';
+  return `<div class="admin-account-settings" data-player-accounts="p${index}-${escapeHtml(duo.id)}">
+    <p class="admin-account-title">Cuentas de LoL · selecciona la que cuenta para el ELO</p>
+    <div data-account-rows>${choices.map(a => renderAccountRow(a, (a.id || '') === selected, group)).join('')}</div>
+    <button type="button" class="btn-refresh" data-add-account data-account-group="${escapeHtml(group)}">+ Añadir cuenta</button>
+    <small>Todas aportan partidas y estadísticas. Solo la marcada aporta el ELO. Las cuentas guardadas conservan su historial.</small>
+  </div>`;
+}
+
+document.addEventListener('click', event => {
+  const add = event.target.closest('[data-add-account]');
+  if (add) {
+    const container = add.closest('[data-player-accounts]');
+    if (container.querySelectorAll('.admin-account-row').length >= 10) { alert('Máximo 10 cuentas por integrante.'); return; }
+    container.querySelector('[data-account-rows]').insertAdjacentHTML('beforeend', renderAccountRow({id: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`, tag: 'EUW'}, false, add.dataset.accountGroup, false));
+    container.querySelector('.admin-account-row:last-child [data-account-name]').focus();
+  }
+  const remove = event.target.closest('[data-remove-account]');
+  if (remove) {
+    const row = remove.closest('.admin-account-row');
+    const container = row.parentElement;
+    const selected = row.querySelector('input[type="radio"]').checked;
+    row.remove();
+    if (selected) container.querySelector('input[type="radio"]').checked = true;
+  }
+});
+
 function renderParticipantSettings(duo, playerKey, index) {
   const player = duo[playerKey] || {};
   const prefix = `p${index}`;
@@ -403,6 +447,7 @@ function renderParticipantSettings(duo, playerKey, index) {
       <label for="${prefix}-opgg-url-${escapeHtml(duo.id)}">Perfil de OP.GG (opcional)</label>
       <input type="url" class="form-control" id="${prefix}-opgg-url-${escapeHtml(duo.id)}" value="${escapeHtml(normalizeOpggUrl(player.opggUrl))}" maxlength="2048" placeholder="https://op.gg/lol/summoners/euw/...">
     </div>
+    ${renderAccountSettings(duo, playerKey, index)}
   </fieldset>`;
 }
 
@@ -474,7 +519,7 @@ function renderAdminDuosList() {
         ${renderParticipantSettings(duo, 'player2', 2)}
       </div>
       <button type="button" class="btn-refresh" data-team-action="profiles" data-team-id="${escapeHtml(duo.id)}" style="align-self: flex-start;">
-        <i class="fa-solid fa-save"></i> Guardar nombres y enlaces
+        <i class="fa-solid fa-save"></i> Guardar integrantes y cuentas
       </button>
       <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.08);">
         <div class="form-group" style="flex: 2 1 260px; margin: 0;">
@@ -847,6 +892,16 @@ async function handleSaveParticipantProfiles(id) {
       return;
     }
     profiles[`player${i}`] = {displayName, twitchUrl, opggUrl};
+    const sources = document.querySelector(`[data-player-accounts="p${i}-${CSS.escape(id)}"]`);
+    if (sources) {
+      const rows = [...sources.querySelectorAll('.admin-account-row')];
+      const accounts = rows.map(row => ({id: row.dataset.accountId, name: row.querySelector('[data-account-name]').value.trim(), tag: row.querySelector('[data-account-tag]').value.trim()}));
+      if (accounts.some(a => !a.name || !a.tag || (a.name + a.tag).includes('#'))) {
+        alert('Rellena el nombre y tag de cada cuenta por separado, sin #.'); return;
+      }
+      profiles[`player${i}`].accounts = accounts;
+      profiles[`player${i}`].eloAccountId = sources.querySelector('input[type="radio"]:checked')?.value || '';
+    }
   }
   const result = await DataStore.saveDuo({id, ...profiles}, adminSessionPin);
   if (!result || result.success === false) {
@@ -855,7 +910,7 @@ async function handleSaveParticipantProfiles(id) {
   }
   await refreshAdminData();
   renderAdminDuosList();
-  alert(`Nombres y enlaces de Twitch y OP.GG guardados para "${duo.teamName}".`);
+  alert(`Integrantes, cuentas y selección de ELO guardados para "${duo.teamName}".`);
 }
 
 let pendingDeleteId = null;
