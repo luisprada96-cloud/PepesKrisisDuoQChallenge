@@ -3,12 +3,46 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  const suggestedTeam = params.get('team'); // A UI hint only; the server authenticates the receiver.
+  const suggestedTeam = params.get('team'); // UI hint only; authentication remains on the server.
   const instance = params.get('instance') || 'default';
   const key = `pepes_obs_session_v1_${instance}`;
   let token = '', team = null, controller, retry, generation = 0;
   let seen = new Set(), queue = [], playing = false, animationTimer, audio;
   let connected = false, volume = .4;
+  let soundBuffer, soundLoad, activeSource, activeGain;
+  const DURATION_MS = 10000;
+  let flightAnimation;
+  function flyRocket() {
+    flightAnimation?.cancel();
+    // Smooth Catmull-Rom spline, resampled by distance for a steady flight speed.
+    const points = [[-.72,.12],[-.32,.04],[.04,-.20],[.31,-.07],[.14,.20],[-.29,.17],[-.32,-.16],[.15,-.20],[.30,.12],[-.14,.17],[-.22,-.12],[.07,-.10],[0,0]];
+    const samples = [];
+    for (let segment=0;segment<points.length-1;segment++) {
+      const p0=points[Math.max(0,segment-1)],p1=points[segment],p2=points[segment+1],p3=points[Math.min(points.length-1,segment+2)];
+      for(let j=0;j<40;j++) {
+        const t=j/40, t2=t*t,t3=t2*t;
+        const xy=[0,1].map(k=>.5*((2*p1[k])+(-p0[k]+p2[k])*t+(2*p0[k]-5*p1[k]+4*p2[k]-p3[k])*t2+(-p0[k]+3*p1[k]-3*p2[k]+p3[k])*t3));
+        const last=samples.at(-1);
+        samples.push({x:xy[0],y:xy[1],d:last?last.d+Math.hypot((xy[0]-last.x)*innerWidth,(xy[1]-last.y)*innerHeight):0});
+      }
+    }
+    const last=samples.at(-1);
+    samples.push({x:0,y:0,d:last.d+Math.hypot(last.x*innerWidth,last.y*innerHeight)});
+    const frames=[]; let cursor=1,previousAngle=0;
+    for(let i=0;i<=372;i++) {
+      const u=i/372, distance=samples.at(-1).d*u;
+      while(cursor<samples.length-1 && samples[cursor].d<distance)cursor++;
+      const a=samples[cursor-1],b=samples[cursor], ratio=(distance-a.d)/(b.d-a.d||1);
+      const x=a.x+(b.x-a.x)*ratio, y=a.y+(b.y-a.y)*ratio;
+      let angle=Math.atan2((b.y-a.y)*innerHeight,(b.x-a.x)*innerWidth)*180/Math.PI;
+      while(angle-previousAngle>180)angle-=360;
+      while(angle-previousAngle< -180)angle+=360;
+      previousAngle=angle;
+      frames.push({offset:u*.62,opacity:Math.min(1,u*18),transform:`translate(calc(-50% + ${x*100}vw),calc(-50% + ${y*100}vh)) rotate(${angle}deg) scale(${.85+.15*u})`});
+    }
+    frames.push({offset:.6201,opacity:0,transform:frames.at(-1).transform},{offset:1,opacity:0,transform:frames.at(-1).transform});
+    flightAnimation=$('alert').querySelector('.rocket-path').animate(frames,{duration:DURATION_MS,fill:'both',easing:'linear'});
+  }
   const status = text => { $('status').textContent = text; };
   const save = () => localStorage.setItem(key, JSON.stringify({token, volume}));
   const seenKey = () => `pepes_obs_seen_${instance}_${team.id}`;
@@ -36,46 +70,49 @@
     }
     return result;
   }
+  async function loadSound() {
+    if (soundBuffer) return soundBuffer;
+    if (!soundLoad) soundLoad = fetch('overlay-pepazo.mp3', {cache:'force-cache'})
+      .then(response => { if (!response.ok) throw new Error('Falta el audio del overlay.'); return response.arrayBuffer(); })
+      .then(bytes => audio.decodeAudioData(bytes))
+      .then(buffer => soundBuffer = buffer)
+      .catch(error => { soundLoad = null; throw error; });
+    return soundLoad;
+  }
   async function enableAudio() {
     try {
       audio ||= new (window.AudioContext || window.webkitAudioContext)();
-      await audio.resume();
-    } catch (_) { status('Audio no disponible. La animación seguirá funcionando.'); }
+      // Do not await resume: autoplay policies may leave it pending after a reload.
+      audio.resume().catch(() => {});
+      await loadSound();
+    } catch (_) { status('No se pudo cargar el sonido. Comprueba overlay-pepazo.mp3 y pulsa Probar.'); }
+  }
+  function stopSound() {
+    try { activeSource?.stop(); } catch (_) {}
+    activeSource = null; activeGain?.disconnect(); activeGain = null;
   }
   function sound() {
-    if (!audio || audio.state !== 'running' || !volume) return;
-    const start = audio.currentTime;
-    const master = audio.createGain();
-    master.gain.value = volume * .4;
-    master.connect(audio.destination);
-    for (let i = 0; i < 9; i++) {
-      const at = start + i * .19;
-      const tone = audio.createOscillator(), gain = audio.createGain();
-      tone.type = 'triangle'; tone.frequency.value = 500 + i * 90;
-      gain.gain.setValueAtTime(0, at);
-      gain.gain.linearRampToValueAtTime(.65, at + .01);
-      gain.gain.exponentialRampToValueAtTime(.001, at + .13);
-      tone.connect(gain); gain.connect(master); tone.start(at); tone.stop(at + .14);
-    }
-    const bass = audio.createOscillator(), blast = audio.createGain();
-    bass.frequency.setValueAtTime(150, start + 1.8);
-    bass.frequency.exponentialRampToValueAtTime(30, start + 2.5);
-    blast.gain.setValueAtTime(.8, start + 1.8);
-    blast.gain.exponentialRampToValueAtTime(.001, start + 2.6);
-    bass.connect(blast); blast.connect(master); bass.start(start + 1.8); bass.stop(start + 2.65);
-    bass.onended = () => master.disconnect();
+    stopSound();
+    if (!audio || audio.state !== 'running' || !soundBuffer || !volume) return;
+    const source = audio.createBufferSource(), gain = audio.createGain();
+    source.buffer = soundBuffer; gain.gain.value = volume;
+    source.connect(gain); gain.connect(audio.destination);
+    activeSource = source; activeGain = gain;
+    source.onended = () => { gain.disconnect(); if (activeSource === source) { activeSource = null; activeGain = null; } };
+    source.start();
   }
   function playNext() {
     if (playing || !queue.length) return;
     const attack = queue.shift(); playing = true;
-    $('attacker').textContent = `${attack.attackerName || 'Un rival'} os ha lanzado un pepazo`;
+    $('attacker').textContent = attack.attackerName || 'Un rival';
     $('target').textContent = team?.name || 'Equipo de prueba';
     $('alert').hidden = false;
+    flyRocket();
     sound();
     animationTimer = setTimeout(() => {
       $('alert').hidden = true; playing = false;
       animationTimer = setTimeout(playNext, 250);
-    }, 5800);
+    }, DURATION_MS);
   }
   function receive(state) {
     if (state.team?.id !== team?.id || !Array.isArray(state.attacks)) return;
@@ -89,7 +126,7 @@
   }
   function stopConnection() {
     generation++; controller?.abort(); clearTimeout(retry);
-    clearTimeout(animationTimer); queue = []; playing = false; $('alert').hidden = true;
+    clearTimeout(animationTimer); stopSound(); flightAnimation?.cancel(); queue = []; playing = false; $('alert').hidden = true;
   }
   function expired() {
     stopConnection(); token = ''; team = null; localStorage.removeItem(key);
@@ -164,7 +201,7 @@
     } catch (error) { status(error.message); }
     finally { $('submit').disabled = false; }
   });
-  $('volume').addEventListener('input', () => { volume = Number($('volume').value)/100; save(); });
+  $('volume').addEventListener('input', () => { volume = Number($('volume').value)/100; if (activeGain) activeGain.gain.value = volume; save(); });
   $('preview').addEventListener('click', async () => {
     await enableAudio(); queue.push({attackerName:'Dúo de prueba'}); hideSettings(); playNext();
   });

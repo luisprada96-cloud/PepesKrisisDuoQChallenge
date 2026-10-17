@@ -13,8 +13,8 @@ const path = require('node:path');
     const teams = [{id:'a',teamName:'LosELOgidos'}, {id:'b',teamName:'Otro dúo'}];
     await context.addInitScript(() => {
       window.overlaySounds = 0;
-      const start = OscillatorNode.prototype.start;
-      OscillatorNode.prototype.start = function(...args) { window.overlaySounds++; return start.apply(this, args); };
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function(...args) { window.overlaySounds++; window.overlayAudioDuration = this.buffer?.duration; return start.apply(this, args); };
       const original = window.fetch;
       window.fetch = (url, options) => {
         if (url !== '/api/player/events') return original(url, options);
@@ -45,7 +45,7 @@ const path = require('node:path');
         throw new Error('Unexpected mutation: '+url.pathname);
       }
       const file = path.join(__dirname,url.pathname.slice(1));
-      return route.fulfill({body:fs.readFileSync(file),contentType:url.pathname.endsWith('.css')?'text/css':url.pathname.endsWith('.js')?'text/javascript':'text/html'});
+      return route.fulfill({body:fs.readFileSync(file),contentType:url.pathname.endsWith('.mp3')?'audio/mpeg':url.pathname.endsWith('.css')?'text/css':url.pathname.endsWith('.js')?'text/javascript':'text/html'});
     });
     await page.goto('http://overlay.test/overlay.html?team=b');
     await page.waitForFunction(() => document.querySelector('#team').options.length===3);
@@ -56,10 +56,16 @@ const path = require('node:path');
     await page.locator('#preview').click();
     await page.waitForFunction(() => !document.querySelector('#alert').hidden && window.overlaySounds > 0);
     assert.equal(await page.locator('#settings').isVisible(), false);
-    assert.match(await page.locator('#attacker').textContent(), /Dúo de prueba.*pepazo/);
+    assert.match(await page.locator('#attacker').textContent(), /Dúo de prueba/);
     assert.equal(await page.locator('#alert').innerText().then(text => /caparaz/i.test(text)), false);
     assert.deepEqual(requests, ['/api/duos']);
-    await page.waitForFunction(() => document.querySelector('#alert').hidden, {}, {timeout:8000});
+    assert.ok(Math.abs(await page.evaluate(() => window.overlayAudioDuration) - 10) < .03,
+      'The decoded soundtrack must last ten seconds.');
+    await page.waitForTimeout(6800);
+    assert.equal(await page.locator('.message').evaluate(el => getComputedStyle(el).opacity), '1',
+      'The sender must remain readable after the impact.');
+    assert.equal(await page.locator('#alert').isVisible(), true);
+    await page.waitForFunction(() => document.querySelector('#alert').hidden, {}, {timeout:12000});
     await page.mouse.dblclick(1800,900);
     await page.locator('#team').selectOption('a');
     await page.locator('#password').fill('test-password');
@@ -85,9 +91,9 @@ const path = require('node:path');
     assert.match(await page.locator('#attacker').innerText(),/<img/);
     assert.equal(await page.locator('#attacker img').count(),0);
     fs.mkdirSync(path.join(__dirname,'preview'),{recursive:true});
-    await page.waitForFunction(()=>document.querySelector('#attacker').textContent.startsWith('Segundo'),{},{timeout:10000});
+    await page.waitForFunction(()=>document.querySelector('#attacker').textContent.startsWith('Segundo'),{},{timeout:15000});
     await send('a',[{id:'one'},{id:'two'}]);
-    await page.waitForFunction(()=>document.querySelector('#alert').hidden,{},{timeout:10000});
+    await page.waitForFunction(()=>document.querySelector('#alert').hidden,{},{timeout:15000});
     await page.waitForTimeout(400);
     assert.equal(await page.locator('#alert').isVisible(),false);
     // Reconnect with a new event; preserve deduplication.

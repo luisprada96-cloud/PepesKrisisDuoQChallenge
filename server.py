@@ -2112,7 +2112,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
         public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
         public_files.update({'porra.html', 'porra.js', 'porra.css'})
-        public_files.update({'overlay.html', 'overlay.js', 'overlay.css'})
+        public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3'})
         public_files.update({'campeones.html', 'campeones.js', 'campeones.css'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")

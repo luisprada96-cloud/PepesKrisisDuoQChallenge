@@ -28,16 +28,39 @@
   </section>
   <div id="warning" hidden>Overlay sin conexión · abre Interactuar para revisar</div>
   <main id="alert" hidden aria-live="polite">
-    <div class="halo"></div>
-    <svg class="shell" viewBox="0 0 300 240" aria-hidden="true">
-      <defs><linearGradient id="blue" x2="0" y2="1"><stop stop-color="#80edff"/><stop offset="1" stop-color="#2454f3"/></linearGradient></defs>
-      <path d="M65 110 45 50 100 80 150 12 179 80 252 47 233 116" fill="#ecfbff" stroke="#173353" stroke-width="7" stroke-linejoin="round"/>
-      <path d="M45 170C26 52 266 52 255 170Z" fill="url(#blue)" stroke="#173353" stroke-width="8"/>
-      <path d="M112 83 95 128 126 167M187 83 203 128 173 167M95 128H203M150 78V125" fill="none" stroke="#173d9b" stroke-width="6"/>
-      <ellipse cx="150" cy="174" rx="116" ry="34" fill="#f2fbff" stroke="#173353" stroke-width="8"/>
-      <ellipse cx="150" cy="185" rx="62" ry="16" fill="#13345d"/>
-    </svg>
-    <div class="message"><span class="eyebrow">PEPAZO RECIBIDO</span><h2>¡PEPAZO!</h2><p id="attacker"></p><span id="target"></span></div>
+    <div class="flight-label"><span class="eyebrow">ALERTA DE MISIL</span><strong>PEPO VIENE EN CAMINO</strong><span class="radar-dot"></span></div>
+    <div class="rocket-path">
+      <svg class="rocket" viewBox="0 0 520 300" aria-hidden="true">
+        <defs>
+          <linearGradient id="metal" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#fffde2"/><stop offset=".5" stop-color="#b4c7c5"/><stop offset="1" stop-color="#547978"/></linearGradient>
+          <linearGradient id="fire"><stop stop-color="#ff542c" stop-opacity="0"/><stop offset=".5" stop-color="#ff9926"/><stop offset="1" stop-color="#fff3a4"/></linearGradient>
+        </defs>
+        <g stroke="#152c27" stroke-width="7" stroke-linejoin="round">
+          <g class="flame" stroke="none"><path d="M165 166 3 128 65 171 13 194 160 216Z" fill="url(#fire)"/><path d="M160 177 60 169 120 194 64 201 160 205Z" fill="#fff5b5"/></g>
+          <path d="M175 158 130 114 203 125 235 157M176 207 133 259 221 232 245 202" fill="#e55d48"/>
+          <path d="M151 159Q280 123 389 153L460 184 389 215Q280 246 151 210Z" fill="url(#metal)"/>
+          <path d="M387 153Q438 159 470 184 438 211 387 215Q407 184 387 153Z" fill="#e55d48"/>
+          <path d="M171 157V214" fill="none" stroke="#476662"/>
+          <rect x="253" y="175" width="99" height="32" rx="8" fill="#213d30" stroke-width="3"/>
+        </g>
+        <text x="302" y="198" text-anchor="middle" fill="#d7ff72" font-family="Arial,sans-serif" font-weight="900" font-size="24">PEPO-01</text>
+        <g class="pepo" stroke="#18382b" stroke-width="6" stroke-linejoin="round">
+          <path d="M231 146 231 116Q263 90 303 123L315 153" fill="#4e954b"/>
+          <path d="M223 122Q192 110 193 78 183 47 210 38 232 16 258 35 289 15 310 42 334 64 324 96 314 127 282 130Z" fill="#68ac51"/>
+          <ellipse cx="222" cy="62" rx="27" ry="25" fill="#f6efca"/><ellipse cx="282" cy="62" rx="27" ry="25" fill="#f6efca"/>
+          <path d="M197 56Q220 42 245 57M258 57Q282 41 307 56" fill="#68ac51"/>
+          <ellipse cx="231" cy="67" rx="6" ry="9" fill="#162c21" stroke="none"/><ellipse cx="291" cy="67" rx="6" ry="9" fill="#162c21" stroke="none"/>
+          <path d="M207 97Q255 80 306 97L302 112Q250 129 210 112Z" fill="#bd7251"/>
+          <path d="M213 104Q252 111 302 103" fill="none" stroke-width="4"/>
+          <path d="M244 133 283 157 325 150" fill="none" stroke="#18382b" stroke-width="18" stroke-linecap="round"/>
+          <path d="M244 133 283 157 325 150" fill="none" stroke="#68ac51" stroke-width="10" stroke-linecap="round"/>
+          <path d="M227 132 208 162 195 157" fill="none" stroke-width="16" stroke-linecap="round"/>
+          <path d="M227 132 208 162 195 157" fill="none" stroke="#68ac51" stroke-width="9" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+    <div class="explosion" aria-hidden="true"><div class="blast-ring"></div><div class="blast-core"></div><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><b>BOOM!</b></div>
+    <div class="message"><span class="eyebrow">MISIL ENTREGADO</span><h2>¡PEPAZO!</h2><span class="sender-label">ENVIADO POR</span><p id="attacker"></p><span id="target"></span></div>
   </main>
 </body>
 </html>

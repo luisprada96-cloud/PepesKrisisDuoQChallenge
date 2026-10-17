@@ -11,7 +11,8 @@ class OverlayFilesTests(unittest.TestCase):
     def test_overlay_assets_are_served_without_a_session(self):
         for filename, content_type in [('overlay.html', 'text/html'),
                                        ('overlay.js', 'javascript'),
-                                       ('overlay.css', 'text/css')]:
+                                       ('overlay.css', 'text/css'),
+                                       ('overlay-pepazo.mp3', 'audio/mpeg')]:
             with self.subTest(filename=filename):
                 with urllib.request.urlopen(self.base + '/' + filename) as response:
                     self.assertEqual(response.status, 200)

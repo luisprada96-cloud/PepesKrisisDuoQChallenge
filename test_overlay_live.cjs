@@ -49,8 +49,8 @@ const ready = new Promise((resolve, reject) => {
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => {
       window.overlaySounds = 0;
-      const start = OscillatorNode.prototype.start;
-      OscillatorNode.prototype.start = function(...args) {window.overlaySounds++; return start.apply(this,args);};
+      const start = AudioBufferSourceNode.prototype.start;
+      AudioBufferSourceNode.prototype.start = function(...args) {window.overlaySounds++; window.overlayAudioDuration = this.buffer?.duration; return start.apply(this,args);};
     });
     await page.goto(base+'/overlay.html');
     await page.locator('#team').selectOption('b');
@@ -66,10 +66,12 @@ const ready = new Promise((resolve, reject) => {
     assert.equal(launched.success,true);
     assert.equal(launched.attack.status,'PENDING_SPIN');
     await page.waitForFunction(() => !document.querySelector('#alert').hidden && window.overlaySounds > 0);
-    assert.match(await page.locator('#attacker').textContent(),/Dúo atacante.*pepazo/);
+    assert.match(await page.locator('#attacker').textContent(),/Dúo atacante/);
     assert.match(await page.locator('#target').textContent(),/LosELOgidos/);
     assert.equal(await page.evaluate(id => JSON.parse(localStorage.getItem('pepes_obs_seen_default_b')).includes(id),launched.attack.id),true);
-    await page.waitForTimeout(2800);
+    assert.ok(Math.abs(await page.evaluate(() => window.overlayAudioDuration) - 10) < .03);
+    await page.waitForTimeout(7000);
+    assert.equal(await page.locator('.message').evaluate(el => getComputedStyle(el).opacity), '1');
     mkdirSync(path.join(__dirname,'preview'),{recursive:true});
     await page.screenshot({path:path.join(__dirname,'preview','overlay-live.png'),omitBackground:true});
     const session = await page.evaluate(() => JSON.parse(localStorage.getItem('pepes_obs_session_v1_default')));

@@ -2,20 +2,20 @@
 
 ## Para quien publica la web
 
-Publicar `overlay.html`, `overlay.css` y `overlay.js` en la raíz del proyecto.
+Publicar `overlay.html`, `overlay.css`, `overlay.js` y `overlay-pepazo.mp3` en la raíz del proyecto.
 En `server.py`, junto a las líneas `public_files.update(...)`, añadir:
 
 ```python
-public_files.update({'overlay.html', 'overlay.js', 'overlay.css'})
+public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3'})
 ```
 
 El servidor actual ya incluye esa línea. No sustituirlo por una copia antigua.
 Reiniciar/desplegar el servicio como habitualmente. No hay migraciones ni nuevas
 dependencias. No modificar contraseñas, claves de Twitch, Riot ni la base de datos.
 
-Si se usa Docker, añadir `COPY overlay.html overlay.js overlay.css /app/` al
-Dockerfile y permitir esos tres archivos en `.dockerignore` mediante
-`!overlay.html`, `!overlay.js`, `!overlay.css`. Los archivos del proyecto ya incluyen estos cambios.
+Si se usa Docker, añadir `COPY overlay.html overlay.js overlay.css overlay-pepazo.mp3 /app/` al
+Dockerfile y permitir esos cuatro archivos en `.dockerignore` mediante
+`!overlay.html`, `!overlay.js`, `!overlay.css`, `!overlay-pepazo.mp3`. Los archivos del proyecto ya incluyen estos cambios.
 
 El overlay utiliza las rutas existentes `/api/duos`, `/api/player/login`,
 `/api/player/state`, `/api/player/events` y `/api/player/logout`. El servidor
@@ -56,7 +56,7 @@ El parámetro identifica la configuración local, no concede acceso a un equipo.
 ## Comportamiento y límites
 
 - La fuente permanece transparente salvo durante los avisos o al mostrar ajustes.
-- Cada aviso dura unos seis segundos; varios avisos se reproducen por orden.
+- Cada aviso dura 10 segundos; varios avisos se reproducen por orden.
 - Usa los eventos autenticados en tiempo real. No consulta Riot ni Twitch.
 - Guarda la sesión y el volumen en el almacenamiento local del navegador de OBS,
   nunca la contraseña ni credenciales en la URL. No compartas el perfil de OBS si
@@ -88,3 +88,25 @@ base temporal. Antes de publicar, hacer además la grabación de prueba en OBS.
 Chrome al SSE real y comprueba imagen, generación de audio, recepción antes del
 giro y ausencia de repetición tras recargar. Solo usa equipos ficticios y guarda
 una captura transparente en `preview/overlay-live.png`; no accede a la base real.
+
+## Animación de misil / alarma nuclear
+
+El misil con Pepo recorre una curva continua y explota a los 6.2 segundos.
+El nombre del equipo atacante aparece destacado y estable de 6.5 a 9.9 segundos.
+Se conserva el fondo transparente, la cola por equipo y los enlaces desde Mi Panel.
+
+`overlay-pepazo.mp3` contiene una única mezcla sincronizada: sirena mecánica grave
+con ciclos lentos, motor y ruido, «Soy un misil» de 0.250 a 3.412 s, el segundo
+clip de voz de 4.407 a 6.145 s, y la explosión distorsionada desde 6.2 s.
+Las voces están completas y a velocidad original. El volumen del panel controla
+la mezcla también durante la reproducción. Cerrar sesión detiene el sonido.
+
+La mezcla se carga desde el mismo servidor; no requiere servicios externos ni
+nuevas dependencias de producción. Si el MP3 no carga, el panel muestra un aviso
+y permite reintentar con Probar. La animación y la recepción de eventos siguen
+funcionando cuando el navegador espera un clic para permitir audio.
+
+Para reconstruir el MP3 en desarrollo, `build_overlay_audio.py` acepta
+`--ffmpeg`, `--first` y `--second` con las rutas locales de FFmpeg y los dos clips
+originales. No sube archivos ni necesita claves. Los clips originales no son
+necesarios para ejecutar la web; la mezcla final está incluida en el repositorio.
