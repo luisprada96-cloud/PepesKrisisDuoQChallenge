@@ -15,11 +15,18 @@
         total.deaths += player.deaths;
         total.assists += player.assists;
       }
+      if (player.resultGames > 0 && Number.isFinite(player.winrate)) {
+        total.resultGames += player.resultGames;
+        total.wins += player.wins;
+        total.losses += player.losses;
+      }
       return total;
-    }, {games:0,kills:0,deaths:0,assists:0});
+    }, {games:0,kills:0,deaths:0,assists:0,resultGames:0,wins:0,losses:0});
     const generalKda = totals.games ? ((totals.kills + totals.assists) / Math.max(1,totals.deaths)).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) : champion.games ? 'pendiente' : '—';
     const partial = totals.games > 0 && totals.games < champion.games ? ` (parcial: ${totals.games} de ${champion.games} apariciones)` : '';
-    $('champion-modal-summary').textContent = `${detail(champion)} · KDA general: ${generalKda}${partial}`;
+    const generalWinrate = totals.resultGames ? `${(100 * totals.wins / totals.resultGames).toLocaleString('es-ES',{maximumFractionDigits:1})} % (${totals.wins} V / ${totals.losses} D)` : champion.games ? 'pendiente' : '—';
+    const resultsPartial = totals.resultGames > 0 && totals.resultGames < champion.games ? ` (parcial: ${totals.resultGames} de ${champion.games} apariciones)` : '';
+    $('champion-modal-summary').textContent = `${detail(champion)} · KDA general: ${generalKda}${partial} · Winrate total: ${generalWinrate}${resultsPartial}`;
     $('champion-modal-players').innerHTML = players.length ? `<div class="champion-players-table-wrap"><table class="champion-players-table"><thead><tr><th scope="col">Jugador / dúo</th><th scope="col">Partidas</th><th scope="col">Winrate</th><th scope="col">KDA</th><th scope="col">K / D / A</th></tr></thead><tbody>${players.map(player => {
       const known = player.statsGames > 0 && Number.isFinite(player.kda);
       const partial = known && player.statsGames < player.games;
