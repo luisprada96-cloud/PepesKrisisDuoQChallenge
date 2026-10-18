@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Pepe — Pepes Krisis</title>
+  <g stroke="#203927" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#649746" d="M8 33C3 24 8 12 19 11c7-1 11 3 14 8 5-8 15-9 21-2 5 5 6 12 4 18 5 7 2 17-8 21-10 5-29 4-39-3C4 49 3 40 8 33Z"/>
+    <path fill="#78aa55" stroke="none" d="M9 35c8-5 35-6 47 1 6 7 0 16-10 19-10 3-25 2-33-3-7-4-7-11-4-17Z"/>
+    <path fill="#f5f2dc" d="M10 25c0-8 5-12 11-11 7 1 10 8 9 15-7 2-15 1-20-4Z"/>
+    <path fill="#f5f2dc" d="M33 29c-1-8 2-14 9-14 7-1 12 5 12 13-6 3-14 3-21 1Z"/>
+    <ellipse fill="#17261b" stroke="none" cx="23" cy="25" rx="3.1" ry="4.7"/>
+    <ellipse fill="#17261b" stroke="none" cx="45" cy="26" rx="3.1" ry="4.7"/>
+    <path fill="#649746" d="M10 24c4-4 12-4 20 0M33 25c7-4 15-3 21 2"/>
+    <path fill="none" stroke="#4b7737" stroke-width="2" d="M14 34c3 2 9 2 13 1m9 0c4 2 10 2 14 0"/>
+    <path fill="#a76b48" stroke="#66452e" d="M12 42c7-3 12-1 19 0 8 1 16 0 21-2 4-1 6 2 3 5-7 7-27 9-39 4-5-2-7-5-4-7Z"/>
+    <path fill="none" stroke="#503827" stroke-width="2.1" d="M13 44c12 5 29 5 40-1"/>
+  </g>
+</svg>

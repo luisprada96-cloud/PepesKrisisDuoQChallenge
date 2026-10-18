@@ -2206,6 +2206,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files.update({'porra.html', 'porra.js', 'porra.css'})
         public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3', 'admin-overlay.js'})
         public_files.update({'campeones.html', 'campeones.js', 'campeones.css'})
+        public_files.update({'favicon.svg', 'favicon.ico'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files and filename not in tierlist_assets:
