@@ -398,3 +398,12 @@ Añadir una fuente importa también su historial disponible con los filtros exis
 `repair_riot_history.py --target neon --team-id ID` simula la retirada de partidas anteriores al 15 de octubre de 2026, sin guardar cambios. Con `--apply`, crea primero una copia privada en `backups/` y guarda usando la revisión de Neon para no sobrescribir operaciones concurrentes. También admite `--target local` con el servidor local detenido.
 
 Solo se limpia el equipo indicado: conserva partidas válidas y sus marcas de premios, cuentas, ELO, inventario, castigos, quinielas y otros equipos. Recalcula rachas y estadísticas derivadas, y deja los IDs retirados en `excludedRiotMatches` para impedir que vuelvan a entrar, incluso desde una sincronización ya iniciada. No elimina partidas de prueba ni filas sin fecha fiable. Si las partidas retiradas tienen premios registrados o resolvieron un castigo, se detiene para revisar esa situación, sin modificar inventarios automáticamente.
+
+
+### Evolución individual de estadísticas
+
+Debajo del salón de la fama y la vergüenza, la tarjeta «Evolución individual» alterna entre kills, asistencias y muertes acumuladas. Cada integrante tiene una línea y un color compartido entre las tres vistas. El eje X cuenta sus propias partidas en orden de finalización; el eje Y suma la estadística hasta esa partida. Las cuentas de una misma persona aportan a su única línea, independientemente de la cuenta elegida para ELO.
+
+La leyenda permite resaltar o fijar un integrante; al pasar por una línea se muestran nombre, equipo, partida y total. Incluye navegación con teclado y desplazamiento horizontal de la gráfica en móvil. Los integrantes sin partidas permanecen en la leyenda.
+
+`GET /api/stats/progression` calcula las tres series a partir del historial guardado, sin consultar Riot ni modificar datos. Excluye pruebas, duplicados, otras colas, partidas anteriores al 15 de octubre de 2026, partidas cortas y resultados posteriores al cierre del torneo. Las estadísticas incompletas se indican como pendientes y no se convierten en ceros. Reutiliza la actualización de la portada cada 15 segundos; cambiar de métrica no solicita datos y un fallo de conexión conserva la última lectura confirmada. `test_stat_progression.py` y `test_stat_progression_frontend.cjs` verifican acumulados, identidades, filtros, privacidad e interacción.

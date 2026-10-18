@@ -28,6 +28,7 @@ import tierlists_service
 import final_predictions
 import pickem_service
 import champions_service
+import stat_progression
 import player_accounts
 import riot_accounts_sync
 import riot_match_policy
@@ -2149,6 +2150,9 @@ class CustomHandler(BaseHTTPRequestHandler):
         if path == '/api/duos':
             self._send_json(public_duo_summaries())
             return
+        elif path == '/api/stats/progression':
+            self._send_json(stat_progression.build_progression(load_db(), MIN_RIOT_MATCH_DURATION_SECONDS))
+            return
         elif path == '/api/champions':
             self._send_json(champions_service.build_album(load_db(), MIN_RIOT_MATCH_DURATION_SECONDS))
             return
@@ -2196,7 +2200,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             return
 
         # The repository root is never a public directory.
-        public_files = {"resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
+        public_files = {"stat-progression.js", "resumen.html", "resumen.js", "resumen.css", "roulette.html", "roulette.css", "roulette-core.js", "roulette-window.js", "roulette-popup.js", "clips.html", "clips.css", "clips.js", "torneo.html", "torneo.js", "index.html", "admin.html", "player.html", "app.js", "match-history.js", "admin.js", "player.js", "data.js", "alerts.js", "styles.css"}
         public_files.update({'tierlist.html', 'tierlist.js', 'tierlist.css', 'pickem.html', 'pickem.js', 'pickem.css', 'premios.html', 'premios.js', 'navigation.js'})
         public_files.update({'porra.html', 'porra.js', 'porra.css'})
         public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3', 'admin-overlay.js'})

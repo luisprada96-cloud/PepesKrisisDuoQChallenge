@@ -227,6 +227,7 @@ async function mutation(path, payload, method) {
 }
 
 const DataStore = {
+  getStatProgression: () => cachedRead('/stats/progression', null),
   getWeeklySummary: (week = '') => apiRequest(`/weekly-summary${week ? `?week=${encodeURIComponent(week)}` : ''}`, null, 'GET'),
   getTrophies: () => cachedRead('/trophies', {cards: []}),
   getDuos: () => cachedRead('/duos', []),

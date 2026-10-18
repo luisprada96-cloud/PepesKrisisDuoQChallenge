@@ -94,6 +94,7 @@ const discordTestRequests = [];
           if (existing) for (const key of ['player1','player2']) if (submitted[key]) Object.assign(existing[key], submitted[key]);
           result = {success:true, duo:existing || submitted};
         } else if (url.pathname === '/api/duos') result = duos;
+        else if (url.pathname === '/api/stats/progression') result = {players:[],pendingMatches:0};
         else if (url.pathname === '/api/config') result = {challengeTitle: 'Prueba', endDate: '2026-08-31', prizePool: 'Prueba', ...publicRules};
         else if (url.pathname === '/api/trophies') result = {status: 'provisional', roleMode: 'main_role_matches', endDate: '2030-01-01', cards: ['champion','TOP','JUNGLE','MIDDLE','BOTTOM','UTILITY','dishonor'].map(id => ({id, title: id, icon: '🏆', description: 'Premio', entries: id === 'UTILITY' ? [] : [{name: 'Jugador', teamName: 'Equipo', value: '5.00 KDA', games: 10}]}))};
         else if (url.pathname === '/api/events') result = [{type: 'SHELL_LAUNCHED', attacker: 'Lanzamiento oculto'}, {type: 'SHELL_SPUN', attacker: 'Atacante', target: 'Receptor', ...assignedPenalty, penalty: {...assignedPenalty.penalty,desc:'Castigo abierto'}}, {type: 'PENALTY_ADMIN_CORRECTION', target: 'Corrección oculta'}];
@@ -109,7 +110,7 @@ const discordTestRequests = [];
         return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(result)});
       }
       const filename = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-      if (!['roulette.html','roulette.css','roulette-core.js','roulette-window.js','roulette-popup.js','torneo.html','torneo.js','premios.html','premios.js','navigation.js','index.html','admin.html','player.html','app.js','match-history.js','admin.js','admin-overlay.js','player.js','data.js','alerts.js','styles.css'].includes(filename)) return route.fulfill({status:404, body:''});
+      if (!['roulette.html','roulette.css','roulette-core.js','roulette-window.js','roulette-popup.js','torneo.html','torneo.js','premios.html','premios.js','navigation.js','index.html','admin.html','player.html','stat-progression.js','app.js','match-history.js','admin.js','admin-overlay.js','player.js','data.js','alerts.js','styles.css'].includes(filename)) return route.fulfill({status:404, body:''});
       return route.fulfill({contentType: filename.endsWith('.js') ? 'text/javascript' : filename.endsWith('.css') ? 'text/css' : 'text/html', body: fs.readFileSync(path.join(__dirname, filename))});
     });
     await page.goto('http://pepes.test/');

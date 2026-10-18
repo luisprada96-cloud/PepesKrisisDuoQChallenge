@@ -32,6 +32,7 @@ async function initApp() {
   renderBestMatchesTable();
   await renderRecentAttacksTable();
   setupEventListeners();
+  window.StatProgression?.init();
 
   let signature = JSON.stringify(currentDuos);
   async function refresh() {
@@ -48,6 +49,7 @@ async function initApp() {
           renderBestMatchesTable();
         }
         await renderRecentAttacksTable();
+        await window.StatProgression?.refresh();
       }
     } finally { setTimeout(refresh, 15000); }
   }
@@ -597,6 +599,7 @@ async function triggerManualSync() {
     renderBestMatchesTable();
     await renderRecentAttacksTable();
     await DataStore.refreshSyncStatus();
+    await window.StatProgression?.refresh();
   } finally {
     buttons.forEach(button => button.disabled = false);
   }

@@ -165,6 +165,33 @@
 
 
 
+  <section class="container stat-progression-section" aria-labelledby="stat-progression-title">
+    <div class="fun-stats-card stat-progression-card">
+      <div class="fun-stats-heading stat-progression-heading">
+        <div>
+          <span class="section-eyebrow">Partida a partida</span>
+          <h2 id="stat-progression-title"><i class="fa-solid fa-chart-line" aria-hidden="true"></i> Evolución individual</h2>
+        </div>
+        <div class="stat-progression-tabs" role="tablist" aria-label="Estadística acumulada">
+          <button type="button" id="progression-tab-kills" role="tab" aria-selected="true" aria-controls="stat-progression-panel" data-progression-metric="kills"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i> Kills</button>
+          <button type="button" id="progression-tab-assists" role="tab" aria-selected="false" aria-controls="stat-progression-panel" tabindex="-1" data-progression-metric="assists"><i class="fa-solid fa-handshake" aria-hidden="true"></i> Asistencias</button>
+          <button type="button" id="progression-tab-deaths" role="tab" aria-selected="false" aria-controls="stat-progression-panel" tabindex="-1" data-progression-metric="deaths"><i class="fa-solid fa-skull" aria-hidden="true"></i> Muertes</button>
+        </div>
+      </div>
+      <div id="stat-progression-panel" class="stat-progression-panel" role="tabpanel" aria-labelledby="progression-tab-kills">
+        <p id="stat-progression-status" class="stat-progression-status" aria-live="polite">Cargando evolución…</p>
+        <div id="stat-progression-frame" class="stat-progression-frame">
+          <div id="stat-progression-plot" class="stat-progression-plot"></div>
+          <div id="stat-progression-tooltip" class="stat-progression-tooltip" role="tooltip" hidden></div>
+        </div>
+        <p class="stat-progression-scroll-hint">Desliza para recorrer la gráfica.</p>
+        <p id="stat-progression-detail" class="stat-progression-detail">Pasa por una línea o selecciona un integrante para ver sus datos.</p>
+        <div id="stat-progression-legend" class="stat-progression-legend" aria-label="Integrantes de la gráfica"></div>
+        <p class="stat-progression-note">Totales acumulados de partidas con estadísticas completas. El eje X cuenta las partidas registradas de cada integrante.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Best Combined KDA Matches -->
   <section class="container best-matches-section" aria-labelledby="best-matches-title">
     <div class="best-matches-card">
@@ -262,6 +289,7 @@
   <script src="data.js"></script>
   <script src="alerts.js"></script>
   <script src="match-history.js"></script>
+  <script src="stat-progression.js"></script>
   <script src="app.js"></script>
 </body>
 

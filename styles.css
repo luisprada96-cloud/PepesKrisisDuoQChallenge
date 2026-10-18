@@ -2133,3 +2133,42 @@ body {
 .overlay-library-card h3{color:var(--gold-hextech,#f6d484);margin-bottom:.5rem}
 .overlay-library-card video,#overlay-upload-preview{display:block;width:100%;max-width:560px;max-height:260px;background:repeating-conic-gradient(#192633 0% 25%,#243341 0% 50%) 0/24px 24px;margin:1rem 0;border-radius:8px}
 #overlay-upload-form label{display:block;margin-top:1rem}#overlay-upload-name{width:100%;max-width:560px}#overlay-upload-preview[hidden]{display:none}
+
+/* Shared cumulative combat chart, with a stable color per participant. */
+.stat-progression-section { margin-bottom: 3rem; }
+.stat-progression-heading { align-items: center; flex-wrap: wrap; }
+.stat-progression-tabs { display: flex; gap: .3rem; border: 1px solid var(--border-subtle); border-radius: 10px; padding: .3rem; background: rgba(0,0,0,.2); }
+.stat-progression-tabs button { border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--text-muted); font: inherit; font-size: .85rem; padding: .65rem .9rem; cursor: pointer; white-space: nowrap; }
+.stat-progression-tabs button[aria-selected="true"] { color: var(--cyan-primary); background: rgba(0,240,255,.1); border-color: rgba(0,240,255,.25); }
+.stat-progression-tabs button[data-progression-metric="kills"][aria-selected="true"] { color: var(--gold-primary, #ffc947); background: rgba(255,201,71,.09); border-color: rgba(255,201,71,.25); }
+.stat-progression-tabs button[data-progression-metric="deaths"][aria-selected="true"] { color: #ff6fa5; background: rgba(255,111,165,.09); border-color: rgba(255,111,165,.25); }
+.stat-progression-tabs button:focus-visible, .stat-progression-legend button:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
+.stat-progression-panel { padding: 1rem 1.35rem 1.2rem; }
+.stat-progression-status { color: var(--text-muted); font-size: .8rem; margin: 0 0 .7rem; }
+.stat-progression-status button { color: var(--cyan-primary); font: inherit; border: 0; background: transparent; text-decoration: underline; cursor: pointer; }
+.stat-progression-frame { position: relative; min-width: 0; }
+.stat-progression-plot { overflow-x: auto; max-width: 100%; }
+.stat-progression-plot svg { display: block; width: 100%; min-width: 680px; height: auto; touch-action: pan-x pan-y; }
+.progression-grid { stroke: rgba(255,255,255,.07); stroke-width: 1; }
+.progression-axis { stroke: rgba(255,255,255,.2); stroke-width: 1; }
+.progression-tick { fill: #8e9bb0; font-size: 12px; font-family: var(--font-body); }
+.progression-axis-label { fill: #b1bed1; font-family: var(--font-body); font-size: 13px; }
+.progression-series path { vector-effect: non-scaling-stroke; pointer-events: none; transition: opacity .1s ease; }
+.stat-progression-tooltip { width: 240px; box-sizing: border-box; position: absolute; z-index: 2; max-width: min(280px, calc(100% - 16px)); padding: .7rem .9rem; border: 1px solid; border-radius: 9px; background: rgba(7,10,18,.97); box-shadow: 0 6px 24px rgba(0,0,0,.4); pointer-events: none; font-size: .8rem; }
+.stat-progression-tooltip strong, .stat-progression-tooltip span, .stat-progression-tooltip b { display: block; overflow-wrap: anywhere; }
+.stat-progression-tooltip span { color: var(--text-muted); margin: .15rem 0 .5rem; }
+.stat-progression-tooltip b { font-weight: 500; }
+.stat-progression-detail { color: #c9d4e5; font-size: .8rem; min-height: 1.4em; margin: .4rem 0 1rem; overflow-wrap: anywhere; }
+.stat-progression-legend { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; }
+.stat-progression-legend button { display: flex; align-items: flex-start; gap: .5rem; min-width: 0; padding: .55rem .6rem; background: rgba(255,255,255,.025); color: var(--text-main); border: 1px solid transparent; border-radius: 8px; text-align: left; cursor: pointer; font: inherit; transition: opacity .1s ease, border-color .1s ease; }
+.stat-progression-legend button.is-highlighted { border-color: var(--series-color); background: rgba(255,255,255,.05); }
+.stat-progression-legend button.is-muted { opacity: .4; }
+.stat-progression-legend i { flex: 0 0 16px; margin-top: .45rem; border-top: 3px solid var(--series-color); }
+.stat-progression-legend button > span { min-width: 0; }
+.stat-progression-legend strong { display: block; font-weight: 600; font-size: .78rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stat-progression-legend small { display: block; color: var(--text-muted); font-size: .65rem; margin-top: .2rem; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stat-progression-scroll-hint { display: none; }
+.stat-progression-note { color: var(--text-muted); font-size: .72rem; margin: 1rem 0 0; }
+.stat-progression-empty { padding: 3rem 1rem; text-align: center; color: var(--text-muted); }
+@media (max-width: 1050px) { .stat-progression-legend { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .stat-progression-scroll-hint { display: block; color: var(--text-muted); font-size: .7rem; margin: .2rem 0 .6rem; } .stat-progression-heading { padding: 1rem; gap: .8rem; } .stat-progression-tabs { width: 100%; } .stat-progression-tabs button { flex: 1; padding: .65rem .3rem; font-size: .8rem; } .stat-progression-panel { padding: .8rem .75rem 1rem; } .stat-progression-legend { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
