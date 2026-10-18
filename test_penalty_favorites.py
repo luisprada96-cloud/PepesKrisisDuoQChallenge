@@ -151,7 +151,10 @@ class FavoriteImportTests(unittest.TestCase):
         self.prepare(legacy=True)
         db = server.load_db()
         d = db["duos"][0]
-        d["history"] = [game(f"OLD{i}", start=100) for i in range(3)]
+        # Keep the historical reference before assignment, within the tournament window.
+        reference_start = server.riot_match_policy.MIN_START_TIMESTAMP * 1000 + 100
+        d["history"] = [game(f"OLD{i}", start=reference_start) for i in range(3)]
+        d["activeDebuffs"][0]["assignedAtEpochMs"] = reference_start + 1000
         server.save_db(db)
         original = server.load_db()
         scanned = copy.deepcopy(original)

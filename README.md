@@ -15,6 +15,7 @@ La interfaz, ruletas, avisos, Discord y documentación utilizan «pepazo» y «p
 - **⏳ Calendario oficial (hora de Madrid)**: inicio el 15/10/2026 a las 18:00 y cierre el 15/11/2026 a las 23:59. La cuenta atrás de portada cambia automáticamente de inicio a cierre y después muestra el torneo finalizado. Las fechas se guardan con zona horaria explícita, incluyendo el cambio de horario de octubre; el formulario de administración siempre muestra y recibe horas de Madrid.
 
 - **🎮 Sincronización en Tiempo Real con Riot API**: Seguimiento automático de Elo, Tier, División, LP, Victorias, Derrotas y Racha activa cada 5 minutos.
+  - Solo se importan partidas iniciadas desde el **15 de octubre de 2026 a las 00:00, hora de Madrid** (14 de octubre a las 22:00 UTC), en todas las cuentas. Se filtra tanto la consulta a Riot como cada detalle recibido, incluidos reintentos antiguos. Una partida iniciada antes del corte no cuenta aunque termine después. Sin fecha confirmada, se reintenta en lugar de contarla.
   - Las partidas con duración confirmada inferior a 10 minutos se excluyen del historial del challenge antes de calcular rachas, estadísticas, premios o castigos. `excludedRiotMatches` conserva sus IDs para no reimportarlas ni dejarlas pendientes; exactamente 10 minutos sí cuenta. Los rangos y los totales oficiales de Riot no se reescriben.
 - **🐢 Sistema de Pepazos**:
   - Cada bloque de 4 victorias consecutivas, pentakill, al menos 20 kills, al menos 30 asistencias o 0 muertes con más de 20 kills + asistencias otorga 1 pepazo. Los logros individuales no exigen victoria y no suman estadísticas entre jugadores.
@@ -390,3 +391,10 @@ Todas las cuentas registradas del equipo con varias fuentes aportan partidas Sol
 Cada cuenta mantiene su rango, historial de ELO y referencia de Flash. El rango público del integrante y su gráfica utilizan la cuenta seleccionada; la clasificación del equipo continúa utilizando al primer integrante. Cambiar la selección restaura la gráfica de esa cuenta, sin unir rangos de cuentas distintas. El progreso parte de la referencia propia de la cuenta elegida, conservando la referencia original de los equipos existentes.
 
 Añadir una fuente importa también su historial disponible con los filtros existentes. Los resultados ya resueltos de Pick’em y los premios concedidos se conservan; los resúmenes archivados existentes mantienen los datos anteriores a la incorporación de nuevas fuentes o cambios de cuenta de ELO posteriores a su cierre. Las sincronizaciones descartan resultados de un equipo si su configuración de cuentas cambia durante las consultas.
+
+
+### Limpieza selectiva de partidas anteriores al torneo
+
+`repair_riot_history.py --target neon --team-id ID` simula la retirada de partidas anteriores al 15 de octubre de 2026, sin guardar cambios. Con `--apply`, crea primero una copia privada en `backups/` y guarda usando la revisión de Neon para no sobrescribir operaciones concurrentes. También admite `--target local` con el servidor local detenido.
+
+Solo se limpia el equipo indicado: conserva partidas válidas y sus marcas de premios, cuentas, ELO, inventario, castigos, quinielas y otros equipos. Recalcula rachas y estadísticas derivadas, y deja los IDs retirados en `excludedRiotMatches` para impedir que vuelvan a entrar, incluso desde una sincronización ya iniciada. No elimina partidas de prueba ni filas sin fecha fiable. Si las partidas retiradas tienen premios registrados o resolvieron un castigo, se detiene para revisar esa situación, sin modificar inventarios automáticamente.

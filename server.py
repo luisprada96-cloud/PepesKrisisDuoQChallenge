@@ -30,6 +30,7 @@ import pickem_service
 import champions_service
 import player_accounts
 import riot_accounts_sync
+import riot_match_policy
 from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individual_shell_criteria
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
@@ -1455,6 +1456,9 @@ def merge_riot_result(original, scanned):
                 duo["riotMatchDiscovery"] = copy.deepcopy(incoming["riotMatchDiscovery"])
                 known_ids = {m.get("matchId") for m in duo["history"] if not m.get("isTest")} | set(excluded)
                 duo["riotMatchDiscovery"]["pendingMatchIds"] = [mid for mid in duo["riotMatchDiscovery"]["pendingMatchIds"] if mid not in known_ids]
+            # Apply the same date rule to stored or concurrently scanned evidence
+            # before it can contribute to rewards, penalties or aggregate stats.
+            riot_match_policy.prune_history(duo)
             # History can arrive after the roulette draw. Resolve only empty
             # references before evaluating it, preserving existing player draws.
             for debuff in fill_pending_penalty_favorites(duo) + fill_pending_flash_baselines(duo):
@@ -1513,6 +1517,7 @@ def solo_rank_snapshot(entries):
 
 def discover_riot_matches(duo, puuid, fetch_json, min_timestamp):
     """Discover new IDs while retaining every previously discovered import gap."""
+    min_timestamp = max(min_timestamp, riot_match_policy.MIN_START_TIMESTAMP)
     player = duo.get("player1") or {}
     account = [str(player.get("name", "")).strip().casefold(),
                str(player.get("tag") or "EUW").strip().casefold()]
@@ -1712,8 +1717,8 @@ def sync_riot_data():
             }
             # Keep the existing date/queue filters. First discovery scans all pages;
             # subsequent jobs stop at the saved boundary and retry their saved gaps.
-            MIN_2026_TIMESTAMP = 1767225600
-            discovery = discover_riot_matches(duo, puuid1, fetch_json, MIN_2026_TIMESTAMP)
+            minimum_start = riot_match_policy.MIN_START_TIMESTAMP
+            discovery = discover_riot_matches(duo, puuid1, fetch_json, minimum_start)
             duo["riotMatchDiscovery"] = discovery
             new_match_ids = discovery["pendingMatchIds"]
             updated = True
@@ -1735,6 +1740,13 @@ def sync_riot_data():
                     url_detail = f"https://europe.api.riotgames.com/lol/match/v5/matches/{mid}"
                     mdetail = fetch_json(url_detail)
                     info = mdetail.get("info", {})
+                    if riot_match_policy.match_timestamp_ms(info) is None:
+                        raise ValueError("La partida no tiene fecha confirmada; se reintentará.")
+                    if riot_match_policy.before_cutoff(info):
+                        duo.setdefault("excludedRiotMatches", {})[mid] = riot_match_policy.exclusion(info)
+                        existing_by_id.pop(mid, None)
+                        existing_history = [m for m in existing_history if m.get("matchId") != mid]
+                        continue
                     duration_sec = int(info.get("gameDuration", 0) or 0)
                     if 0 < duration_sec < MIN_RIOT_MATCH_DURATION_SECONDS:
                         duo.setdefault("excludedRiotMatches", {})[mid] = {
@@ -1747,9 +1759,6 @@ def sync_riot_data():
                         continue
                     mins, secs = divmod(duration_sec, 60)
                     game_end_ms = info.get("gameEndTimestamp") or info.get("gameStartTimestamp") or 0
-
-                    if game_end_ms > 0 and game_end_ms < (MIN_2026_TIMESTAMP * 1000):
-                        continue
 
                     if mid in existing_by_id:
                         match = existing_by_id[mid]

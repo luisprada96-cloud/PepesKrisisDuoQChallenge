@@ -5,6 +5,7 @@ import time
 import urllib.parse
 
 import player_accounts as pa
+import riot_match_policy
 from elo_history import record_player_elo
 
 
@@ -47,7 +48,7 @@ def sync_team(duo, fetch, failure, api):
         try:
             temporary = {'player1': account, 'history': list(existing.values()), 'excludedRiotMatches': excluded,
                          'riotMatchDiscovery': account.get('matchDiscovery', {})}
-            account['matchDiscovery'] = api.discover_riot_matches(temporary, account['puuid'], fetch, 1767225600)
+            account['matchDiscovery'] = api.discover_riot_matches(temporary, account['puuid'], fetch, riot_match_policy.MIN_START_TIMESTAMP)
         except Exception as error:
             failure(error)
     all_accounts = [a for key in ('player1','player2') for a in pa.accounts(duo.get(key) or {})]
@@ -68,6 +69,12 @@ def sync_team(duo, fetch, failure, api):
         try:
             time.sleep(0.2)
             info = fetch(f'https://europe.api.riotgames.com/lol/match/v5/matches/{mid}').get('info',{})
+            if riot_match_policy.match_timestamp_ms(info) is None:
+                raise ValueError('La partida no tiene fecha confirmada; se reintentará.')
+            if riot_match_policy.before_cutoff(info):
+                excluded[mid] = riot_match_policy.exclusion(info)
+                existing.pop(mid, None)
+                continue
             duration = int(info.get('gameDuration',0) or 0)
             if info.get('queueId',420) != 420 or 0 < duration < api.MIN_RIOT_MATCH_DURATION_SECONDS:
                 excluded[mid] = {'reason':'duration_below_minimum' if duration < api.MIN_RIOT_MATCH_DURATION_SECONDS else 'wrong_queue', 'durationSeconds':duration}

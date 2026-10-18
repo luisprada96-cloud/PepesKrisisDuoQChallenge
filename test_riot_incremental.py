@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import server
 import test_shell_penalties as fixtures
 
-MIN_TIMESTAMP = 1767225600
+MIN_TIMESTAMP = server.riot_match_policy.MIN_START_TIMESTAMP
 
 
 def discovery(latest, pending=(), account=None):
