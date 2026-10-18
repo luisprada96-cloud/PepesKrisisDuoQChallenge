@@ -100,12 +100,14 @@ class EndpointRegressionTests(unittest.TestCase):
 
     def test_public_reads_do_not_grant_shells_or_expose_credentials(self):
         db = server.load_db()
-        db["duos"][0]["history"] = [{"matchId": str(i), "result": "WIN"} for i in range(4)]
+        db["duos"][0]["history"] = [{"matchId": str(i), "result": "WIN",
+                                    "gameStartTimestamp": server.riot_match_policy.MIN_START_TIMESTAMP * 1000} for i in range(4)]
         server.save_db(db)
         before = Path(server.DB_FILE).read_bytes()
         summary = json.loads(self.get("/api/duos"))[0]
         self.assertEqual(summary["blueShells"], 1)
         self.assertEqual(summary["historyCount"], 4)
+        self.assertEqual(summary["tournamentRecord"], {"wins":4,"losses":0,"games":4})
         self.assertNotIn("history", summary)
         self.assertNotIn("passwordHash", summary)
         self.assertEqual(before, Path(server.DB_FILE).read_bytes())

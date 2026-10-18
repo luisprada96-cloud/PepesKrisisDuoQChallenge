@@ -101,6 +101,14 @@ function updateCountdownTimer(now = Date.now()) {
     `;
 }
 
+/* The public W/L describes the challenge history, not a Riot season. */
+function challengeRecord(duo) {
+  const record = duo.tournamentRecord || {};
+  const wins = Math.max(0, Number(record.wins) || 0);
+  const losses = Math.max(0, Number(record.losses) || 0);
+  return {wins, losses, games: wins + losses, winrate: wins + losses ? wins / (wins + losses) : 0};
+}
+
 /* Stats Overview */
 function renderStatsOverview() {
   const duosCountEl = document.getElementById('stat-total-duos');
@@ -114,7 +122,7 @@ function renderStatsOverview() {
   let liveCount = 0;
   let completedPenalties = 0;
   currentDuos.forEach(d => {
-    totalGames += (d.wins + d.losses);
+    totalGames += challengeRecord(d).games;
     if (d.twitchIsLive === true) liveCount++;
     completedPenalties += (d.activeDebuffs || []).filter(penalty =>
       penalty.status !== 'CANCELLED' && (penalty.status === 'COMPLETED' || penalty.resolved === true)
@@ -215,11 +223,9 @@ function renderLeaderboardTable() {
       return compareCompetitionRank(a, b);
     }
     if (sortBy === 'WINRATE') {
-      const wrA = (a.wins + a.losses) > 0 ? (a.wins / (a.wins + a.losses)) : 0;
-      const wrB = (b.wins + b.losses) > 0 ? (b.wins / (b.wins + b.losses)) : 0;
-      return wrB - wrA;
+      return challengeRecord(b).winrate - challengeRecord(a).winrate;
     }
-    if (sortBy === 'GAMES') return (b.wins + b.losses) - (a.wins + a.losses);
+    if (sortBy === 'GAMES') return challengeRecord(b).games - challengeRecord(a).games;
     if (sortBy === 'NAME') return a.teamName.localeCompare(b.teamName);
     return 0;
   });
@@ -241,8 +247,8 @@ function renderLeaderboardTable() {
   const positions = new Map([...currentDuos].sort(compareCompetitionRank).map((duo, index) => [duo.id, index + 1]));
   filtered.forEach(duo => {
     const rankPos = positions.get(duo.id);
-    const totalG = duo.wins + duo.losses;
-    const winrate = totalG > 0 ? Math.round((duo.wins / totalG) * 100) : 0;
+    const record = challengeRecord(duo);
+    const winrate = Math.round(record.winrate * 100);
 
     let posClass = 'rank-position';
     if (rankPos === 1) posClass += ' rank-1';
@@ -298,7 +304,7 @@ function renderLeaderboardTable() {
         <div class="winrate-wrapper">
           <div class="winrate-text">
             <span>${winrate}%</span>
-            <span style="color: var(--text-muted);">${escapeHtml(duo.wins)}W / ${escapeHtml(duo.losses)}L</span>
+            <span style="color: var(--text-muted);">${escapeHtml(String(record.wins))}W / ${escapeHtml(String(record.losses))}L</span>
           </div>
           <div class="winrate-bar-bg">
             <div class="winrate-bar-fill" style="width: ${winrate}%;"></div>

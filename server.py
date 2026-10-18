@@ -287,6 +287,7 @@ def safe_duos_for_admin(duos):
 
 def duo_summary(duo):
     result = safe_duo_for_player(duo)
+    result["tournamentRecord"] = riot_match_policy.history_record(duo, MIN_RIOT_MATCH_DURATION_SECONDS)
     result["historyCount"] = len(result.pop("history", []))
     return result
 

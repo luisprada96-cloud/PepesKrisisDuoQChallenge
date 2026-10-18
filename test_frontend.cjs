@@ -41,6 +41,9 @@ const discordTestRequests = [];
     const team = (id, netLp, wins, losses) => ({id, teamName: id, tier: 'Gold', division: 'IV', lp: 0, netLp, wins, losses, blueShells: 1, historyCount: 65,
       player1: {name: 'Jugador 1', tag: 'EUW', mainRole: 'TOP'}, player2: {name: 'Jugador 2', tag: 'EUW', mainRole: 'JUNGLE'}, activeDebuffs: [], history: []});
     const duos = [team('Segundo', 100, 4, 6), team('Primero', 100, 8, 2), team('Tercero', 20, 9, 1)];
+    duos[0].tournamentRecord = {wins:1, losses:3, games:4};
+    duos[1].tournamentRecord = {wins:2, losses:0, games:2};
+    duos[2].tournamentRecord = {wins:0, losses:0, games:0};
     duos[0].statsBackfill = {remaining:2};
     duos[0].matchDetailsBackfill = {remaining:3};
     duos[0].riotMatchDiscovery = {pendingMatchIds:['pending-one']};
@@ -151,6 +154,16 @@ const discordTestRequests = [];
     assert.equal(await completedPenalties.textContent(), '0');
     await page.evaluate(() => renderStatsOverview());
     assert.equal(historyOffsets.length, 0, 'history must not be downloaded on initial load');
+    assert.match(await page.locator('.duo-row[data-id="Segundo"] .winrate-wrapper').textContent(), /25%\s*1W \/ 3L/);
+    assert.equal(await page.locator('.duo-row[data-id="Segundo"] .winrate-bar-fill').evaluate(el=>el.style.width),'25%');
+    assert.match(await page.locator('.duo-row[data-id="Tercero"] .winrate-wrapper').textContent(), /0%\s*0W \/ 0L/);
+    assert.equal(await page.locator('#stat-total-games').textContent(),'6');
+    await page.selectOption('#sort-by','GAMES');
+    assert.equal(await page.locator('.duo-row').first().getAttribute('data-id'),'Segundo');
+    await page.selectOption('#sort-by','WINRATE');
+    assert.equal(await page.locator('.duo-row').first().getAttribute('data-id'),'Primero');
+    await page.selectOption('#sort-by','RANK');
+
     assert.deepEqual(await page.locator('.main-leaderboard-table thead th').allTextContents(), ['Pos', 'Nombre Dúo', 'Integrante 1', 'Integrante 2', 'Winrate %', 'Racha', 'Pepazos', '']);
     assert.doesNotMatch(await page.locator('body').innerText(), /caparaz[oó]n(?:es)?/i);
     assert.match(await page.locator('.duo-row[data-id="Primero"] [data-player-rank="player1"]').textContent(), /Gold III\s*\(0 LP\)/);

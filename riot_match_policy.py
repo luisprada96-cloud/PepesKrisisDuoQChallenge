@@ -58,3 +58,22 @@ def prune_history(duo):
         if baseline.get('matchId') in mids or before_cutoff(baseline):
             owner.pop('flashBaseline', None)
     return removed
+
+
+def history_record(duo, minimum_duration=600):
+    """The challenge record is independent from a source account's season totals."""
+    results = {}
+    excluded = duo.get('excludedRiotMatches') or {}
+    for match in duo.get('history', []):
+        mid = match.get('matchId')
+        if (not mid or mid in excluded or match.get('isTest') or match_timestamp_ms(match) is None or before_cutoff(match)
+                or match.get('queueId') not in (None, 420)):
+            continue
+        duration = match.get('durationSeconds')
+        if isinstance(duration, (int, float)) and 0 < duration < minimum_duration:
+            continue
+        if match.get('result') in ('WIN', 'LOSS'):
+            results.setdefault(mid, match['result'])
+    wins = sum(result == 'WIN' for result in results.values())
+    losses = sum(result == 'LOSS' for result in results.values())
+    return {'wins': wins, 'losses': losses, 'games': wins + losses}

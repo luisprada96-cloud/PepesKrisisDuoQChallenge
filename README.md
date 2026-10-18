@@ -407,3 +407,8 @@ Debajo del salón de la fama y la vergüenza, la tarjeta «Evolución individual
 La leyenda permite resaltar o fijar un integrante; al pasar por una línea se muestran nombre, equipo, partida y total. Incluye navegación con teclado y desplazamiento horizontal de la gráfica en móvil. Los integrantes sin partidas permanecen en la leyenda.
 
 `GET /api/stats/progression` calcula las tres series a partir del historial guardado, sin consultar Riot ni modificar datos. Excluye pruebas, duplicados, otras colas, partidas anteriores al 15 de octubre de 2026, partidas cortas y resultados posteriores al cierre del torneo. Las estadísticas incompletas se indican como pendientes y no se convierten en ceros. Reutiliza la actualización de la portada cada 15 segundos; cambiar de métrica no solicita datos y un fallo de conexión conserva la última lectura confirmada. `test_stat_progression.py` y `test_stat_progression_frontend.cjs` verifican acumulados, identidades, filtros, privacidad e interacción.
+
+
+### W/L del historial del challenge
+
+La barra pública de W/L, su porcentaje, la ordenación por winrate o partidas y el contador de partidas de portada usan `tournamentRecord`, calculado desde el historial válido del equipo. Cada `matchId` cuenta una vez aunque proceda de varias cuentas; se excluyen pruebas, otras colas, partidas cortas, exclusiones y partidas anteriores al 15 de octubre. Sin resultados registrados muestra 0W / 0L. Los resultados pendientes no cuentan como derrotas. Se calcula al leer, sin reparar datos guardados ni consultar Riot. Los totales oficiales de temporada permanecen en el rango de las cuentas y en los campos internos usados por el desempate de la clasificación.

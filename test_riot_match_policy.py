@@ -23,6 +23,25 @@ class DatePolicyTests(unittest.TestCase):
         for invalid in (None, False, 'bad', float('nan'), -1):
             self.assertIsNone(policy.match_timestamp_ms({'gameStartTimestamp':invalid}))
 
+    def test_challenge_record_uses_unique_valid_history_not_the_season(self):
+        valid = lambda mid, result, **extra: {'matchId':mid, 'result':result,
+            'gameStartTimestamp':CUTOFF, 'durationSeconds':1200, **extra}
+        duo = {'wins':100, 'losses':200, 'excludedRiotMatches':{'EXCLUDED':{}}, 'history':[
+            valid('ONE','WIN'), valid('ONE','WIN'), valid('TWO','LOSS'),
+            valid('THREE','LOSS'), valid('FOUR','WIN',durationSeconds=600),
+            valid('OLD','LOSS',gameStartTimestamp=CUTOFF-1), valid('TEST','WIN',isTest=True),
+            valid('SHORT','WIN',durationSeconds=599), valid('FLEX','WIN',queueId=440),
+            valid('EXCLUDED','WIN'), valid('PENDING','UNKNOWN'), valid('UNDATED','WIN',gameStartTimestamp=None)]}
+        before = copy.deepcopy(duo)
+        self.assertEqual(policy.history_record(duo), {'wins':2,'losses':2,'games':4})
+        summary = server.duo_summary(duo)
+        self.assertEqual(summary['tournamentRecord'], {'wins':2,'losses':2,'games':4})
+        self.assertEqual((summary['wins'],summary['losses']), (100,200))
+        self.assertNotIn('history',summary)
+        self.assertEqual(duo,before)
+        self.assertEqual(policy.history_record({'wins':100,'losses':200,'history':[]}),
+                         {'wins':0,'losses':0,'games':0})
+
     def test_discovery_clamps_the_requested_date_for_any_caller(self):
         observed=[]
         def fetch(url):
