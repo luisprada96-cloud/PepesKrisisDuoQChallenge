@@ -248,7 +248,7 @@
     let effects = [];
     try { effects = (await api('/overlay/effects')).effects || []; } catch (_) { /* Local fallback remains available. */ }
     const overlayEffect = effects.length ? effects[Math.floor(Math.random()*effects.length)] : null;
-    queue.push({attackerName:'Dúo de prueba', overlayEffect}); hideSettings(); playNext();
+    queue.push({attackerName:'Dúo de prueba', overlayEffect}); playNext();
   });
   $('hide').addEventListener('click', hideSettings);
   $('logout').addEventListener('click', () => {
@@ -257,7 +257,6 @@
     api('/player/logout', {sessionToken:old}).catch(() => {});
   });
   document.addEventListener('dblclick', event => { if (!$('settings').contains(event.target)) showSettings(); });
-  document.addEventListener('keydown', event => { if (event.key === 'Escape') hideSettings(); });
   window.addEventListener('pagehide', stopConnection);
   window.addEventListener('pageshow', event => { if (event.persisted && token) start(); });
   async function loadTeams() {
