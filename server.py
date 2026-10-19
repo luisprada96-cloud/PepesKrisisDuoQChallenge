@@ -6,6 +6,7 @@ Features: Real ELO Tracking, Match-V5, Player Panels, Pepazos Gamification & Aut
 
 import os
 import overlay_effects
+import overlay_sessions
 import sys
 import json
 import time
@@ -336,10 +337,10 @@ def notify_shell_receivers():
 
 def receiver_notification_state(token):
     with db_lock:
-        team_id = session_team(token)
+        db = load_db()
+        team_id = session_team(token) or overlay_sessions.team(db, token)
         if not team_id:
             return None
-        db = load_db()
         duo = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
         if not duo:
             return None
@@ -2584,6 +2585,36 @@ class CustomHandler(BaseHTTPRequestHandler):
             db["duos"] = duos
             save_db(db)
             self._send_json({"success": True, "duo": safe_duo_for_admin(data)})
+
+        elif parsed.path in ('/api/overlay/login', '/api/overlay/session', '/api/overlay/state', '/api/overlay/logout'):
+            if not self.clips_origin_allowed():
+                self._send_json({'success': False, 'error': 'Origen no permitido'}, 403)
+                return
+            token = data.get('sessionToken')
+            if parsed.path == '/api/overlay/logout':
+                if overlay_sessions.revoke(db, token):
+                    save_db(db)
+                notify_shell_receivers()
+                self._send_json({'success': True})
+                return
+            if parsed.path == '/api/overlay/login':
+                duo = next((d for d in db.get('duos', []) if d.get('id') == data.get('teamId')), None)
+                if not duo or not verify_secret(str(data.get('password', '')).strip(), duo.get('passwordHash') or duo.get('password', '1234')):
+                    self._send_json({'success': False, 'error': 'Contraseña o equipo incorrecto'}, 401)
+                    return
+            else:
+                team_id = session_team(token) if parsed.path == '/api/overlay/session' else overlay_sessions.team(db, token)
+                duo = next((d for d in db.get('duos', []) if d.get('id') == team_id), None)
+                if not duo:
+                    self._send_json({'success': False, 'error': 'Sesión caducada'}, 401)
+                    return
+            if parsed.path != '/api/overlay/state':
+                token = overlay_sessions.create(db, duo)
+                save_db(db)
+            attacks = [{'id': a.get('id')} for a in db.get('shellAttacks', [])
+                       if a.get('targetTeamId') == duo['id'] and a.get('status') == 'PENDING_SPIN']
+            self._send_json({'success': True, 'sessionToken': token,
+                             'duo': {'id': duo['id'], 'teamName': duo.get('teamName'), 'pendingShellAttacks': attacks}})
 
         elif parsed.path == '/api/player/login':
             team_id = data.get("teamId")

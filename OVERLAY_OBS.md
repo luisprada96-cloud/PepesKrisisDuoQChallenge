@@ -17,8 +17,8 @@ Si se usa Docker, añadir `COPY overlay.html overlay.js overlay.css overlay-pepa
 Dockerfile y permitir esos cuatro archivos en `.dockerignore` mediante
 `!overlay.html`, `!overlay.js`, `!overlay.css`, `!overlay-pepazo.mp3`. Los archivos del proyecto ya incluyen estos cambios.
 
-El overlay utiliza las rutas existentes `/api/duos`, `/api/player/login`,
-`/api/player/state`, `/api/player/events` y `/api/player/logout`. El servidor
+El overlay utiliza `/api/duos`, `/api/overlay/login`, `/api/overlay/state`,
+`/api/player/events` y `/api/overlay/logout`. El servidor
 selecciona los avisos según la sesión autenticada. No lanza ni abre pepazos.
 También recibe los pepazos devueltos por la mecánica de reverso.
 
@@ -38,9 +38,9 @@ hay que introducir la contraseña dentro de OBS.
 4. Clic derecho en la fuente → **Interactuar**. Selecciona tu equipo y escribe
    su contraseña habitual. Pulsa **Conectar equipo** y espera el estado **Conectado**.
 5. Ajusta el volumen y pulsa **Probar animación y sonido**. Es una simulación local;
-   no consume inventario ni afecta al torneo. El panel se oculta para ver la prueba.
+   no consume inventario ni afecta al torneo. El panel permanece abierto tras la prueba.
 6. Para abrir ajustes, haz doble clic en el fondo de la ventana **Interactuar**.
-   **Ocultar panel** o **Escape** deja el fondo transparente.
+   Solo **Ocultar panel** deja el fondo transparente.
 7. Comprueba imagen y sonido con una grabación corta antes de emitir. Si activas
    **Controlar audio a través de OBS**, revisa en el mezclador que la fuente esté
    sin silenciar y que salga por la pista utilizada en la emisión.
@@ -61,9 +61,16 @@ El parámetro identifica la configuración local, no concede acceso a un equipo.
 - Guarda la sesión y el volumen en el almacenamiento local del navegador de OBS,
   nunca la contraseña ni credenciales en la URL. No compartas el perfil de OBS si
   contiene sesiones abiertas. Cerrar sesión revoca esa sesión en el servidor.
-- Las sesiones actuales duran **24 horas** y se pierden al reiniciar el servidor.
-  Si caducan, aparece un aviso discreto: vuelve a entrar mediante **Interactuar**.
-  Comprueba la conexión antes de cada directo.
+- La sesión de OBS no caduca a las 24 horas: se conserva al cerrar OBS y al
+  reiniciar/desplegar el servidor. Solo permite leer avisos; no permite lanzar
+  pepazos ni girar la ruleta. El servidor guarda un hash del token en el documento
+  persistente del torneo, compatible con almacenamiento local y Neon.
+  Cerrar sesión revoca ese dispositivo; cambiar la contraseña o eliminar el equipo
+  revoca todos sus dispositivos. No se guarda la contraseña en OBS.
+  Las sesiones antiguas aún válidas se convierten automáticamente; si ya habían
+  caducado, hay que conectar una última vez tras este despliegue.
+  Mantén la misma URL/instance y el almacenamiento del navegador de OBS: borrar
+  sus datos, usar otro perfil o cambiar de equipo requiere conectar de nuevo.
 - Tras una recarga, si el navegador bloquea el sonido automático, abre **Interactuar**
   y pulsa **Probar animación y sonido**. Los eventos se conectan aunque el audio
   espere ese clic. El volumen se conserva entre recargas.

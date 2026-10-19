@@ -34,15 +34,15 @@ const path = require('node:path');
         if (url.pathname === '/api/duos') return route.fulfill({json:teams});
         if (url.pathname === '/api/overlay/effects') return route.fulfill({json:{effects:[]}});
         const body = req.postDataJSON();
-        if (url.pathname === '/api/player/login') {
+        if (url.pathname === '/api/overlay/login') {
           assert.equal(body.password,'test-password'); chosen = body.teamId;
-          return route.fulfill({json:{success:true,sessionToken:'private-'+chosen}});
+          return route.fulfill({json:{success:true,sessionToken:'obs_private-'+chosen}});
         }
-        if (url.pathname === '/api/player/state') {
-          assert.equal(body.sessionToken, 'private-'+chosen);
+        if (url.pathname === '/api/overlay/state') {
+          assert.equal(body.sessionToken, 'obs_private-'+chosen);
           return route.fulfill({json:{success:true,duo:{...teams.find(t=>t.id===chosen),pendingShellAttacks:[{id:'old'}]}}});
         }
-        if (url.pathname === '/api/player/logout') return route.fulfill({json:{success:true}});
+        if (url.pathname === '/api/overlay/logout') return route.fulfill({json:{success:true}});
         throw new Error('Unexpected mutation: '+url.pathname);
       }
       const file = path.join(__dirname,url.pathname.slice(1));
@@ -51,7 +51,7 @@ const path = require('node:path');
     await page.goto('http://overlay.test/overlay.html?team=b');
     await page.waitForFunction(() => document.querySelector('#team').options.length===3);
     assert.equal(await page.locator('#team').inputValue(),'b');
-    assert.equal(requests.includes('/api/player/login'),false,'A suggested team must not authenticate the overlay.');
+    assert.equal(requests.includes('/api/overlay/login'),false,'A suggested team must not authenticate the overlay.');
     assert.equal(await page.locator('#settings').isVisible(),true);
     // The local preview works before login and cannot spend or open a pepazo.
     await page.locator('#preview').click();
@@ -77,7 +77,7 @@ const path = require('node:path');
     await page.locator('#password').fill('test-password');
     await page.locator('#submit').click();
     await page.waitForFunction(() => !!window.emitFrame);
-    assert.equal(await page.evaluate(()=>window.streamAuth),'Bearer private-a');
+    assert.equal(await page.evaluate(()=>window.streamAuth),'Bearer obs_private-a');
     assert.equal(await page.locator('#password').inputValue(), '');
     assert.equal(await page.evaluate(() => localStorage.getItem('pepes_obs_session_v1_default').includes('test-password')), false);
     const send = (team, attacks) => page.evaluate(({team,attacks})=>window.emitFrame('data: '+JSON.stringify({team:{id:team,name:team==='a'?'LosELOgidos':'Otro dúo'},attacks})+'\n\n'),{team,attacks});
@@ -119,13 +119,13 @@ const path = require('node:path');
     await page.mouse.dblclick(1800,900);
     await page.locator('#team').selectOption('b');
     await page.locator('#password').fill('test-password'); await page.locator('#submit').click();
-    await page.waitForFunction(()=>window.streamAuth==='Bearer private-b');
+    await page.waitForFunction(()=>window.streamAuth==='Bearer obs_private-b');
     await send('b',[{id:'b-one',attackerName:'Rival B'}]);
     await page.waitForFunction(()=>document.querySelector('#target').textContent==='Otro dúo');
     await page.locator('#hide').click();
     await page.waitForTimeout(3000);
     await page.screenshot({path:path.join(__dirname,'preview','overlay-pepazo.png'),omitBackground:true});
-    assert.ok(requests.every(p=>['/api/duos','/api/overlay/effects','/api/player/login','/api/player/state','/api/player/logout'].includes(p)));
+    assert.ok(requests.every(p=>['/api/duos','/api/overlay/effects','/api/overlay/login','/api/overlay/state','/api/overlay/logout'].includes(p)));
     assert.deepEqual(errors,[]);
     console.log('PASS: teams, private session, baseline, isolation, fragmented SSE, safe text, queue, duplicates, reconnect, reload and expiry.');
   } finally {await browser.close();}

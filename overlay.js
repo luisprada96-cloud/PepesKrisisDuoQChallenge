@@ -212,7 +212,13 @@
   async function start() {
     stopConnection(); const gen = generation;
     try {
-      const state = await api('/player/state', {sessionToken:token});
+      // Upgrade an existing, still-valid one-day player session automatically.
+      if (!token.startsWith('obs_')) {
+        const upgraded = await api('/overlay/session', {sessionToken:token});
+        if (gen !== generation) return;
+        token = upgraded.sessionToken; save();
+      }
+      const state = await api('/overlay/state', {sessionToken:token});
       if (gen !== generation) return;
       team = {id:state.duo.id, name:state.duo.teamName};
       try { seen = new Set(JSON.parse(localStorage.getItem(seenKey()) || '[]')); } catch (_) { seen = new Set(); }
@@ -237,7 +243,7 @@
     event.preventDefault(); $('submit').disabled = true;
     await enableAudio();
     try {
-      const result = await api('/player/login', {teamId:$('team').value, password:$('password').value});
+      const result = await api('/overlay/login', {teamId:$('team').value, password:$('password').value});
       token = result.sessionToken; $('password').value = ''; save(); await start();
     } catch (error) { status(error.message); }
     finally { $('submit').disabled = false; }
@@ -254,7 +260,7 @@
   $('logout').addEventListener('click', () => {
     const old = token; expired(); $('warning').hidden = true;
     status('Sesión cerrada. Selecciona un equipo.');
-    api('/player/logout', {sessionToken:old}).catch(() => {});
+    api('/overlay/logout', {sessionToken:old}).catch(() => {});
   });
   document.addEventListener('dblclick', event => { if (!$('settings').contains(event.target)) showSettings(); });
   window.addEventListener('pagehide', stopConnection);

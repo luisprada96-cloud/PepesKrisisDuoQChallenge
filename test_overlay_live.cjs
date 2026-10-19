@@ -77,7 +77,7 @@ const ready = new Promise((resolve, reject) => {
     const session = await page.evaluate(() => JSON.parse(localStorage.getItem('pepes_obs_session_v1_default')));
     assert.ok(session.token);
     assert.equal('password' in session,false);
-    const state = await (await page.request.post(base+'/api/player/state', {data:{sessionToken:session.token}})).json();
+    const state = await (await page.request.post(base+'/api/overlay/state', {data:{sessionToken:session.token}})).json();
     assert.equal(state.duo.pendingShellAttacks.length,1);
     assert.equal(state.duo.pendingShellAttacks[0].id,launched.attack.id);
     assert.equal((state.duo.activeDebuffs || []).length,0,'Receiving an alert must not spin the roulette.');
