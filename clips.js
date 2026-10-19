@@ -11,6 +11,10 @@
   const SEEN_KEY = 'pepes_clips_seen';
   let currentPage = 1;
   let currentWeek = '';
+  let selectedWeek = new URLSearchParams(location.search).get('week') || '';
+  let loadingWeek = false;
+  let latestWeek = '';
+  const weekSelect = document.getElementById('clips-week-select');
   let weekClosed = false;
   let availableTeams = [];
   let voting = null;
@@ -24,13 +28,18 @@
   function readSeen(week) {
     try {
       const saved = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null');
-      return new Set(saved?.week === week && Array.isArray(saved.ids) ? saved.ids.filter(id => typeof id === 'string') : []);
+      const ids = saved?.byWeek?.[week] || (saved?.week === week ? saved.ids : []);
+      return new Set(Array.isArray(ids) ? ids.filter(id => typeof id === 'string') : []);
     } catch (_) { return new Set(); }
   }
 
   function saveSeen() {
     try {
-      localStorage.setItem(SEEN_KEY, JSON.stringify({week: currentWeek, ids: [...seen]}));
+      const saved = JSON.parse(localStorage.getItem(SEEN_KEY) || 'null');
+      const byWeek = {...saved?.byWeek};
+      if (saved?.week && Array.isArray(saved.ids)) byWeek[saved.week] = saved.ids;
+      byWeek[currentWeek] = [...seen];
+      localStorage.setItem(SEEN_KEY, JSON.stringify({week: currentWeek, ids: [...seen], byWeek}));
       return true;
     } catch (_) { return false; }
   }
@@ -117,8 +126,8 @@
         const vote = post.querySelector('[data-vote]');
         vote.setAttribute('aria-pressed', clip.liked);
         vote.setAttribute('aria-label', `${clip.liked ? 'Retirar like de' : 'Dar like a'} ${clip.title}`);
-        vote.title = !voting ? 'Inicia sesión con tu equipo para votar' : clip.liked ? 'Retirar mi like' : 'Dar like';
-        vote.disabled = busy || weekClosed || !voting;
+        vote.title = weekClosed ? 'Semana cerrada: solo consulta' : !voting ? 'Inicia sesión con tu equipo para votar' : clip.liked ? 'Retirar mi like' : 'Dar like';
+        vote.disabled = busy || loadingWeek || weekClosed || !voting;
         post.querySelector('.clip-vote strong').textContent = clip.votes;
         post.querySelector('.clip-age').textContent = `· ${age(clip.createdAt)}`;
         if (feed.children[index] !== post) feed.insertBefore(post, feed.children[index] || null);
@@ -127,7 +136,8 @@
       for (const [id, post] of existing) { post.remove(); opened.delete(id); }
     }
     document.getElementById('clips-count').textContent = sort === 'unseen' ? `${ordered.length} no vistos · ${clips.length} clips` : `${clips.length} clips`;
-    publish.disabled = !ready || busy || weekClosed || !availableTeams.length;
+    weekSelect.disabled = !ready || busy || loadingWeek;
+    publish.disabled = !ready || busy || weekClosed || loadingWeek || !availableTeams.length;
     form.querySelector('button[type="submit"]').disabled = !ready || busy || weekClosed || !availableTeams.length;
   }
 
@@ -163,7 +173,26 @@
     reorder = reorder || !ready || currentWeek !== result.week;
     clips = result.clips.map(clip => ({...clip, slug: clip.slug || parseClip(clip.url || '')?.slug || ''}));
     setVoting(result.voting);
-    weekClosed = result.weeklyReward?.closed === true;
+    weekClosed = result.archived === true || result.weeklyReward?.closed === true;
+    const formatDate = value => new Intl.DateTimeFormat('es-ES', {day:'numeric',month:'short',timeZone:'Europe/Madrid'}).format(new Date(value * 1000));
+    const weeks = Array.isArray(result.weeks) ? result.weeks : [{week:result.week}];
+    const signature = JSON.stringify(weeks);
+    if (weekSelect.dataset.signature !== signature) {
+      weekSelect.replaceChildren(...weeks.map(item => new Option(
+        item.startsAt && item.endsAt ? `${formatDate(item.startsAt)} — ${formatDate(item.endsAt - 1)}${item.archived ? ' · Archivada' : ' · Actual'}` : item.week,
+        item.week)));
+      weekSelect.dataset.signature = signature;
+    }
+    latestWeek = result.currentWeek || result.week;
+    weekSelect.value = result.week;
+    document.getElementById('clips-archive-status').textContent = result.archived
+      ? 'Semana archivada: puedes ver los clips y sus likes finales. No admite votos ni publicaciones y no participa en el premio actual.'
+      : 'Ronda actual: los clips y sus likes participan hasta el cierre.';
+    if (weekClosed) { form.hidden = true; publish.setAttribute('aria-expanded','false'); }
+    const closesAt = result.weeklyReward?.closesAt;
+    document.getElementById('clips-close-label').textContent = closesAt
+      ? new Intl.DateTimeFormat('es-ES',{weekday:'long',day:'numeric',month:'long',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Madrid'}).format(new Date(closesAt * 1000))
+      : 'domingo a las 23:59';
     const teams = Array.isArray(result.teams) ? result.teams : [];
     if (JSON.stringify(availableTeams) !== JSON.stringify(teams)) {
       availableTeams = teams;
@@ -194,25 +223,28 @@
     if (pruned.size !== seen.size) { seen = pruned; saveSeen(); }
     updateOrder(reorder);
     ready = true;
-    const monday = new Date(`${result.week}T12:00:00Z`);
-    const sunday = new Date(monday);
-    sunday.setUTCDate(sunday.getUTCDate() + 6);
-    const format = new Intl.DateTimeFormat('es-ES', {day: 'numeric', month: 'short', timeZone: 'UTC'});
-    document.getElementById('clips-week').textContent = `${format.format(monday)} — ${format.format(sunday)}`;
-    document.getElementById('clips-year').textContent = `${monday.getUTCFullYear()} · Hora de Madrid`;
+    const start = result.startsAt || new Date(`${result.week}T12:00:00Z`).getTime()/1000;
+    const end = result.endsAt || start + 7*86400;
+    document.getElementById('clips-week').textContent = `${formatDate(start)} — ${formatDate(end - 1)}`;
+    document.getElementById('clips-year').textContent = `${new Date(start*1000).getFullYear()} · Hora de Madrid`;
     document.querySelector('.clips-preview-note span').textContent = 'Clips y likes compartidos.';
     render();
   }
 
-  async function refresh() {
-    if (document.hidden || busy) return;
+  async function refresh(forWeekChange = false) {
+    if (document.hidden || busy || (loadingWeek && forWeekChange !== true)) return false;
     const version = ++requestVersion;
     try {
-      const result = await request('/clips');
-      if (version !== requestVersion || busy) return;
+      const result = await request(`/clips${selectedWeek ? '?week=' + encodeURIComponent(selectedWeek) : ''}`);
+      if (version !== requestVersion || busy) return false;
       apply(result);
+      return true;
     } catch (failure) {
-      if (version === requestVersion) feedback.textContent = 'No se pudieron actualizar los clips. Se reintentará en unos segundos.';
+      if (version === requestVersion) {
+        feedback.textContent = failure.message.includes('Semana de clips no encontrada') ? 'La semana solicitada no está disponible. Se muestra la actual.' : 'No se pudieron actualizar los clips. Se reintentará en unos segundos.';
+        if (failure.message.includes('Semana de clips no encontrada')) selectedWeek = '';
+      }
+      return false;
     }
   }
 
@@ -286,7 +318,7 @@
     }
     const vote = event.target.closest('[data-vote]');
     if (vote) {
-      if (busy || weekClosed || !voting) return;
+      if (busy || loadingWeek || weekClosed || !voting) return;
       const id = vote.dataset.vote;
       const clip = clips.find(item => item.id === id);
       if (!clip) return;
@@ -295,7 +327,7 @@
       ++requestVersion;
       render();
       try {
-        const result = await request('/clips/like', {clipId: id, liked});
+        const result = await request('/clips/like', {clipId: id, liked, week: currentWeek});
         apply(result);
         feedback.textContent = liked ? 'Like guardado.' : 'Like retirado.';
       } catch (failure) {
@@ -325,7 +357,7 @@
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    if (busy || !ready || weekClosed) return;
+    if (busy || loadingWeek || !ready || weekClosed) return;
     error.hidden = true;
     const parsed = parseClip(document.getElementById('clip-url').value);
     const title = document.getElementById('clip-title').value.trim();
@@ -339,7 +371,7 @@
     ++requestVersion;
     render();
     try {
-      const result = await request('/clips', {title, url: parsed.url, teamId});
+      const result = await request('/clips', {title, url: parsed.url, teamId, week: currentWeek});
       sort = 'recent';
       currentPage = 1;
       document.querySelectorAll('[data-clips-sort]').forEach(button => button.setAttribute('aria-pressed', button.dataset.clipsSort === sort));
@@ -353,6 +385,26 @@
       error.textContent = failure.message;
       error.hidden = false;
     } finally { busy = false; render(); }
+  });
+
+  weekSelect.addEventListener('change', async () => {
+    const previousSelection = selectedWeek;
+    selectedWeek = weekSelect.value === latestWeek ? '' : weekSelect.value;
+    ++requestVersion;
+    loadingWeek = true;
+    render();
+    feedback.textContent = 'Cargando semana…';
+    try {
+      if (!await refresh(true)) {
+        selectedWeek = previousSelection;
+        weekSelect.value = currentWeek;
+        return;
+      }
+      const url = new URL(location.href);
+      if (selectedWeek) url.searchParams.set('week', selectedWeek); else url.searchParams.delete('week');
+      history.replaceState(null, '', url);
+      feedback.textContent = '';
+    } finally { loadingWeek = false; render(); }
   });
 
   publish.disabled = true;

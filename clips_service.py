@@ -31,15 +31,66 @@ def week_closes_at(week):
     return (monday + timedelta(days=6, hours=23, minutes=59)).timestamp()
 
 
-def settle_weekly_reward(db, now=None):
-    """Award before pruning, once per week, in the same database transaction."""
-    board = db.get('clips')
-    if board is None:
+def opening_period(db):
+    start = weekly_summary.timestamp((db.get('config') or {}).get('startDate'))
+    if not start:
+        return None
+    local = datetime.fromtimestamp(start, MADRID)
+    monday = local.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=local.weekday())
+    end = (monday + timedelta(days=14)).timestamp()
+    return {'week': local.date().isoformat(), 'startsAt': start, 'endsAt': end, 'closesAt': end - 60}
+
+
+def period_for(db, week):
+    first = opening_period(db)
+    if first and week == first['week']:
+        return dict(first)
+    start, end = weekly_summary.bounds(week)
+    return {'week': week, 'startsAt': start, 'endsAt': end, 'closesAt': end - 60}
+
+
+def current_week(db, now):
+    first = opening_period(db)
+    if first and first['startsAt'] <= now < first['endsAt']:
+        return first['week']
+    return week_key(now)
+
+
+def board_closes_at(board):
+    return board['closesAt'] if 'closesAt' in board else week_closes_at(board['week'])
+
+
+def migrate_opening_board(db, now):
+    """Join the former short boards without changing votes or granting prizes."""
+    first = opening_period(db)
+    if not first or db.get('clipsCalendarVersion') == 2:
         return False
-    if not isinstance(board, dict) or not isinstance(board.get('posts'), list):
+    legacy = {week_key(first['startsAt']), week_key(first['endsAt'] - 1)}
+    board = db.get('clips')
+    if board is not None and (not isinstance(board, dict) or not isinstance(board.get('posts'), list)):
         raise ValueError('Invalid clips data')
-    timestamp = time.time() if now is None else now
-    closes_at = week_closes_at(board['week'])
+    archives = db.get('clipArchives') or {}
+    sources = [b for b in [board, *archives.values()] if b and b.get('week') in legacy | {first['week']}]
+    if sources:
+        posts = {}
+        for source in sources:
+            for post in source['posts']:
+                # The active board is authoritative if a saved source repeats an ID.
+                posts.setdefault(post['id'], copy.deepcopy(post))
+        merged = {**first, 'posts': list(posts.values())}
+        if board and board.get('week') in legacy | {first['week']}:
+            db['clips'] = merged
+        else:
+            merged['archived'] = True
+            db.setdefault('clipArchives', {})[first['week']] = merged
+        for key in legacy - {first['week']}:
+            db.get('clipArchives', {}).pop(key, None)
+    db['clipsCalendarVersion'] = 2
+    return True
+
+
+def settle_board(db, board, timestamp):
+    closes_at = board_closes_at(board)
     if timestamp < closes_at:
         return False
     ledger = db.setdefault('clipWeeklyRewards', {})
@@ -49,7 +100,9 @@ def settle_weekly_reward(db, now=None):
             return True
         return False
     teams = {duo['id']: duo for duo in db.get('duos', [])}
-    starts_at = datetime.strptime(board['week'], '%Y-%m-%d').replace(tzinfo=MADRID).timestamp()
+    starts_at = board.get('startsAt')
+    if starts_at is None:
+        starts_at = datetime.strptime(board['week'], '%Y-%m-%d').replace(tzinfo=MADRID).timestamp()
     eligible = [post for post in board['posts'] if not post.get('example') and post.get('slug')
                 and post.get('teamId') in teams and starts_at <= post.get('createdAt', 0) < closes_at]
     eligible.sort(key=lambda post: (-vote_count(post), post['createdAt'], post['id']))
@@ -73,35 +126,70 @@ def settle_weekly_reward(db, now=None):
     return True
 
 
-def board_for(db, preview=False, now=None):
+def settle_weekly_reward(db, now=None):
+    """Settle stored boards once, preserving the complete archive."""
     timestamp = time.time() if now is None else now
-    week = week_key(timestamp)
+    changed = migrate_opening_board(db, timestamp)
     board = db.get('clips')
     if board is not None and (not isinstance(board, dict) or not isinstance(board.get('posts'), list)):
         raise ValueError('Invalid clips data')
+    for item in [*db.get('clipArchives', {}).values(), *([board] if board else [])]:
+        changed = settle_board(db, item, timestamp) or changed
+    return changed
+
+
+def board_for(db, preview=False, now=None):
+    timestamp = time.time() if now is None else now
+    week = current_week(db, timestamp)
     settled = settle_weekly_reward(db, timestamp)
+    board = db.get('clips')
     archived = weekly_summary.maintain(db, timestamp)
     if board is not None and board.get('week') == week:
+        period = period_for(db, week)
+        if any(board.get(key) != value for key, value in period.items()):
+            board.update(period)
+            settled = True
         return board, settled or archived
-    board = {'week': week, 'posts': []}
+    if board:
+        saved = copy.deepcopy(board)
+        saved['archived'] = True
+        db.setdefault('clipArchives', {})[board['week']] = saved
+    board = {**period_for(db, week), 'posts': []}
     ledger = db.get('clipWeeklyRewards', {})
-    if ledger:
-        board['previousWeeklyAward'] = copy.deepcopy(ledger[max(ledger)])
+    previous = [award for key, award in sorted(ledger.items()) if key < week and award.get('status') != 'REVOKED']
+    if previous:
+        board['previousWeeklyAward'] = copy.deepcopy(previous[-1])
     if preview:
         for index, example in enumerate(PREVIEW_POSTS):
             post = copy.deepcopy(example)
             post.update(createdAt=timestamp - (5 - index * 2) * 3600, teamVotes={}, example=True)
             board['posts'].append(post)
     db['clips'] = board
-    settle_weekly_reward(db, timestamp)
+    settle_board(db, board, timestamp)
     return board, True
+
+
+def public_payload(db, team_id=None, preview=False, visitor=None, week=None, now=None):
+    timestamp = time.time() if now is None else now
+    current, changed = board_for(db, preview, timestamp)
+    boards = {**db.get('clipArchives', {}), current['week']: current}
+    selected = week or current['week']
+    if selected not in boards:
+        raise LookupError('Semana de clips no encontrada.')
+    result = public_board(boards[selected], team_id, preview, db.get('duos', []), visitor, timestamp)
+    result['currentWeek'] = current['week']
+    result['weeks'] = [{'week': key, 'startsAt': item.get('startsAt', weekly_summary.timestamp(key)),
+                       'endsAt': item['endsAt'] if 'endsAt' in item else board_closes_at(item) + 60,
+                       'archived': key != current['week']}
+                      for key, item in sorted(boards.items(), reverse=True)]
+    return result, changed
 
 
 def visitor_hash(token):
     return hashlib.sha256(token.encode('ascii')).hexdigest()
 
 
-def public_board(board, team_id=None, preview=False, duos=(), visitor=None):
+def public_board(board, team_id=None, preview=False, duos=(), visitor=None, now=None):
     voter = next((duo for duo in duos if duo['id'] == team_id), None)
     posts = []
     for post in board['posts']:
@@ -111,8 +199,11 @@ def public_board(board, team_id=None, preview=False, duos=(), visitor=None):
     return {'week': board['week'], 'preview': preview, 'clips': posts,
             'voting': {'teamId': voter['id'], 'teamName': voter['teamName']} if voter else None,
             'teams': [{'id': duo['id'], 'name': duo['teamName']} for duo in duos],
-            'weeklyReward': {'shells': WEEKLY_REWARD_SHELLS, 'closesAt': week_closes_at(board['week']),
-                             'closed': bool(board.get('weeklyAward')), 'award': board.get('weeklyAward'),
+            'startsAt': board.get('startsAt', weekly_summary.timestamp(board['week'])),
+            'endsAt': board['endsAt'] if 'endsAt' in board else board_closes_at(board) + 60,
+            'archived': bool(board.get('archived')),
+            'weeklyReward': {'shells': WEEKLY_REWARD_SHELLS, 'closesAt': board_closes_at(board),
+                             'closed': bool(board.get('archived') or board.get('weeklyAward')) or (time.time() if now is None else now) >= board_closes_at(board), 'award': board.get('weeklyAward'),
                              'previousAward': board.get('previousWeeklyAward')}}
 
 
@@ -135,7 +226,7 @@ def parse_url(value):
 
 def publish(board, title, url, now=None, team=None):
     timestamp = time.time() if now is None else now
-    if board.get('weeklyAward') or timestamp >= week_closes_at(board['week']):
+    if board.get('archived') or board.get('weeklyAward') or timestamp >= board_closes_at(board):
         raise FileExistsError('La votación semanal ha cerrado. Podrás publicar de nuevo el lunes a las 00:00.')
     if not isinstance(team, dict) or not team.get('id') or not team.get('teamName'):
         raise ValueError('Selecciona un equipo válido al que representa el clip.')
@@ -155,7 +246,7 @@ def publish(board, title, url, now=None, team=None):
 
 
 def set_like(board, clip_id, team_id, visitor, liked, now=None):
-    if board.get('weeklyAward') or (time.time() if now is None else now) >= week_closes_at(board['week']):
+    if board.get('archived') or board.get('weeklyAward') or (time.time() if now is None else now) >= board_closes_at(board):
         raise FileExistsError('La votación semanal ha cerrado. Los likes ya no se pueden cambiar.')
     if not isinstance(team_id, str) or not team_id:
         raise ValueError('Se necesita un equipo para votar.')

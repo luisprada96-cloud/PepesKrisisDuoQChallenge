@@ -1886,7 +1886,7 @@ def schedule_clip_rewards():
                     board, changed = clips_service.board_for(db, CLIPS_PREVIEW)
                     if changed:
                         save_db(db)
-                deadline = clips_service.week_closes_at(board['week']) + (60 if board.get('weeklyAward') else 0)
+                deadline = clips_service.board_closes_at(board) + (60 if board.get('weeklyAward') else 0)
                 delay = max(0.1, min(30, deadline - time.time()))
             except Exception as error:
                 safe_print(f"[Clips rewards] {error}")
@@ -2125,10 +2125,15 @@ class CustomHandler(BaseHTTPRequestHandler):
             token = token or secrets.token_urlsafe(32)
             with db_lock:
                 db = load_db()
-                board, changed = clips_service.board_for(db, CLIPS_PREVIEW)
+                selected_week = urllib.parse.parse_qs(parsed.query).get('week', [None])[0]
+                try:
+                    result, changed = clips_service.public_payload(db, self.clips_team(db), CLIPS_PREVIEW,
+                                                                  clips_service.visitor_hash(token), selected_week)
+                except LookupError as error:
+                    self._send_json({'error': str(error)}, 404)
+                    return
                 if changed:
                     save_db(db)
-                result = clips_service.public_board(board, self.clips_team(db), CLIPS_PREVIEW, db.get('duos', []), clips_service.visitor_hash(token))
             headers = {'Vary': 'Cookie, Authorization'}
             if new_token:
                 headers['Set-Cookie'] = self.clips_cookie(token)
@@ -2422,6 +2427,11 @@ class CustomHandler(BaseHTTPRequestHandler):
                 self._send_json({'error': 'Activa las cookies y recarga la página para participar.'}, 401)
                 return
             board, changed = clips_service.board_for(db, CLIPS_PREVIEW)
+            requested_week = data.get('week') or urllib.parse.parse_qs(parsed.query).get('week', [None])[0]
+            if requested_week and requested_week != board['week']:
+                if changed: save_db(db)
+                self._send_json({'error': 'Esta semana está archivada. No se puede publicar ni cambiar likes.'}, 409)
+                return
             try:
                 if parsed.path == '/api/clips/like':
                     changed = clips_service.set_like(board, data.get('clipId'), team_id, clips_service.visitor_hash(visitor_token), data.get('liked')) or changed
@@ -2439,7 +2449,8 @@ class CustomHandler(BaseHTTPRequestHandler):
                 return
             if changed:
                 save_db(db)
-            self._send_json(clips_service.public_board(board, team_id, CLIPS_PREVIEW, db.get('duos', []), clips_service.visitor_hash(visitor_token)), headers={'Vary': 'Cookie, Authorization'})
+            result, _ = clips_service.public_payload(db, team_id, CLIPS_PREVIEW, clips_service.visitor_hash(visitor_token))
+            self._send_json(result, headers={'Vary': 'Cookie, Authorization'})
             return
 
         if parsed.path == '/api/admin/login':

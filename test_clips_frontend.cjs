@@ -99,14 +99,14 @@ const path = require('node:path');
     await page.locator('[data-vote="clip-01"]').click();
     await page.waitForFunction(() => document.querySelector('[data-vote="clip-01"]').getAttribute('aria-pressed') === 'true');
     assert.equal(writes.at(-1).path, '/api/clips/like');
-    assert.deepEqual(writes.at(-1).body, {clipId: 'clip-01', liked: true});
+    assert.deepEqual(writes.at(-1).body, {clipId: 'clip-01', liked: true, week});
 
     assert.equal(writes.at(-1).authorization, 'Bearer test-team-session');
     assert.equal(await page.locator('.clip-team-votes, [data-unvote]').count(), 0, 'no team counter or extra vote control');
     assert.doesNotMatch(await page.locator('main').innerText(), /[012]\/2/);
     await page.locator('[data-vote="clip-01"]').click();
     await page.waitForFunction(() => document.querySelector('[data-vote="clip-01"]').getAttribute('aria-pressed') === 'false');
-    assert.deepEqual(writes.at(-1).body, {clipId:'clip-01', liked:false});
+    assert.deepEqual(writes.at(-1).body, {clipId:'clip-01', liked:false, week});
     await page.locator('[data-vote="clip-01"]').click();
     await page.waitForFunction(() => document.querySelector('[data-vote="clip-01"]').getAttribute('aria-pressed') === 'true');
 

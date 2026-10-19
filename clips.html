@@ -43,6 +43,7 @@
       <div><span class="section-eyebrow">Los momentos del challenge</span><h1 class="text-gradient-cyan">Clips de la semana</h1><p>Las mejores jugadas. Las peores decisiones.</p></div>
       <button type="button" class="clips-publish" id="clips-publish" aria-expanded="false" aria-controls="clips-form"><i class="fa-solid fa-plus" aria-hidden="true"></i> Publicar clip</button>
     </div>
+    <div class="clips-week-selector"><label for="clips-week-select">Semana de clips</label><select id="clips-week-select" class="form-control" aria-describedby="clips-archive-status" disabled><option value="">Cargando semanas…</option></select><p id="clips-archive-status" aria-live="polite"></p></div>
     <div class="clips-preview-note"><i class="fa-brands fa-twitch" aria-hidden="true"></i><span>Cargando la semana actual…</span></div>
     <div class="clips-layout">
       <section class="clips-content" aria-label="Publicaciones de la semana">
@@ -71,8 +72,8 @@
         <p class="clips-feedback" id="clips-feedback" aria-live="polite"></p>
       </section>
       <aside class="clips-sidebar">
-        <section class="clips-sidebox"><h2><i class="fa-solid fa-trophy" aria-hidden="true"></i> Clip de la semana</h2><p>El clip con más likes gana <strong>3 pepazos</strong> para el equipo que representa, aunque supere el límite normal de 5.</p><p>Cierre: <strong>domingo a las 23:59</strong>, hora de Madrid.</p><p>En caso de empate gana el publicado primero. Hace falta al menos un like. Solo participan clips con equipo asignado.</p><hr><p id="clips-reward-status" aria-live="polite">La votación está abierta.</p><p id="clips-previous-reward" hidden></p></section>
-        <section class="clips-sidebox"><h2><i class="fa-regular fa-calendar" aria-hidden="true"></i> Esta semana</h2><strong class="clips-week" id="clips-week"></strong><p id="clips-year"></p><hr><p>Una nueva semana, nuevos clips.</p><p>La lista se renovará el lunes a las <strong>00:00</strong>.</p></section>
+        <section class="clips-sidebox"><h2><i class="fa-solid fa-trophy" aria-hidden="true"></i> Clip de la semana</h2><p>El clip con más likes gana <strong>3 pepazos</strong> para el equipo que representa, aunque supere el límite normal de 5.</p><p>Cierre: <strong id="clips-close-label">domingo a las 23:59</strong>, hora de Madrid.</p><p>En caso de empate gana el publicado primero. Hace falta al menos un like. Solo participan clips con equipo asignado.</p><hr><p id="clips-reward-status" aria-live="polite">La votación está abierta.</p><p id="clips-previous-reward" hidden></p></section>
+        <section class="clips-sidebox"><h2><i class="fa-regular fa-calendar" aria-hidden="true"></i> Semana seleccionada</h2><strong class="clips-week" id="clips-week"></strong><p id="clips-year"></p><hr><p>La primera ronda dura hasta el domingo 25 de octubre. Después, cada ronda va de lunes a domingo.</p><p>Las rondas cerradas se conservan en el selector para volver a ver sus clips.</p></section>
         <section class="clips-sidebox"><h2><i class="fa-solid fa-users" aria-hidden="true"></i> La comunidad</h2><p>Comparte las jugadas del torneo y vota tus favoritas.</p><hr><p>Pulsa el like para votar y vuelve a pulsarlo para retirarlo.</p><p id="clips-voting-status"></p><a id="clips-login" class="clip-open" href="player.html">Iniciar sesión con mi equipo ↗</a><hr><p>El ojo de cada clip permite marcarlo como visto sin iniciar sesión. «No vistos» muestra los pendientes del más reciente al más antiguo. Las marcas se guardan solo en este navegador.</p></section>
       </aside>
     </div>

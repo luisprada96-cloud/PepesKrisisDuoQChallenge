@@ -66,14 +66,44 @@ def elo_summary(player, start, end):
 
 
 def clip_stats(db, board):
-    start, end = bounds(board['week'])
+    if board.get('startsAt') is not None and board.get('endsAt') is not None:
+        start, end = board['startsAt'], board['endsAt']
+    else:
+        start, end = bounds(board['week'])
     posts = [p for p in board.get('posts', []) if not p.get('example') and p.get('slug')
              and start <= timestamp(p.get('createdAt')) < end]
     teams = Counter(p.get('teamId') for p in posts if p.get('teamId'))
     votes = sum(vote_count(p) for p in posts)
     award = db.get('clipWeeklyRewards', {}).get(board['week']) or board.get('weeklyAward')
+    if award and award.get('status') == 'REVOKED': award = None
     winner = {k: award[k] for k in ('status', 'clipId', 'title', 'url', 'teamId', 'teamName', 'votes', 'shells') if k in award} if award else None
     return {'posts': len(posts), 'votes': votes, 'byTeam': dict(teams), 'winner': winner, 'available': True}
+
+
+def clips_for_week(db, week):
+    """Calendar recaps keep their own dates when a clip round spans two weeks."""
+    start, end = bounds(week)
+    posts, available, winner = {}, False, None
+    boards = [*db.get('clipArchives', {}).values(), *([db['clips']] if db.get('clips') else [])]
+    for board in boards:
+        if 'startsAt' in board and 'endsAt' in board:
+            began, ended = board['startsAt'], board['endsAt']
+        else:
+            began, ended = bounds(board['week'])
+        if began >= end or ended <= start:
+            continue
+        available = True
+        for post in board['posts']:
+            if not post.get('example') and post.get('slug') and start <= timestamp(post.get('createdAt')) < end:
+                posts[post['id']] = post
+        award = db.get('clipWeeklyRewards', {}).get(board['week']) or board.get('weeklyAward')
+        if award and award.get('status') != 'REVOKED' and start <= award.get('closesAt', ended-60) < end:
+            winner = {k: award[k] for k in ('status','clipId','title','url','teamId','teamName','votes','shells') if k in award}
+    if not available:
+        return None
+    return {'posts':len(posts), 'votes':sum(vote_count(p) for p in posts.values()),
+            'byTeam':dict(Counter(p['teamId'] for p in posts.values() if p.get('teamId'))),
+            'winner':winner, 'available':True}
 
 
 def build_summary(db, week, clips=None, previous=None):
@@ -244,7 +274,7 @@ def maintain(db, now=None, refresh=False):
     while week < current:
         old = ledger.get(week)
         # Clip totals must be captured before pruning even when no one visits the recap.
-        clips = clip_stats(db, board) if board and board.get('week') == week else copy.deepcopy((old or {}).get('clips'))
+        clips = clips_for_week(db, week) or copy.deepcopy((old or {}).get('clips'))
         if old is None or refresh or (clips and clips != old.get('clips')):
             summary = build_summary(db, week, clips, old)
             payload = {k: v for k, v in (old or {}).items() if k not in ('archivedAt', 'updatedAt')}
@@ -268,7 +298,7 @@ def public_payload(db, week=None, now=None):
         raise LookupError('Resumen semanal no encontrado.')
     if selected == latest:
         board = db.get('clips') or {}
-        stats = clip_stats(db, board) if board.get('week') == selected else None
+        stats = clips_for_week(db, selected)
         summary = build_summary(db, selected, stats)
         summary['status'] = 'UPCOMING' if selected > current else 'CURRENT'
     else:

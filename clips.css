@@ -90,3 +90,9 @@
   .clips-pagination [data-clips-page-info] { order: -1; flex-basis: 100%; }
   .clips-pagination button { flex: 1; padding: .65rem .5rem; font-size: .8rem; }
 }
+
+.clips-week-selector { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem 1rem; margin: 0 0 1.1rem; padding: 1rem; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-card); }
+.clips-week-selector label { font-size: .85rem; font-weight: 600; }
+.clips-week-selector select { width: auto; max-width: 100%; min-height: 44px; }
+#clips-archive-status { flex-basis: 100%; margin: 0; font-size: .8rem; color: var(--text-muted); }
+@media (max-width: 540px) { .clips-week-selector select { width: 100%; } }
