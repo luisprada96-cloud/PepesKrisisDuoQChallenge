@@ -1,4 +1,4 @@
-"""Weekly clips and authenticated team votes, stored in the database document."""
+"""Weekly clips, authenticated team votes and guest discussions in the database."""
 import copy
 import hashlib
 import re
@@ -12,6 +12,20 @@ from zoneinfo import ZoneInfo
 
 MADRID = ZoneInfo('Europe/Madrid')
 WEEKLY_REWARD_SHELLS = 3
+COMMENT_NAME_LIMIT = 15
+COMMENT_TEXT_LIMIT = 200
+COMMENT_PAGE_SIZE = 10
+COMMENT_MAX_PER_CLIP = 50
+COMMENT_COOLDOWN = 15
+COMMENT_HOURLY_LIMIT = 20
+
+
+class CommentRateLimit(ValueError):
+    def __init__(self, message, retry_after=COMMENT_COOLDOWN):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 PREVIEW_POSTS = [
     {'id': 'demo-1', 'title': 'Cinco contra uno. ¿Qué podía salir mal?', 'team': 'ELDUOYASS', 'initials': 'EY', 'duration': '0:32', 'scene': 1},
     {'id': 'demo-2', 'title': 'El robo de Nashor que nos devolvió la fe', 'team': 'Krisis', 'initials': 'KR', 'duration': '0:24', 'scene': 2},
@@ -194,7 +208,8 @@ def public_board(board, team_id=None, preview=False, duos=(), visitor=None, now=
     posts = []
     for post in board['posts']:
         item = {key: post[key] for key in ('id', 'title', 'teamId', 'team', 'initials', 'duration', 'scene', 'createdAt', 'slug', 'url', 'example') if key in post}
-        item.update(votes=vote_count(post), liked=bool(voter) and browser_liked(post, visitor))
+        item.update(votes=vote_count(post), liked=bool(voter) and browser_liked(post, visitor),
+                    commentCount=len(post.get('comments', [])))
         posts.append(item)
     return {'week': board['week'], 'preview': preview, 'clips': posts,
             'voting': {'teamId': voter['id'], 'teamName': voter['teamName']} if voter else None,
@@ -205,6 +220,68 @@ def public_board(board, team_id=None, preview=False, duos=(), visitor=None, now=
             'weeklyReward': {'shells': WEEKLY_REWARD_SHELLS, 'closesAt': board_closes_at(board),
                              'closed': bool(board.get('archived') or board.get('weeklyAward')) or (time.time() if now is None else now) >= board_closes_at(board), 'award': board.get('weeklyAward'),
                              'previousAward': board.get('previousWeeklyAward')}}
+
+
+def comment_post(db, week, clip_id):
+    if not isinstance(week, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', week):
+        raise ValueError('Indica la semana del clip.')
+    if not isinstance(clip_id, str) or not clip_id or len(clip_id) > 80:
+        raise ValueError('Indica un clip válido.')
+    boards = [db.get('clips') or {}, *db.get('clipArchives', {}).values()]
+    board = next((b for b in boards if b.get('week') == week), None)
+    post = next((p for p in (board or {}).get('posts', []) if p['id'] == clip_id and not p.get('example')), None)
+    if post is None:
+        raise LookupError('Clip no encontrado en esta semana.')
+    return post
+
+
+def public_comment(comment):
+    # Browser hashes and retry identifiers are private, even for guests.
+    return {key:comment[key] for key in ('id', 'name', 'text', 'createdAt')}
+
+
+def comment_page(db, week, clip_id, offset=0, limit=COMMENT_PAGE_SIZE):
+    post = comment_post(db, week, clip_id)
+    comments = list(reversed(post.get('comments', [])))
+    offset, limit = max(0, int(offset)), min(50, max(1, int(limit)))
+    return {'week':week, 'clipId':clip_id, 'comments':[public_comment(c) for c in comments[offset:offset+limit]],
+            'total':len(comments), 'offset':offset, 'limit':limit,
+            'hasMore':offset+limit < len(comments)}
+
+
+def add_comment(db, week, clip_id, visitor, name, text, request_id, now=None):
+    post = comment_post(db, week, clip_id)
+    if not isinstance(name, str) or len(name.strip()) > COMMENT_NAME_LIMIT:
+        raise ValueError('El nombre es opcional y admite hasta 15 caracteres.')
+    if not isinstance(text, str) or not 1 <= len(text.strip()) <= COMMENT_TEXT_LIMIT:
+        raise ValueError('Escribe un comentario de entre 1 y 200 caracteres.')
+    name, text = name.strip(), text.strip()
+    if any(ord(c) < 32 or 0xD800 <= ord(c) <= 0xDFFF for c in name) or any(
+            (ord(c) < 32 and c not in '\n\t') or 0xD800 <= ord(c) <= 0xDFFF for c in text):
+        raise ValueError('El comentario contiene caracteres no válidos.')
+    if not visitor or not isinstance(request_id, str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,80}',request_id):
+        raise ValueError('Identificador de envío no válido. Recarga la página.')
+    existing = next((c for c in post.get('comments', []) if c.get('visitor') == visitor and c.get('requestId') == request_id), None)
+    if existing:
+        if existing['name'] != name or existing['text'] != text:
+            raise ValueError('Este envío ya corresponde a otro comentario. Vuelve a intentarlo.')
+        return existing, False
+    if len(post.get('comments', [])) >= COMMENT_MAX_PER_CLIP:
+        raise OverflowError('No se pueden añadir más comentarios a este clip.')
+    timestamp = time.time() if now is None else now
+    limits = {key:[t for t in stamps if t > timestamp-3600] for key,stamps in db.get('clipCommentLimits', {}).items()}
+    limits = {key:stamps for key,stamps in limits.items() if stamps}
+    recent = limits.get(visitor, [])
+    if recent and timestamp-recent[-1] < COMMENT_COOLDOWN:
+        raise CommentRateLimit('Espera 15 segundos entre comentarios.')
+    if len(recent) >= COMMENT_HOURLY_LIMIT:
+        raise CommentRateLimit('Has alcanzado el límite de 20 comentarios por hora. Inténtalo más tarde.', max(1,int(recent[0]+3600-timestamp)+1))
+    comment = {'id':str(uuid.uuid4()), 'name':name, 'text':text, 'createdAt':timestamp,
+               'visitor':visitor, 'requestId':request_id}
+    post.setdefault('comments', []).append(comment)
+    limits[visitor] = [*recent, timestamp]
+    db['clipCommentLimits'] = limits
+    return comment, True
 
 
 def parse_url(value):

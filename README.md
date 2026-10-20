@@ -34,6 +34,14 @@ La interfaz, ruletas, avisos, Discord y documentación utilizan «pepazo» y «p
 
 ## 🚀 Estructura del Proyecto
 
+### Comentarios de clips
+
+Cada clip tiene un desplegable de comentarios públicos, sin login. El nombre es opcional (máximo 15 caracteres; vacío se muestra como «Anónimo») y el texto obligatorio admite de 1 a 200 caracteres. Los nombres no están verificados. Se valida en el servidor y se muestra como texto, sin ejecutar HTML. Las lecturas se paginan de 10 en 10 mediante `GET /api/clips/comments?week=...&clipId=...&offset=0&limit=10`; la lista principal solo incluye `commentCount`.
+
+`POST /api/clips/comments` recibe `week`, `clipId`, `name`, `text` y un `requestId` de reintento. Usa la cookie anónima que ya crea `/api/clips`, no una sesión de equipo. Los envíos repetidos con el mismo identificador y navegador no duplican comentarios. Protección básica por navegador: 15 segundos entre comentarios, 20 por hora y un máximo interno de 50 por clip, sin mostrar ese máximo en la interfaz ni en el mensaje de cierre. No sustituye a una protección antibot completa. Los identificadores privados no se incluyen en la respuesta pública.
+
+Los comentarios se guardan dentro del clip y se conservan en sus archivos semanales. Se puede comentar un clip archivado sin reabrir su votación, alterar likes o conceder premios. La página mantiene el borrador y el reproductor al refrescar, y conserva el envío para reintentarlo si falla la conexión. No hay dependencias nuevas ni migración destructiva.
+
 ### Álbum de campeones
 
 La pestaña `campeones.html` muestra todo el catálogo local de campeones, ordenado por apariciones de los integrantes inscritos. Los ya jugados aparecen en gris y con una marca; al pasar el ratón, enfocar con teclado o tocar se ve su recuento. `GET /api/champions` calcula los totales en lectura, sin nuevas llamadas a Riot ni modificar premios. Filtra fechas del torneo, Solo/Duo, partidas de prueba, exclusiones y duración inferior a 10 minutos, y deduplica partidas y participantes. No cuenta los rivales externos. Si faltan estadísticas o importaciones muestra un aviso de recuento parcial. Al pulsar un campeón se abre un panel con cada participante, su dúo, partidas, porcentaje de victorias, KDA acumulado y totales K/D/A. El winrate utiliza el resultado individual confirmado; los resultados pendientes no se consideran derrotas. Agrupa las cuentas del mismo integrante y usa las mismas apariciones deduplicadas del álbum. El KDA se calcula con estadísticas completas; los datos pendientes o parciales se indican. El panel se actualiza cada 30 segundos y conserva el último resultado si falla la conexión.

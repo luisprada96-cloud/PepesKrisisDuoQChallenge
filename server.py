@@ -2136,6 +2136,17 @@ class CustomHandler(BaseHTTPRequestHandler):
                 headers['Set-Cookie'] = self.clips_cookie(visitor_token, 'pepes_tierlist_visitor')
             self._send_json(result, headers=headers)
             return
+        if path == '/api/clips/comments':
+            query = urllib.parse.parse_qs(parsed.query)
+            offset, limit = page_args(parsed)
+            try:
+                with db_lock:
+                    result = clips_service.comment_page(load_db(), query.get('week', [''])[0], query.get('clipId', [''])[0], offset, min(limit, 10))
+            except LookupError as error:
+                self._send_json({'error':str(error)}, 404)
+                return
+            self._send_json(result)
+            return
         if path == '/api/clips':
             token = self.clips_visitor()
             new_token = token is None
@@ -2451,6 +2462,35 @@ class CustomHandler(BaseHTTPRequestHandler):
                 return
             save_db(db)
             self._send_json({'success': True, 'postId': post['id'], **tierlists_service.public_board(db, team_id, clips_service.visitor_hash(visitor_token), kind=post['kind'])})
+            return
+
+        if parsed.path == '/api/clips/comments':
+            if not self.clips_origin_allowed():
+                self._send_json({'error':'Origen no permitido.'}, 403)
+                return
+            token = self.clips_visitor()
+            if not token:
+                self._send_json({'error':'Activa las cookies y recarga la página para comentar.'}, 401)
+                return
+            try:
+                comment, changed = clips_service.add_comment(db, data.get('week'), data.get('clipId'), clips_service.visitor_hash(token),
+                    data.get('name',''), data.get('text'), data.get('requestId'))
+            except LookupError as error:
+                self._send_json({'error':str(error)}, 404)
+                return
+            except clips_service.CommentRateLimit as error:
+                self._send_json({'error':str(error)}, 429, headers={'Retry-After':str(error.retry_after)})
+                return
+            except ValueError as error:
+                self._send_json({'error':str(error)}, 400)
+                return
+            except OverflowError as error:
+                self._send_json({'error':str(error)}, 409)
+                return
+            if changed:
+                save_db(db)
+            self._send_json({'success':True, 'comment':clips_service.public_comment(comment),
+                **clips_service.comment_page(db, data.get('week'), data.get('clipId'))})
             return
 
         if parsed.path in ('/api/clips', '/api/clips/like'):
