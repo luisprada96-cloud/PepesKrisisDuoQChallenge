@@ -100,7 +100,7 @@
     $('bet-confirm-description').textContent=description;
     $('bet-join-amount').value=creating?String(body.amount):'';
     $('bet-join-amount').max=String(state.wallet.balance);
-    $('bet-confirm-time').textContent='Tu oro quedará reservado. Se saltarán las partidas recibidas durante los 20 minutos posteriores a la confirmación. Si tu bote no tiene apuestas en ambos lados, se devuelve el oro.';
+    $('bet-confirm-time').textContent='Si la siguiente partida llega al servidor en menos de 20 minutos desde tu apuesta, no contará. Tu oro seguirá reservado para la primera partida válida recibida después de ese plazo. Si tu bote solo tiene apuestas en un lado, se devuelve el oro.';
     $('bet-confirm-error').hidden=true;
     dialog.showModal();$('bet-join-amount').focus();
   }
