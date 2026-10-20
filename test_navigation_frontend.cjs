@@ -7,7 +7,7 @@ const path = require('node:path');
 (async () => {
   const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'chrome'});
   try {
-    const pages=['index.html','torneo.html','premios.html','clips.html','resumen.html','tierlist.html','porra.html','pickem.html','player.html','admin.html','campeones.html'];
+    const pages=['index.html','torneo.html','premios.html','clips.html','resumen.html','tierlist.html','porra.html','pickem.html','player.html','admin.html','campeones.html','apuestas.html'];
     const context=await browser.newContext();
     const requests=[],errors=[];
     await context.route('**/*',async route=>{
@@ -32,7 +32,7 @@ const path = require('node:path');
       await page.setViewportSize({width:1440,height:1000});
       await page.goto('http://pepes.test/'+file);
       const header=page.locator('.site-header');
-      assert.equal(await header.locator('#primary-navigation a').count(),9);
+      assert.equal(await header.locator('#primary-navigation a').count(),10);
       assert.equal(await header.getByRole('link',{name:'Campeones',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Torneo',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Premios',exact:true}).count(),1);
@@ -101,6 +101,6 @@ const path = require('node:path');
     assert.equal(await fallback.locator('#nav-menu-toggle').isVisible(),false);
     await noJs.close();
     assert.deepEqual(errors,[]);
-    console.log('Navigation checks passed: 11 pages, separate tabs/data, 4 widths, keyboard/menu, resize, legacy trophy link and no-JS fallback.');
+    console.log('Navigation checks passed: 12 pages, separate tabs/data, 4 widths, keyboard/menu, resize, legacy trophy link and no-JS fallback.');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -27,6 +27,7 @@ import discord_live
 import discord_shells
 import tierlists_service
 import final_predictions
+import betting_service
 import pickem_service
 import champions_service
 import stat_progression
@@ -699,13 +700,15 @@ def load_db():
         weekly_archived = weekly_summary.maintain(data)
         pickem_awarded = pickem_service.maintain(data)
         predictions_settled = final_predictions.maintain(data)
-        if migrate_credentials(data) or rewards_migrated or elo_migrated or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled:
+        betting_changed = betting_service.maintain(data)
+        if migrate_credentials(data) or rewards_migrated or elo_migrated or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled or betting_changed:
             save_db(data)
         return data
 
 
 def save_db(data):
     with db_lock:
+        betting_service.maintain(data)
         if remote_backend is not None:
             summary_cache["key"] = None
             remote_backend.save(data)
@@ -2075,6 +2078,17 @@ class CustomHandler(BaseHTTPRequestHandler):
             else:
                 self._send_bytes(payload, 'video/webm', headers=headers)
             return
+        if path == '/api/bets':
+            offset, limit = page_args(parsed)
+            view = urllib.parse.parse_qs(parsed.query).get('view', ['open'])[0]
+            if view not in ('open', 'history'):
+                self._send_json({'error':'Vista inválida.'}, 400)
+                return
+            with db_lock:
+                db = load_db()
+                result = betting_service.public_board(db, self.clips_team(db), offset, min(limit,12), view)
+            self._send_json(result, headers={'Vary':'Cookie, Authorization'})
+            return
         if path == '/api/pickem':
             visitor_token = self.clips_visitor('pepes_pickem_visitor')
             new_token = visitor_token is None
@@ -2215,6 +2229,7 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files.update({'overlay.html', 'overlay.js', 'overlay.css', 'overlay-pepazo.mp3', 'admin-overlay.js'})
         public_files.update({'campeones.html', 'campeones.js', 'campeones.css'})
         public_files.update({'favicon.svg', 'favicon.ico'})
+        public_files.update({'apuestas.html', 'apuestas.js', 'apuestas.css'})
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
         if filename not in public_files and filename not in tierlist_assets:
@@ -2309,6 +2324,27 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         data = self.read_body()
         db = load_db()
+
+        if parsed.path == '/api/bets':
+            if not self.clips_origin_allowed():
+                self._send_json({'error':'Origen no permitido.'},403)
+                return
+            team_id = self.clips_team(db)
+            if not team_id:
+                self._send_json({'error':'Inicia sesión con tu equipo para apostar.'},401)
+                return
+            try:
+                bet_id = betting_service.participate(db, team_id, data)
+            except FileExistsError as error:
+                self._send_json({'error':str(error)},409)
+                return
+            except ValueError as error:
+                self._send_json({'error':str(error)},400)
+                return
+            save_db(db)
+            self._send_json({'success':True,'betId':bet_id,**betting_service.public_board(db,team_id)},
+                            headers={'Vary':'Cookie, Authorization'})
+            return
 
         if parsed.path == '/api/admin/overlay':
             if not self.clips_origin_allowed():

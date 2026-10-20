@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apuestas | Pepes Krisis Duo Q Challenge</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="apuestas.css">
+  <script src="navigation.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Navegación principal">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo" aria-label="Pepes Krisis Duo Q · Inicio">
+          <i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i>
+          <span class="brand-text text-gradient-cyan"><span class="brand-full">Pepes Krisis Duo Q</span><span class="brand-short">Pepes Krisis</span></span>
+        </a>
+        <div class="nav-actions">
+          <button type="button" class="nav-toggle" id="nav-menu-toggle" aria-controls="primary-navigation" aria-expanded="false" aria-label="Abrir menú de navegación" hidden><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="nav-menu-label">Menú</span></button>
+          <a href="player.html" class="btn-player-panel" id="nav-player-link" aria-label="Mi Panel" title="Mi Panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><span class="nav-action-label">Mi Panel</span></a>
+          <a href="admin.html" class="btn-admin" id="nav-admin-link" aria-label="Panel Admin" title="Panel Admin"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span class="nav-action-label">Panel Admin</span></a>
+        </div>
+        <ul class="nav-links" id="primary-navigation">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo</a></li>
+          <li><a href="premios.html" class="nav-link"><i class="fa-solid fa-award" aria-hidden="true"></i> Premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="apuestas.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-coins" aria-hidden="true"></i> Apuestas</a></li>
+          <li><a href="pickem.html" class="nav-link"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
+          <li><a href="campeones.html" class="nav-link"><i class="fa-solid fa-chess-knight" aria-hidden="true"></i> Campeones</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+          <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
+          <li><a href="porra.html" class="nav-link"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Porra final</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+  <main class="container bets-page">
+    <div class="bets-heading"><div><span class="section-eyebrow">El siguiente GG también se juega aquí</span><h1 class="text-gradient-cyan">Apuestas</h1><p>Predice la próxima partida del challenge con oro virtual.</p></div><a class="bets-login" id="bets-login" href="player.html">Iniciar sesión con mi equipo ↗</a></div>
+    <section class="bets-wallet" aria-label="Oro de mi equipo"><div><span id="bets-team-name">Tu equipo</span><strong id="bets-balance">— <small>oro disponible</small></strong></div><div><span>Oro reservado</span><strong id="bets-reserved">—</strong></div><p>10 monedas iniciales y <b>+10 cada día a las 23:59</b>, hora de Madrid. Saldo compartido por los integrantes del equipo.</p></section>
+    <div class="bets-layout">
+      <section class="bets-compose" aria-labelledby="bets-create-title"><span class="section-eyebrow">Tu predicción</span><h2 id="bets-create-title">Crear una apuesta</h2>
+        <form id="bets-form">
+          <label for="bet-metric">¿Qué quieres apostar?</label><select class="form-control" id="bet-metric"><option value="result">Win / Lose</option><option value="kills">Kills</option><option value="deaths">Muertes</option><option value="assists">Asistencias</option></select>
+          <label for="bet-target">Equipo de la próxima partida</label><select class="form-control" id="bet-target" required><option value="">Selecciona un equipo</option></select>
+          <div id="bet-player-fields" hidden><label for="bet-player">Integrante</label><select class="form-control" id="bet-player"><option value="">Selecciona un integrante</option></select></div>
+          <div id="bet-line-fields" hidden><label for="bet-line">Línea de la estadística</label><input class="form-control" id="bet-line" type="text" inputmode="decimal" placeholder="5,5" maxlength="4" autocomplete="off" aria-describedby="bet-line-help"><small id="bet-line-help">De 0,5 a 49,5. Siempre terminado en ,5, para que no haya empate.</small>
+          <label for="bet-side">Tu predicción</label><select class="form-control" id="bet-side"><option value="OVER">Más de esa cifra</option><option value="UNDER">Menos de esa cifra</option></select></div>
+          <label for="bet-amount">Monedas de oro</label><input class="form-control" id="bet-amount" type="number" inputmode="numeric" min="1" step="1" placeholder="5" required>
+          <p id="bet-preview" class="bet-preview">Elige un equipo para preparar tu apuesta a WIN.</p>
+          <p class="bets-wait">Las partidas recibidas en los primeros <b>20 minutos</b> se saltarán. Después contará la primera partida válida que reciba el servidor para ese equipo.</p>
+          <button class="bets-primary" id="bet-create" type="submit" disabled>Reservar oro y crear apuesta</button><p id="bet-form-error" class="bets-error" role="alert" hidden></p>
+        </form>
+      </section>
+      <section class="bets-market-section" aria-labelledby="bets-markets-title"><div class="bets-market-heading"><h2 id="bets-markets-title">El mercado</h2><div role="group" aria-label="Estado de las apuestas" class="bets-tabs"><button type="button" data-bets-view="open" aria-pressed="true">Abiertas</button><button type="button" data-bets-view="history" aria-pressed="false">Historial</button></div></div><p class="bets-pool-note">El oro pendiente de cada lado puede entrar en partidas distintas según sus 20 minutos de espera. Cada partida tiene su propio bote; si solo hay un lado, se devuelve el oro.</p><div id="bets-markets"><p class="bets-empty">Cargando apuestas…</p></div><nav class="bets-pagination" aria-label="Páginas de apuestas"><button type="button" id="bets-previous" disabled>← Anterior</button><span id="bets-page-info" aria-live="polite"></span><button type="button" id="bets-next" disabled>Siguiente →</button></nav><p id="bets-feedback" aria-live="polite"></p></section>
+    </div>
+    <section class="bets-rules"><h2>Cómo se reparte el oro</h2><p>Los equipos que acierten se reparten el bote de esa partida en proporción al oro que aportaron. Los pagos son monedas enteras y se reparte todo el bote. El importe mostrado junto a cada lado es oro pendiente, no una ganancia prometida.</p><p>El oro reservado se descuenta del saldo disponible. Las apuestas se resuelven con las partidas registradas del challenge y las cuentas vinculadas de cada integrante. Si faltan estadísticas, se espera a completarlas; si el integrante no juega, se pasa a la siguiente partida válida. Un equipo o integrante sustituido provoca la devolución de sus apuestas pendientes.</p></section>
+    <dialog id="bet-confirm"><form method="dialog"><h2 id="bet-confirm-title">Confirmar apuesta</h2><p id="bet-confirm-description"></p><label for="bet-join-amount">Monedas de oro</label><input class="form-control" id="bet-join-amount" type="number" inputmode="numeric" min="1" step="1" required><p id="bet-confirm-time"></p><p id="bet-confirm-error" class="bets-error" role="alert" hidden></p><div class="bets-dialog-actions"><button type="button" id="bet-confirm-cancel">Cancelar</button><button type="button" id="bet-confirm-submit" class="bets-primary">Confirmar y reservar oro</button></div></form></dialog>
+  </main>
+  <footer class="footer"><div class="container"><p><strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026.</p></div></footer>
+  <script src="data.js"></script>
+  <script src="alerts.js"></script>
+  <script src="apuestas.js"></script>
+</body>
+</html>

@@ -2,7 +2,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
-COPY terminology.py favicon.svg favicon.ico /app/
+COPY terminology.py favicon.svg favicon.ico betting_service.py apuestas.html apuestas.js apuestas.css /app/
 COPY overlay.html overlay.js overlay.css overlay-pepazo.mp3 admin-overlay.js overlay_effects.py overlay_sessions.py /app/
 COPY campeones.html campeones.js campeones.css champions_service.py stat_progression.py stat-progression.js /app/
 COPY server.py competition_ranking.py player_accounts.py riot_accounts_sync.py riot_match_policy.py final_predictions.py shell_rules.py tierlists_service.py discord_live.py discord_shells.py weekly_summary.py clips_service.py clip_votes.py postgres_storage.py storage.py sync_jobs.py trophies.py elo_history.py match_details.py /app/
