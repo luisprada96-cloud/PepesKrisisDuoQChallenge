@@ -1,5 +1,6 @@
 """Weekly public recaps from stored evidence, never from additional Riot calls."""
 import player_accounts
+from participant_roles import role_summary
 import copy
 import time
 from collections import Counter
@@ -158,7 +159,7 @@ def build_summary(db, week, clips=None, previous=None):
             players.append({'key': key, 'name': player.get('displayName') or player.get('name') or ('Integrante 1' if key == 'player1' else 'Integrante 2'),
                             'riotId': f"{player.get('name', '')}#{player.get('tag') or 'EUW'}" if player.get('name') else '',
                             'account': account(player), 'games': played, 'wins': player_wins, 'totals': totals,
-                            'kda': kda(totals, played), 'mainRole': player.get('mainRole'),
+                            'kda': kda(totals, played), 'mainRole': role_summary(duo, key, end*1000)['position'],
                             'favorite': {'name': favorite[0], 'games': champions[favorite[0]]} if favorite else None,
                             'elo': elo_summary(player, start, end), 'penaltiesCompleted': 0})
         for match in games:
@@ -233,6 +234,7 @@ def build_summary(db, week, clips=None, previous=None):
                 team['name'] = old['name']
                 for player, saved in zip(team['players'], old['players']):
                     player['name'] = saved['name']
+                    player['mainRole'] = saved.get('mainRole')
                     if player['elo']['end'] is None:
                         player['elo'] = copy.deepcopy(saved['elo'])
         teams = list(current.values())

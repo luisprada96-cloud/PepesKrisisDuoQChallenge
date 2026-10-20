@@ -34,6 +34,12 @@ La interfaz, ruletas, avisos, Discord y documentación utilizan «pepazo» y «p
 
 ## 🚀 Estructura del Proyecto
 
+### Rol principal automático
+
+La posición principal de cada integrante es la más jugada en las Solo/Duo registradas desde el inicio del reto, sumando sus cuentas registradas e independientemente de la cuenta seleccionada para el ELO. Se excluyen pruebas, remakes de menos de 10 minutos, partidas excluidas o previas al corte del torneo, posiciones desconocidas y participantes ajenos; cada partida cuenta una vez por persona. En empate se usa la posición empatada jugada más recientemente; sin evidencia el rol queda pendiente. El admin lo muestra en modo lectura y crear un equipo ya no requiere elegir roles. Los campos de rol enviados por clientes antiguos se ignoran y se recalculan desde el historial.
+
+El acordeón, los trofeos por posición y los nuevos resúmenes usan esa misma referencia. Polivalente guarda el rol más jugado al asignar el castigo, sin mover esa referencia si cambia después. Las referencias automáticas vacías se completan cuando llega evidencia; los castigos antiguos mantienen sus condiciones y los premios/resúmenes ya archivados no se reescriben. No requiere consultas adicionales a Riot ni alterar inventarios o resultados.
+
 ### Comentarios de clips
 
 Cada clip tiene un desplegable de comentarios públicos, sin login. El nombre es opcional (máximo 15 caracteres; vacío se muestra como «Anónimo») y el texto obligatorio admite de 1 a 200 caracteres. Los nombres no están verificados. Se valida en el servidor y se muestra como texto, sin ejecutar HTML. Las lecturas se paginan de 10 en 10 mediante `GET /api/clips/comments?week=...&clipId=...&offset=0&limit=10`; la lista principal solo incluye `commentCount`.

@@ -23,10 +23,9 @@ const ADMIN_ROLE_LABELS = {
   UTILITY: 'Support'
 };
 
-function renderRoleOptions(selectedRole) {
-  return `<option value="">Selecciona un rol</option>` + Object.entries(ADMIN_ROLE_LABELS)
-    .map(([value, label]) => `<option value="${value}"${selectedRole === value ? ' selected' : ''}>${label}</option>`)
-    .join('');
+function renderAutomaticRole(player) {
+  const role = ADMIN_ROLE_LABELS[player.mainRole];
+  return `<strong>${role || 'Pendiente de partidas'}</strong><small style="display: block; color: var(--text-muted);">${role ? `${Number(player.mainRoleGames) || 0} partidas en esta posición · Cálculo automático` : 'Se calculará cuando lleguen partidas con posición identificada.'}</small>`;
 }
 
 async function initAdmin() {
@@ -485,7 +484,7 @@ function renderAdminDuosList() {
           </div>
           ${!duo.player1.mainRole || !duo.player2.mainRole ? `
             <div style="font-size: 0.8rem; color: var(--gold-hextech); margin-top: 0.35rem;">
-              <i class="fa-solid fa-triangle-exclamation"></i> Asigna los dos roles principales para activar la comprobación de Polivalente.
+              <i class="fa-solid fa-triangle-exclamation"></i> Rol principal pendiente de datos de partidas. Se calculará automáticamente.
             </div>
           ` : ''}
           <div style="font-size: 0.8rem; color: var(--cyan-primary); margin-top: 0.2rem;">
@@ -500,20 +499,13 @@ function renderAdminDuosList() {
       </div>
       <div style="display: flex; align-items: end; gap: 0.65rem; flex-wrap: wrap;">
         <div class="form-group" style="flex: 1 1 220px; margin: 0;">
-          <label for="p1-role-${escapeHtml(duo.id)}">Rol principal · ${escapeHtml(duo.player1.name)}</label>
-          <select id="p1-role-${escapeHtml(duo.id)}" class="form-control" required>
-            ${renderRoleOptions(duo.player1.mainRole)}
-          </select>
+          <div>Rol principal · ${escapeHtml(duo.player1.name)}</div>
+          <div data-auto-role="player1">${renderAutomaticRole(duo.player1)}</div>
         </div>
         <div class="form-group" style="flex: 1 1 220px; margin: 0;">
-          <label for="p2-role-${escapeHtml(duo.id)}">Rol principal · ${escapeHtml(duo.player2.name)}</label>
-          <select id="p2-role-${escapeHtml(duo.id)}" class="form-control" required>
-            ${renderRoleOptions(duo.player2.mainRole)}
-          </select>
+          <div>Rol principal · ${escapeHtml(duo.player2.name)}</div>
+          <div data-auto-role="player2">${renderAutomaticRole(duo.player2)}</div>
         </div>
-        <button class="btn-refresh" data-team-action="roles" data-team-id="${escapeHtml(duo.id)}" style="height: fit-content;">
-          <i class="fa-solid fa-user-tag"></i> Guardar roles
-        </button>
       </div>
       <div class="admin-participant-grid">
         ${renderParticipantSettings(duo, 'player1', 1)}
@@ -726,8 +718,6 @@ async function addNewDuo() {
   const p1NameTag = document.getElementById('new-p1').value.trim();
   const p2NameTag = document.getElementById('new-p2').value.trim();
   const tier = document.getElementById('new-tier').value;
-  const p1Role = document.getElementById('new-p1-role').value;
-  const p2Role = document.getElementById('new-p2-role').value;
   const pwdInput = document.getElementById('new-password');
   const password = (pwdInput && pwdInput.value.trim()) ? pwdInput.value.trim() : "1234";
   const profiles = {};
@@ -757,7 +747,7 @@ async function addNewDuo() {
     }
     profiles[`player${i}`] = {displayName, twitchUrl, opggUrl};
   }
-  if (!teamName || !p1NameTag || !p2NameTag || !p1Role || !p2Role) {
+  if (!teamName || !p1NameTag || !p2NameTag) {
     alert('Por favor rellena todos los campos del nuevo dúo.');
     return;
   }
@@ -779,7 +769,6 @@ async function addNewDuo() {
       ...profiles.player1,
       name: p1Name,
       tag: p1Tag,
-      mainRole: p1Role,
       avatar: `https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/29.png`,
       champ: "LeeSin"
     },
@@ -787,7 +776,6 @@ async function addNewDuo() {
       ...profiles.player2,
       name: p2Name,
       tag: p2Tag,
-      mainRole: p2Role,
       avatar: `https://ddragon.leagueoflegends.com/cdn/15.3.1/img/profileicon/1.png`,
       champ: "Ahri"
     },
@@ -813,29 +801,6 @@ async function addNewDuo() {
 
   document.getElementById('add-duo-form').reset();
   alert(`¡Dúo "${teamName}" añadido correctamente!`);
-}
-
-async function handleSaveRoles(id) {
-  const duo = adminDuos.find(d => d.id === id);
-  const p1Input = document.getElementById(`p1-role-${id}`);
-  const p2Input = document.getElementById(`p2-role-${id}`);
-  if (!duo || !p1Input || !p2Input) return;
-
-  if (!p1Input.value || !p2Input.value) {
-    alert('Debes seleccionar el rol principal de ambos integrantes.');
-    (!p1Input.value ? p1Input : p2Input).focus();
-    return;
-  }
-
-  const result = await DataStore.saveDuo({id, player1: {mainRole: p1Input.value}, player2: {mainRole: p2Input.value}}, adminSessionPin);
-  if (!result || result.success === false) {
-    alert((result && result.error) || 'No se pudieron guardar los roles.');
-    return;
-  }
-
-  await refreshAdminData();
-  renderAdminDuosList();
-  alert(`Roles principales guardados para "${duo.teamName}".`);
 }
 
 function validateDiscordRoleId(value, input) {
@@ -986,5 +951,5 @@ document.addEventListener('click', event => {
   const penalty = event.target.closest('[data-penalty-id]');
   if (penalty) window.adminPenaltyAction(penalty.dataset.penaltyId, penalty.dataset.penaltyAction);
   const team = event.target.closest('[data-team-action]');
-  if (team) ({delete: handleDeleteDuo, roles: handleSaveRoles, profiles: handleSaveParticipantProfiles, webhook: handleSaveDiscordWebhook})[team.dataset.teamAction]?.(team.dataset.teamId);
+  if (team) ({delete: handleDeleteDuo, profiles: handleSaveParticipantProfiles, webhook: handleSaveDiscordWebhook})[team.dataset.teamAction]?.(team.dataset.teamId);
 });

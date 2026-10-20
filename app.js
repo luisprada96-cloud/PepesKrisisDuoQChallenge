@@ -150,7 +150,7 @@ function renderPlayerInsightCard(player, insight) {
   const totals = insight?.totals;
   const hasStats = Number(insight?.gamesAnalyzed) > 0 && totals;
   const kda = hasStats ? (((Number(totals.kills) || 0) + (Number(totals.assists) || 0)) / Math.max(1, Number(totals.deaths) || 0)).toFixed(2) : '—';
-  const role = POSITION_LABELS[player?.mainRole] || 'Sin configurar';
+  const role = POSITION_LABELS[insight?.mostPlayedPosition?.position || (player?.mainRoleSource === 'most_played' ? player.mainRole : null)] || 'Pendiente de partidas';
   const opggUrl = normalizeOpggUrl(player?.opggUrl);
   return `<article class="player-insight-card${hasStats ? '' : ' is-empty'}">
     ${player?.avatar ? `<img class="insight-player-avatar" src="${escapeHtml(player.avatar)}" alt="${escapeHtml(playerName)}" onerror="this.style.visibility='hidden';">` : '<span class="insight-player-avatar insight-avatar-placeholder" aria-hidden="true"><i class="fa-solid fa-user"></i></span>'}

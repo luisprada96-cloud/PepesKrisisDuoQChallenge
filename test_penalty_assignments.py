@@ -6,12 +6,15 @@ from unittest.mock import patch
 
 import server
 import test_shell_penalties as fixtures
+from riot_match_policy import MIN_START_TIMESTAMP
 
 
 def duo_fixture():
     return {'player1': {'name': 'RiotOne', 'tag': 'EUW', 'displayName': 'Ana', 'puuid': 'p1', 'mainRole': 'TOP'},
             'player2': {'name': 'RiotTwo', 'tag': 'ZZZ', 'displayName': 'Luis', 'puuid': 'p2', 'mainRole': 'JUNGLE'},
-            'history': [{'player1Stats': {'championName': 'Ahri'}, 'player2Stats': {'championName': 'LeeSin'}}]}
+            'history': [{'matchId':'role-baseline','gameEndTimestamp':MIN_START_TIMESTAMP*1000+3600000,'durationSeconds':1200,
+                         'player1Stats': {'puuid':'p1','championName': 'Ahri','position':'TOP'},
+                         'player2Stats': {'puuid':'p2','championName': 'LeeSin','position':'JUNGLE'}}]}
 
 
 def catalog(base, scope='ONE'):

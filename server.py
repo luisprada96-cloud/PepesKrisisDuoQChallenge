@@ -32,6 +32,7 @@ import pickem_service
 import champions_service
 import stat_progression
 import player_accounts
+import participant_roles
 import riot_accounts_sync
 import riot_match_policy
 from competition_ranking import team_rank
@@ -270,6 +271,7 @@ def safe_duo_for_player(duo):
         for account in (result.get(key) or {}).get("accounts", []):
             account.pop("matchDiscovery", None)
     result.pop("password", None)
+    participant_roles.update_roles(result)
     result.pop("passwordHash", None)
     result.pop("riotMatchDiscovery", None)
     result.pop("discordWebhook", None)
@@ -443,6 +445,29 @@ def fill_pending_penalty_favorites(duo):
     return changed
 
 
+def fill_pending_penalty_roles(duo):
+    """Resolve empty automatic references once; published legacy roles stay fixed."""
+    changed = []
+    for debuff in duo.get('activeDebuffs', []):
+        req = debuff.get('requirements') or {}
+        if debuff.get('status') != 'ACTIVE' or debuff.get('resolved') or debuff.get('penalty', {}).get('baseId') != 'autofill' or req.get('mainRoleMode') != 'most_played':
+            continue
+        scope = debuff.get('scope') or debuff.get('penalty', {}).get('scope')
+        assigned = req.get('assignedPlayer')
+        keys = (assigned,) if scope == 'ONE' and assigned in ('player1','player2') else ('player1','player2')
+        roles, updated = req.setdefault('mainRoles', {}), False
+        for key in keys:
+            if roles.get(key) in VALID_MAIN_ROLES:
+                continue
+            position = participant_roles.role_summary(duo, key)['position']
+            if position:
+                roles[key] = position
+                updated = True
+        if updated:
+            changed.append(debuff)
+    return changed
+
+
 def champion_pool(duos):
     global ddragon_champion_cache
     if ddragon_champion_cache:
@@ -530,9 +555,11 @@ def fill_pending_flash_baselines(duo):
 
 def penalty_requirements(duo, penalty, duos):
     requirements = {
-        "mainRoles": {key: (duo.get(key) or {}).get("mainRole") for key in ("player1", "player2")},
+        "mainRoles": {key: participant_roles.role_summary(duo, key, time.time()*1000)['position'] for key in ("player1", "player2")},
         "favoriteChampions": favorite_snapshot(duo)
     }
+    if penalty.get('baseId') == 'autofill':
+        requirements['mainRoleMode'] = 'most_played'
     if penalty.get("scope") == "ONE":
         # Exactly one independent, uniform draw for every individual penalty.
         player_key = secrets.choice(("player1", "player2"))
@@ -680,7 +707,9 @@ def load_db():
                     match["legacyShellRewards"] = True
             data["shellRewardsVersion"] = 1
         elo_migrated = False
+        roles_changed = False
         for duo in data.get("duos", []):
+            roles_changed = participant_roles.update_roles(duo) or roles_changed
             player = duo.get("player1") or {}
             account = player_accounts.elo_identity(player)
             if not duo.get("eloHistory") or duo.get("eloHistoryAccount") != account:
@@ -701,13 +730,15 @@ def load_db():
         pickem_awarded = pickem_service.maintain(data)
         predictions_settled = final_predictions.maintain(data)
         betting_changed = betting_service.maintain(data)
-        if migrate_credentials(data) or rewards_migrated or elo_migrated or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled or betting_changed:
+        if migrate_credentials(data) or rewards_migrated or elo_migrated or roles_changed or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled or betting_changed:
             save_db(data)
         return data
 
 
 def save_db(data):
     with db_lock:
+        for duo in data.get('duos', []):
+            participant_roles.update_roles(duo)
         betting_service.maintain(data)
         if remote_backend is not None:
             summary_cache["key"] = None
@@ -1211,10 +1242,10 @@ def evaluate_active_penalties(duo, match):
 
 def calculate_player_insights(duo):
     """Recalculate champion and position summaries from enriched, non-test matches."""
+    participant_roles.update_roles(duo)
     insights = {}
     for player_key, stats_key in (("player1", "player1Stats"), ("player2", "player2Stats")):
         champion_totals = {}
-        position_totals = {}
         games_analyzed = 0
         totals = {"kills": 0, "deaths": 0, "assists": 0}
 
@@ -1254,10 +1285,6 @@ def calculate_player_insights(duo):
             champion_stats["deaths"] += int(stats.get("deaths", 0) or 0)
             champion_stats["assists"] += int(stats.get("assists", 0) or 0)
 
-            position = str(stats.get("position") or "UNKNOWN").upper()
-            if position != "UNKNOWN":
-                position_totals[position] = position_totals.get(position, 0) + 1
-
         top_champion = None
         if champion_totals:
             top_champion = sorted(champion_totals.values(), key=lambda item: (-item["games"], item["name"]))[0]
@@ -1267,9 +1294,9 @@ def calculate_player_insights(duo):
             )
 
         most_played_position = None
-        if position_totals:
-            position, games = sorted(position_totals.items(), key=lambda item: (-item[1], item[0]))[0]
-            most_played_position = {"position": position, "games": games}
+        position_summary = participant_roles.role_summary(duo, player_key)
+        if position_summary['position']:
+            most_played_position = {"position": position_summary['position'], "games": position_summary['games']}
 
         insights[player_key] = {
             "gamesAnalyzed": games_analyzed,
@@ -1469,7 +1496,7 @@ def merge_riot_result(original, scanned):
             riot_match_policy.prune_history(duo)
             # History can arrive after the roulette draw. Resolve only empty
             # references before evaluating it, preserving existing player draws.
-            for debuff in fill_pending_penalty_favorites(duo) + fill_pending_flash_baselines(duo):
+            for debuff in fill_pending_penalty_favorites(duo) + fill_pending_flash_baselines(duo) + fill_pending_penalty_roles(duo):
                 source_id = debuff.get("sourceShellId")
                 if source_id:
                     for attack in current.get("shellAttacks", []):
@@ -2558,7 +2585,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 data.update({key: submitted[key] for key in editable if key in submitted})
                 for player_key in ("player1", "player2"):
                     if player_key in submitted:
-                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "mainRole", "displayName", "twitchUrl", "opggUrl"}}}
+                        data[player_key] = {**data.get(player_key, {}), **{key: value for key, value in submitted[player_key].items() if key in {"name", "tag", "displayName", "twitchUrl", "opggUrl"}}}
                         if any((data.get(player_key) or {}).get(field) != (existing_duo.get(player_key) or {}).get(field) for field in ("name", "tag")):
                             if (existing_duo.get(player_key) or {}).get("accounts"):
                                 raise ValueError("Conserva la identidad del integrante y añade su nueva cuenta en Cuentas de LoL.")
@@ -2610,10 +2637,6 @@ class CustomHandler(BaseHTTPRequestHandler):
 
             player1 = data.get("player1") or {}
             player2 = data.get("player2") or {}
-            roles = (str(player1.get("mainRole", "")).upper(), str(player2.get("mainRole", "")).upper())
-            if any(role not in VALID_MAIN_ROLES for role in roles):
-                self._send_json({"success": False, "error": "Debes seleccionar un rol principal válido para ambos integrantes."}, 400)
-                return
             for player_key, player in (("player1", player1), ("player2", player2)):
                 display_name = str(player.get("displayName", player.get("name", ""))).strip()
                 if not display_name or len(display_name) > 60:
@@ -2638,7 +2661,6 @@ class CustomHandler(BaseHTTPRequestHandler):
                 player["twitchIsLive"] = participant_twitch_live(existing_duo, player_key) if existing_duo else False
                 if participant_twitch_channel({player_key: player, "twitchUrl": data.get("twitchUrl")}, player_key) != participant_twitch_channel(existing_duo, player_key):
                     player["twitchIsLive"] = False
-            player1["mainRole"], player2["mainRole"] = roles
             data["player1"], data["player2"] = player1, player2
             data["twitchIsLive"] = any(participant_twitch_live(data, key) for key in ("player1", "player2"))
             

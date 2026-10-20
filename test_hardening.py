@@ -154,7 +154,8 @@ class EndpointRegressionTests(unittest.TestCase):
         duo = server.load_db()["duos"][0]
         self.assertEqual(duo["blueShells"], 3)
         self.assertEqual(duo["history"], [{"matchId": "new"}])
-        self.assertEqual(duo["player1"]["mainRole"], "MIDDLE")
+        self.assertIsNone(duo["player1"]["mainRole"], 'manual role edits cannot replace missing match evidence')
+        self.assertEqual(duo["player1"]["mainRoleSource"], 'most_played')
 
     def test_sync_merge_preserves_attack_and_is_idempotent(self):
         original = server.load_db()

@@ -54,8 +54,8 @@ const discordTestRequests = [];
     Object.assign(duos[1].player1, {opggUrl:'https://www.op.gg/lol/summoners/euw/Uno-EUW'});
     Object.assign(duos[1].player2, {opggUrl:'https://op.gg/lol/summoners/euw/Dos-EUW'});
     duos[1].playerInsights = {
-      player1: {gamesAnalyzed:10, totals:{kills:30,deaths:10,assists:20}, topChampion:{name:'MonkeyKing',kda:'1.20'}, mostPlayedPosition:'MIDDLE'},
-      player2: {gamesAnalyzed:4, totals:{kills:5,deaths:0,assists:10}, topChampion:{name:'LeeSin',kda:'2.10'}, mostPlayedPosition:'TOP'}
+      player1: {gamesAnalyzed:10, totals:{kills:30,deaths:10,assists:20}, topChampion:{name:'MonkeyKing',kda:'1.20'}, mostPlayedPosition:{position:'MIDDLE',games:6}},
+      player2: {gamesAnalyzed:4, totals:{kills:5,deaths:0,assists:10}, topChampion:{name:'LeeSin',kda:'2.10'}, mostPlayedPosition:{position:'TOP',games:3}}
     };
     duos[0].twitchUrl = 'https://twitch.tv/legacy_channel';
     duos[0].twitchIsLive = true;
@@ -214,8 +214,8 @@ const discordTestRequests = [];
     if (process.env.ELO_SCREENSHOT) await chart.screenshot({path: process.env.ELO_SCREENSHOT});
     const cards = page.locator('#duo-insights-Primero .player-insight-card');
     assert.deepEqual(await cards.locator('h3').allTextContents(), ['Jugador 1#EUW','Jugador 2#EUW']);
-    assert.deepEqual(await cards.nth(0).locator('.insight-metrics strong').allTextContents(), ['5.00','Top','Wukong']);
-    assert.deepEqual(await cards.nth(1).locator('.insight-metrics strong').allTextContents(), ['15.00','Jungla','Lee Sin']);
+    assert.deepEqual(await cards.nth(0).locator('.insight-metrics strong').allTextContents(), ['5.00','Mid','Wukong']);
+    assert.deepEqual(await cards.nth(1).locator('.insight-metrics strong').allTextContents(), ['15.00','Top','Lee Sin']);
     assert.equal(await cards.locator('.opgg-profile-link').count(),2);
     assert.equal(await cards.nth(0).locator('.opgg-profile-link').getAttribute('href'),'https://www.op.gg/lol/summoners/euw/Uno-EUW');
     assert.equal(await cards.nth(0).locator('.opgg-profile-link').getAttribute('target'),'_blank');
@@ -240,6 +240,8 @@ const discordTestRequests = [];
       assert.doesNotMatch(await page.evaluate(url => renderPlayerInsightCard({name:'Test',opggUrl:url},null),value),/opgg-profile-link/);
     }
     assert.match(await page.evaluate(() => renderPlayerInsightCard({name:'NoStats',mainRole:'UTILITY'}, null)), /Sin datos/);
+    assert.match(await page.evaluate(() => renderPlayerInsightCard({name:'AutoRole',mainRole:'UTILITY'}, {mostPlayedPosition:{position:'MIDDLE',games:5}})), /<strong>Mid<\/strong>/);
+    assert.match(await page.evaluate(() => renderPlayerInsightCard({name:'Pending',mainRole:'UTILITY'}, null)), /Pendiente de partidas/);
     const unsafeProfile = await page.evaluate(() => renderParticipantCell({player1:{name:'safe',displayName:'<img src=x onerror=alert(1)>',twitchUrl:'javascript:alert(1)'}}, 'player1'));
     assert.doesNotMatch(unsafeProfile, /<img|javascript:/);
     if (process.env.PARTICIPANT_SCREENSHOT) await page.locator('.main-leaderboard-table').screenshot({path: process.env.PARTICIPANT_SCREENSHOT});
@@ -446,8 +448,8 @@ const discordTestRequests = [];
     await page.locator('#new-p1-opgg-url').fill('https://op.gg/lol/summoners/euw/Nuevo-EUW');
     await page.locator('#new-p1').fill('RiotUno#EUW');
     await page.locator('#new-p2').fill('RiotDos#ZZZ');
-    await page.locator('#new-p1-role').selectOption('TOP');
-    await page.locator('#new-p2-role').selectOption('UTILITY');
+    assert.equal(await page.locator('#new-p1-role, #new-p2-role, [data-team-action="roles"], select[id^="p1-role-"], select[id^="p2-role-"]').count(),0);
+    assert.ok(await page.locator('[data-auto-role]').count() > 0,'admin displays read-only derived positions');
     await page.locator('#add-duo-form button[type="submit"]').click();
     await page.waitForFunction(() => document.getElementById('new-team-name').value === '');
     assert.equal(profileWrites.at(-1).player1.displayName, 'Uno');
@@ -456,6 +458,7 @@ const discordTestRequests = [];
     assert.equal(profileWrites.at(-1).player2.opggUrl,'');
     assert.equal(profileWrites.at(-1).player2.name, 'RiotDos');
     assert.equal(profileWrites.at(-1).player2.tag, 'ZZZ');
+    assert.equal('mainRole' in profileWrites.at(-1).player1,false,'creating a team never submits a manual role');
     if (process.env.ADMIN_PARTICIPANT_SCREENSHOT) await page.locator('#admin-duos-list').screenshot({path: process.env.ADMIN_PARTICIPANT_SCREENSHOT});
     await page.locator('#btn-sync-matches-admin').click();
     await page.waitForFunction(() => document.getElementById('toast-notification')?.textContent.includes('iniciada'));

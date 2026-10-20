@@ -1,10 +1,14 @@
 import copy
 import tempfile
 import unittest
+from itertools import count
 from pathlib import Path
 from unittest.mock import patch
 import server
 from trophies import build_trophies
+from riot_match_policy import MIN_START_TIMESTAMP
+
+MATCH_IDS = count(1)
 
 
 def duo(id="a", role="TOP", tier="Gold", lp=10):
@@ -13,17 +17,19 @@ def duo(id="a", role="TOP", tier="Gold", lp=10):
 
 
 def match(role="TOP", kills=10, deaths=2, assists=0, **extra):
-    return {"player1Stats":{"position":role,"kills":kills,"deaths":deaths,"assists":assists},**extra}
+    index = next(MATCH_IDS)
+    return {"matchId":f'trophy-{index}',"gameEndTimestamp":MIN_START_TIMESTAMP*1000+3600000+index*1000,
+            "durationSeconds":1200,"queueId":420,"player1Stats":{"position":role,"kills":kills,"deaths":deaths,"assists":assists},**extra}
 
 
 class TrophyTests(unittest.TestCase):
     def test_only_main_role_matches_count(self):
         a=duo()
-        a["history"]=[match(),match("MIDDLE",100),match("UNKNOWN",100),match(kills=100,isTest=True)]
+        a["history"]=[match(),match(),match("MIDDLE",100),match("UNKNOWN",100),match(kills=100,isTest=True)]
         result=build_trophies([a],None)
         self.assertEqual(len(result["cards"]),7)
         top=result["cards"][1]["entries"]
-        self.assertEqual((top[0]["games"],top[0]["kda"]),(1,5))
+        self.assertEqual((top[0]["games"],top[0]["kda"]),(2,5))
         self.assertEqual(result["cards"][3]["entries"],[])
 
     def test_accumulated_kda_zero_deaths_and_tie(self):
@@ -47,7 +53,7 @@ class TrophyTests(unittest.TestCase):
     def test_second_player_and_main_role_eligibility(self):
         a=duo()
         a["player2"]={"name":"support","mainRole":"UTILITY"}
-        a["history"]=[{"player2Stats":{"position":"UTILITY","kills":0,"assists":20,"deaths":2}}]
+        a["history"]=[match(player1Stats=None,player2Stats={"position":"UTILITY","kills":0,"assists":20,"deaths":2})]
         cards=build_trophies([a],None)["cards"]
         self.assertEqual(cards[5]["entries"][0]["kda"],10)
         self.assertEqual(cards[1]["entries"],[])

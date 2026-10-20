@@ -2,6 +2,7 @@
 from datetime import datetime
 from fractions import Fraction
 from competition_ranking import team_rank, team_rank_key
+from participant_roles import role_games, role_summary
 
 ROLES = {"TOP": "Top", "JUNGLE": "Jungla", "MIDDLE": "Mid", "BOTTOM": "ADC", "UTILITY": "Support"}
 
@@ -26,14 +27,13 @@ def build_trophies(duos, end_date):
                 player = duo.get(key) or {}
                 if not player.get("name"):
                     continue
-                if str(player.get("mainRole", "")).upper() != role:
+                end = deadline_timestamp(end_date)
+                cutoff = end*1000 if end is not None else None
+                if role_summary(duo, key, cutoff)['position'] != role:
                     continue
                 totals = {"kills": 0, "deaths": 0, "assists": 0}
                 games = 0
-                for match in duo.get("history", []):
-                    stats = match.get(key + "Stats")
-                    if match.get("isTest") or not isinstance(stats, dict):
-                        continue
+                for match,stats,_ in role_games(duo, key, cutoff):
                     if str(stats.get("position", "")).upper() != role:
                         continue
                     games += 1

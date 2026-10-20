@@ -20,7 +20,7 @@ async function renderTrophies() {
   }
   const awarded = data.status === 'awarded';
   document.getElementById('trophies-status').textContent = awarded ? 'Torneo cerrado · Premios adjudicados salvo empates pendientes' : 'Clasificación provisional · Se entregan al finalizar';
-  document.getElementById('trophies-note').textContent = `KDA acumulado: (kills + asistencias) / máximo de 1 y muertes. Cada jugador compite solo en su rol principal configurado. Solo cuentan las partidas jugadas en ese rol; los cambios de rol por castigo y las partidas sin rol identificado quedan excluidos. Sin mínimo de partidas. Los trofeos se conceden al finalizar el torneo.`;
+  document.getElementById('trophies-note').textContent = `KDA acumulado: (kills + asistencias) / máximo de 1 y muertes. El rol principal es la posición más jugada por cada integrante en sus cuentas registradas. En empate se usa la posición empatada jugada más recientemente. Solo cuentan las partidas jugadas en ese rol; las partidas sin posición identificada quedan excluidas. Sin mínimo de partidas. Los trofeos se conceden al finalizar el torneo.`;
   grid.innerHTML = data.cards.map(card => {
     const entries = card.entries || [];
     return `<article class="trophy-card ${card.id === 'dishonor' ? 'trophy-dishonor' : ''}">
