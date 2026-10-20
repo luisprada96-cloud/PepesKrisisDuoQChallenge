@@ -19,6 +19,14 @@
   let availableTeams = [];
   let voting = null;
   let seen = new Set();
+  const commentStates = new Map();
+
+  function commentState(id, week = currentWeek) {
+    const key = `${week}:${id}`;
+    if (!commentStates.has(key)) commentStates.set(key, {open:false, loaded:false, loading:false, sending:false,
+      comments:[], total:0, hasMore:false, name:'', text:'', error:'', notice:''});
+    return commentStates.get(key);
+  }
 
   function sessionToken() {
     try { return sessionStorage.getItem('pepes_player_token') || ''; }
@@ -116,7 +124,19 @@
           post.innerHTML = `<div class="clip-vote"><button type="button" data-vote="${escape(clip.id)}"><i class="fa-solid fa-thumbs-up" aria-hidden="true"></i></button><strong></strong></div>
             <div class="clip-body"><div class="clip-header"><h2 class="clip-title">${escape(clip.title)}</h2><button type="button" class="clip-seen" data-seen="${escape(clip.id)}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div><div class="clip-meta"><span class="clip-avatar">${escape(clip.initials)}</span><span class="clip-team">${escape(clip.team)}</span><span class="clip-age"></span></div>
             <div class="clip-media clip-scene-${clip.scene}" data-media="${escape(clip.id)}"><button type="button" class="clip-poster" data-play="${escape(clip.id)}" aria-label="${clip.slug ? 'Reproducir' : 'Ver disponibilidad de'} ${escape(clip.title)}"><span class="clip-terrain"></span><span class="clip-characters"></span>${clip.slug ? '<span class="clip-example-badge">CLIP DE TWITCH</span>' : ''}<span class="clip-play"><i class="fa-solid fa-play" aria-hidden="true"></i></span>${clip.duration ? `<span class="clip-duration">${clip.duration}</span>` : ''}</button></div>
-            <div class="clip-footer"><span class="clip-source"><i class="fa-brands fa-twitch" aria-hidden="true"></i> Twitch</span>${clip.url ? `<a class="clip-open" href="${escape(clip.url)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir clip</a>` : ''}</div></div>`;
+            <div class="clip-footer"><span class="clip-source"><i class="fa-brands fa-twitch" aria-hidden="true"></i> Twitch</span>${clip.url ? `<a class="clip-open" href="${escape(clip.url)}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Abrir clip</a>` : ''}${clip.example ? '' : `<button type="button" class="clip-comments-toggle" data-comments-toggle="${escape(clip.id)}" aria-expanded="false" aria-controls="clip-comments-${escape(clip.id)}"><i class="fa-regular fa-comment" aria-hidden="true"></i><span></span></button>`}</div>
+            ${clip.example ? '' : `<section class="clip-comments" id="clip-comments-${escape(clip.id)}" aria-label="Comentarios de ${escape(clip.title)}" hidden>
+              <h3>Comentarios</h3><ol class="clip-comments-list" data-comment-list></ol>
+              <button type="button" class="clips-secondary clip-comments-more" data-comments-more="${escape(clip.id)}" hidden>Ver más comentarios</button>
+              <form class="clip-comment-form" data-comment-form="${escape(clip.id)}">
+                <label for="comment-name-${escape(clip.id)}">Nombre <span>(opcional)</span></label>
+                <input id="comment-name-${escape(clip.id)}" name="name" type="text" maxlength="15" autocomplete="nickname" placeholder="Anónimo" aria-describedby="comment-name-note-${escape(clip.id)}">
+                <small id="comment-name-note-${escape(clip.id)}">Máximo 15 caracteres · Nombre sin verificar</small>
+                <label for="comment-text-${escape(clip.id)}">Tu comentario</label>
+                <textarea id="comment-text-${escape(clip.id)}" name="text" maxlength="200" rows="3" required placeholder="¿Qué te ha parecido la jugada?" aria-describedby="comment-counter-${escape(clip.id)}"></textarea>
+                <div class="clip-comment-actions"><small id="comment-counter-${escape(clip.id)}" data-comment-counter>0/200</small><button type="submit" class="clips-publish">Comentar</button></div>
+              </form><p class="clip-comment-feedback" data-comment-feedback role="status" aria-live="polite"></p>
+            </section>`}</div>`;
         }
         const viewed = seen.has(clip.id);
         const seenButton = post.querySelector('[data-seen]');
@@ -130,6 +150,7 @@
         vote.disabled = busy || loadingWeek || weekClosed || !voting;
         post.querySelector('.clip-vote strong').textContent = clip.votes;
         post.querySelector('.clip-age').textContent = `· ${age(clip.createdAt)}`;
+        renderComments(post, clip);
         if (feed.children[index] !== post) feed.insertBefore(post, feed.children[index] || null);
         existing.delete(clip.id);
       });
@@ -158,6 +179,63 @@
       }
       return result;
     } finally { clearTimeout(timeout); }
+  }
+
+  function renderComments(post, clip) {
+    const toggle = post.querySelector('[data-comments-toggle]');
+    if (!toggle) return;
+    const state = commentState(clip.id);
+    toggle.querySelector('span').textContent = `Comentarios (${Math.max(Number(clip.commentCount) || 0, state.total)})`;
+    toggle.setAttribute('aria-expanded', String(state.open));
+    const section = post.querySelector('.clip-comments');
+    section.hidden = !state.open;
+    const list = section.querySelector('[data-comment-list]');
+    const signature = JSON.stringify([state.comments, state.loaded, state.loading]);
+    if (list.dataset.signature !== signature) {
+      list.innerHTML = state.comments.length ? state.comments.map(c => `<li class="clip-comment"><header><strong>${escape(c.name || 'Anónimo')}</strong><time>${escape(age(c.createdAt))}</time></header><p>${escape(c.text)}</p></li>`).join('')
+        : `<li class="clip-comments-empty">${state.loading ? 'Cargando comentarios…' : state.loaded ? 'Aún no hay comentarios. ¡Escribe el primero!' : 'Abre los comentarios para cargarlos.'}</li>`;
+      list.dataset.signature = signature;
+    }
+    const more = section.querySelector('[data-comments-more]');
+    more.hidden = !state.hasMore;
+    more.disabled = state.loading;
+    const commentForm = section.querySelector('[data-comment-form]');
+    if (commentForm.elements.name.value !== state.name) commentForm.elements.name.value = state.name;
+    if (commentForm.elements.text.value !== state.text) commentForm.elements.text.value = state.text;
+    for (const field of commentForm.elements) field.disabled = state.sending || loadingWeek;
+    commentForm.querySelector('[type="submit"]').textContent = state.sending ? 'Enviando…' : 'Comentar';
+    section.querySelector('[data-comment-counter]').textContent = `${Array.from(state.text).length}/200`;
+    const message = section.querySelector('[data-comment-feedback]');
+    message.textContent = state.error || state.notice;
+    message.classList.toggle('is-error', !!state.error);
+  }
+
+  async function loadComments(id, more = false) {
+    const week = currentWeek;
+    const state = commentState(id, week);
+    if (state.loading || state.sending) return;
+    const version = state.version = (state.version || 0) + 1;
+    state.loading = true;
+    state.error = '';
+    render();
+    try {
+      const query = new URLSearchParams({week,clipId:id,offset:String(more ? state.comments.length : 0),limit:'10'});
+      const result = await request(`/clips/comments?${query}`);
+      if (version !== state.version) return;
+      if (result.week !== week || result.clipId !== id || !Array.isArray(result.comments)) throw new Error('Respuesta de comentarios inválida.');
+      state.comments = more ? [...new Map([...state.comments,...result.comments].map(c=>[c.id,c])).values()] : result.comments;
+      state.total = result.total;
+      state.hasMore = result.hasMore;
+      state.loaded = true;
+      if (currentWeek === week) {
+        const clip = clips.find(c=>c.id===id);
+        if (clip) clip.commentCount = result.total;
+      }
+    } catch (failure) {
+      if (version === state.version) state.error = ['AbortError','TypeError'].includes(failure.name)
+        ? 'No se pudieron cargar los comentarios. Cierra y abre el apartado para reintentar.' : failure.message;
+    }
+    finally { if (version === state.version) { state.loading = false; if (currentWeek === week) render(); } }
   }
 
   function setVoting(value) {
@@ -229,6 +307,10 @@
     document.getElementById('clips-year').textContent = `${new Date(start*1000).getFullYear()} · Hora de Madrid`;
     document.querySelector('.clips-preview-note span').textContent = 'Clips y likes compartidos.';
     render();
+    for (const clip of clips) {
+      const state = commentStates.get(`${currentWeek}:${clip.id}`);
+      if (state?.open && state.loaded && !state.loading && !state.sending && !state.error && Number(clip.commentCount) > state.total) void loadComments(clip.id);
+    }
   }
 
   async function refresh(forWeekChange = false) {
@@ -301,6 +383,17 @@
     }
   });
   feed.addEventListener('click', async event => {
+    const commentsToggle = event.target.closest('[data-comments-toggle]');
+    if (commentsToggle) {
+      const id = commentsToggle.dataset.commentsToggle;
+      const state = commentState(id);
+      state.open = !state.open;
+      render();
+      if (state.open) await loadComments(id);
+      return;
+    }
+    const commentsMore = event.target.closest('[data-comments-more]');
+    if (commentsMore) { await loadComments(commentsMore.dataset.commentsMore, true); return; }
     const seenButton = event.target.closest('[data-seen]');
     if (seenButton) {
       const id = seenButton.dataset.seen;
@@ -352,6 +445,59 @@
       } else {
         opened.add(clip.id);
         openMedia(clip);
+      }
+    }
+  });
+  feed.addEventListener('input', event => {
+    const commentForm = event.target.closest('[data-comment-form]');
+    if (!commentForm) return;
+    const state = commentState(commentForm.dataset.commentForm);
+    state.name = commentForm.elements.name.value;
+    state.text = commentForm.elements.text.value;
+    commentForm.querySelector('[data-comment-counter]').textContent = `${Array.from(state.text).length}/200`;
+  });
+  feed.addEventListener('submit', async event => {
+    const commentForm = event.target.closest('[data-comment-form]');
+    if (!commentForm) return;
+    event.preventDefault();
+    const id = commentForm.dataset.commentForm, week = currentWeek;
+    const state = commentState(id, week);
+    if (state.sending || loadingWeek) return;
+    const name = commentForm.elements.name.value.trim(), text = commentForm.elements.text.value.trim();
+    state.name = commentForm.elements.name.value;
+    state.text = commentForm.elements.text.value;
+    state.error = ''; state.notice = '';
+    if (Array.from(name).length > 15 || !text || Array.from(text).length > 200) {
+      state.error = 'Nombre opcional: máximo 15 caracteres. Comentario: entre 1 y 200 caracteres.';
+      render(); return;
+    }
+    const signature = JSON.stringify([name,text]);
+    if (state.retrySignature !== signature) {
+      state.requestId = window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+      state.retrySignature = signature;
+    }
+    state.version = (state.version || 0) + 1;
+    state.loading = false;
+    state.sending = true;
+    render();
+    try {
+      const result = await request('/clips/comments', {week,clipId:id,name,text,requestId:state.requestId});
+      if (result.week !== week || result.clipId !== id || !Array.isArray(result.comments)) throw new Error('No se pudo confirmar el comentario. Vuelve a intentarlo.');
+      state.comments = result.comments; state.total = result.total; state.hasMore = result.hasMore; state.loaded = true;
+      state.text = ''; state.retrySignature = null; state.notice = 'Comentario publicado.';
+      if (currentWeek === week) {
+        const clip = clips.find(c=>c.id===id);
+        if (clip) clip.commentCount = result.total;
+      }
+    } catch (failure) {
+      state.error = ['AbortError','TypeError'].includes(failure.name)
+        ? 'No se pudo confirmar el envío. Puedes reintentar sin perder el comentario.' : failure.message;
+    }
+    finally {
+      state.sending = false;
+      if (currentWeek === week) {
+        render();
+        if (commentForm.isConnected && state.open) commentForm.elements.text.focus({preventScroll:true});
       }
     }
   });
