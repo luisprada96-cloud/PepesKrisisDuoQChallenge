@@ -272,7 +272,9 @@ const discordTestRequests = [];
       return {order,selected,pending,master:competitionRankPoints({tier:'Grandmaster',division:'I',lp:500}),
         half:competitionAverageRank({player1:{name:'P',rank:rank('Gold',1)},player2:{name:'Q',rank:rank('Gold')}}).totalLp};
     }), {order:['A','B'],selected:851,pending:false,master:3300,half:1200.5});
-    assert.match(await page.locator('.duo-row[data-id="Primero"] .duo-average-elo').textContent(), /1[.\s]?677,5/);
+    assert.equal(await page.locator('.duo-average-elo').count(),0,'technical ELO points must remain internal');
+    assert.doesNotMatch(await page.locator('#leaderboard-tbody').textContent(), /ELO medio:|\d[\d.,\s]* pts/);
+    assert.equal(await page.evaluate(() => competitionAverageRank(currentDuos.find(d=>d.id==='Primero')).totalLp),1677.5,'hidden mean still drives ranking');
     await page.selectOption('#tier-filter','PLATINUM');
     assert.equal(await page.locator('.duo-row').count(),1,'tier filter follows average, not player one');
     assert.equal(await page.locator('.duo-row').first().getAttribute('data-id'),'Primero');

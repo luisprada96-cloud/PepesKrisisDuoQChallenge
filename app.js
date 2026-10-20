@@ -295,7 +295,6 @@ function renderLeaderboardTable() {
             <i class="fa-solid fa-users text-cyan" aria-hidden="true"></i>
             <span>${escapeHtml(duo.teamName)}</span>
           </div>
-          <span class="duo-average-elo" title="Media aritmética de las cuentas seleccionadas para ELO de ambos integrantes">${escapeHtml(competitionAverageRank(duo).label)}</span>
 
         </div>
       </td>
