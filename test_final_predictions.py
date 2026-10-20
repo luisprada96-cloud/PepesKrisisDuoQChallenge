@@ -19,7 +19,9 @@ from trophies import build_trophies
 def database():
     return {'config': {'startDate':'2026-10-15T18:00','endDate':'2026-11-15T23:59'},
             'duos':[{'id':str(i),'teamName':item['name'],'tier':'Gold','division':'IV','lp':i,
-                     'blueShells':3} for i,item in enumerate(predictions.ITEMS)], 'events':[]}
+                     'blueShells':3,'player1':{'name':f'P{i}'},
+                     'player2':{'name':f'Q{i}','rank':{'tier':'Gold','division':'IV','lp':i}}}
+                    for i,item in enumerate(predictions.ITEMS)], 'events':[]}
 
 
 class FinalPredictionTests(unittest.TestCase):
@@ -236,6 +238,9 @@ class FinalPredictionEndpointTests(unittest.TestCase):
         self.call(client,self.payload(),auth)
         db=server.load_db()
         db['config']['endDate']='2020-01-01T00:00:00+00:00'
+        for duo in db['duos']:
+            for key in ('player1','player2'):
+                duo[key]['rank']={'tier':'Gold','division':'IV','lp':10}
         server.save_db(db)
         official=server.public_trophies()
         board=self.call(client)[0]

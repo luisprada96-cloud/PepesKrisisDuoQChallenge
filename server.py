@@ -33,6 +33,7 @@ import stat_progression
 import player_accounts
 import riot_accounts_sync
 import riot_match_policy
+from competition_ranking import team_rank
 from shell_rules import SHELL_KILLS, SHELL_ASSISTS, SHELL_PERFECT_KDA, individual_shell_criteria
 from http.cookies import SimpleCookie, CookieError
 from functools import wraps
@@ -288,6 +289,7 @@ def safe_duos_for_admin(duos):
 
 def duo_summary(duo):
     result = safe_duo_for_player(duo)
+    result["competitionRank"] = team_rank(duo)
     result["tournamentRecord"] = riot_match_policy.history_record(duo, MIN_RIOT_MATCH_DURATION_SECONDS)
     result["historyCount"] = len(result.pop("history", []))
     return result
@@ -1856,7 +1858,7 @@ def public_trophies():
         end_date = db.get("config", {}).get("endDate")
         result = build_trophies(db.get("duos", []), end_date)
         deadline = deadline_timestamp(end_date)
-        if deadline is not None and time.time() >= deadline:
+        if deadline is not None and time.time() >= deadline and result.get('standingsReady', True):
             result["status"] = "awarded"
             result["awardedAt"] = time.time()
             db["awardedTrophies"] = result

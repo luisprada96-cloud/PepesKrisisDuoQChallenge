@@ -8,7 +8,8 @@ from trophies import build_trophies
 
 
 def duo(id="a", role="TOP", tier="Gold", lp=10):
-    return {"id":id,"teamName":id,"tier":tier,"division":"IV","lp":lp,"player1":{"name":id,"mainRole":role},"history":[]}
+    return {"id":id,"teamName":id,"tier":tier,"division":"IV","lp":lp,"player1":{"name":id,"mainRole":role},
+            "player2":{"name":id+'2',"rank":{"tier":tier,"division":"IV","lp":lp}},"history":[]}
 
 
 def match(role="TOP", kills=10, deaths=2, assists=0, **extra):

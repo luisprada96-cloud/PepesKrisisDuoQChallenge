@@ -26,7 +26,7 @@ async function renderTrophies() {
     return `<article class="trophy-card ${card.id === 'dishonor' ? 'trophy-dishonor' : ''}">
       <header><span class="trophy-icon" aria-hidden="true">${escapeHtml(card.icon)}</span><h3>${escapeHtml(card.title)}</h3></header>
       <p class="trophy-description">${escapeHtml(card.description)}</p>
-      ${entries.length ? `<div class="trophy-leader"><small>${entries[0].tied ? 'Empate pendiente de resolver' : awarded ? 'Premiado' : 'Líder provisional'}</small><strong>${escapeHtml(entries[0].name)}</strong><span>${escapeHtml(entries[0].value)}</span></div>
+      ${entries.length ? `<div class="trophy-leader"><small>${card.rankPending ? 'Clasificación incompleta · faltan rangos' : entries[0].tied ? 'Empate pendiente de resolver' : awarded ? 'Premiado' : 'Líder provisional'}</small><strong>${escapeHtml(entries[0].name)}</strong><span>${escapeHtml(entries[0].value)}</span></div>
       <ol class="trophy-list">${entries.map(entry => `<li><div><strong>${escapeHtml(entry.name)}</strong><small>${escapeHtml(entry.teamName)}${entry.games ? ' · ' + entry.games + ' partidas' : ''}${entry.tied ? ' · Empatado' : ''}</small></div><b>${escapeHtml(entry.value)}</b></li>`).join('')}</ol>` : '<p class="fun-stats-empty">Sin participantes con datos para este trofeo.</p>'}
     </article>`;
   }).join('');

@@ -23,9 +23,9 @@ CATEGORY = 'unique_champions'
 def database():
     return {'config': {'startDate': '2026-10-15T18:00', 'endDate': '2026-11-15T23:59'},
             'duos': [{'id': 'a', 'teamName': 'Equipo A', 'blueShells': 5,
-                      'player1': {'name': 'A1', 'displayName':'Joji'}, 'player2': {'name': 'A2'}, 'history': []},
+                      'player1': {'name': 'A1', 'displayName':'Joji'}, 'player2': {'name': 'A2', 'rank': {'tier':'Gold','division':'IV','lp':0,'observedAt':NOW}}, 'history': []},
                      {'id': 'b', 'teamName': 'Equipo B', 'player1': {'name': 'B1'},
-                      'player2': {'name': 'B2', 'displayName':'Parradise'}, 'history': []}], 'events': []}
+                      'player2': {'name': 'B2', 'displayName':'Parradise', 'rank': {'tier':'Gold','division':'IV','lp':0,'observedAt':NOW}}, 'history': []}], 'events': []}
 
 
 def game(mid='EUW1_1', first='Ahri', second='Lux', at=NOW):
@@ -251,7 +251,7 @@ class PickemServiceTests(unittest.TestCase):
         self.assertTrue(pickem.capture_rankings(self.db))
         d['eloHistory'] = [{'tier':'Challenger','lp':99,'observedAt':NOW+86400*6,'source':'riot'}]
         pickem.capture_rankings(self.db)
-        self.assertEqual(self.board['rankObservations']['a']['lp'],44)
+        self.assertEqual(self.board['rankObservations']['a']['players']['player1']['lp'],44)
 
     def test_replaced_first_account_cannot_reuse_legacy_team_rank(self):
         d = self.db['duos'][0]
@@ -259,7 +259,8 @@ class PickemServiceTests(unittest.TestCase):
         pickem.capture_rankings(self.db)
         d['player1'].update(name='Other',rank=None)
         pickem.capture_rankings(self.db)
-        self.assertNotEqual(self.board['rankObservations']['a']['account'],pickem.account(d['player1']))
+        self.assertFalse(self.board['rankObservations']['a']['ready'])
+        self.assertIsNone(self.board['rankObservations']['a']['players']['player1'])
 
     def first_five_category(self):
         return next(c for c in self.board['categories'] if c['id']=='first_five_negative')

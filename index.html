@@ -103,18 +103,21 @@
         </div>
 
         <div class="filter-group">
-          <select id="tier-filter" class="filter-select" aria-label="Filtrar por rango de liga">
-            <option value="ALL">Todos los Rangos</option>
+          <select id="tier-filter" class="filter-select" aria-label="Filtrar por rango medio de la pareja">
+            <option value="ALL">Todos los rangos medios</option>
+            <option value="MASTER">Master+</option>
+            <option value="DIAMOND">Diamante</option>
             <option value="EMERALD">Esmeralda</option>
             <option value="PLATINUM">Platino</option>
             <option value="GOLD">Oro</option>
             <option value="SILVER">Plata</option>
             <option value="BRONZE">Bronce</option>
             <option value="IRON">Hierro</option>
+            <option value="UNRANKED">Media pendiente</option>
           </select>
 
           <select id="sort-by" class="filter-select" aria-label="Ordenar tabla por">
-            <option value="RANK">Ordenar por rango actual</option>
+            <option value="RANK">Ordenar por ELO medio</option>
             <option value="WINRATE">Ordenar por Winrate %</option>
             <option value="GAMES">Ordenar por Partidas Jugadas</option>
             <option value="NAME">Ordenar por Nombre</option>

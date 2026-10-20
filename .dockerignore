@@ -1,6 +1,7 @@
 *
 !Dockerfile
 !server.py
+!competition_ranking.py
 !terminology.py
 !overlay.html
 !overlay.js

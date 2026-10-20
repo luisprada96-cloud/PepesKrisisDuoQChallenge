@@ -1,18 +1,9 @@
 """Public trophy standings, built only from tournament data already stored."""
 from datetime import datetime
 from fractions import Fraction
+from competition_ranking import team_rank, team_rank_key
 
 ROLES = {"TOP": "Top", "JUNGLE": "Jungla", "MIDDLE": "Mid", "BOTTOM": "ADC", "UTILITY": "Support"}
-TIERS = ["UNRANKED", "IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"]
-
-
-def rank_key(duo):
-    name = str(duo.get("tier", "")).upper()
-    tier = TIERS.index(name) if name in TIERS else 0
-    division = {"IV": 0, "III": 1, "II": 2, "I": 3}.get(str(duo.get("division", "")).upper(), 0) if 0 < tier < 8 else 0
-    lp = int(duo.get("lp", 0) or 0) if tier else 0
-    wins, losses = int(duo.get("wins", 0) or 0), int(duo.get("losses", 0) or 0)
-    return (tier, division, lp, Fraction(wins, max(1, wins + losses)))
 
 
 def deadline_timestamp(value):
@@ -23,10 +14,11 @@ def deadline_timestamp(value):
 
 
 def build_trophies(duos, end_date):
-    ranked = sorted(duos, key=lambda d: tuple(-x for x in rank_key(d)) + (str(d.get("id", "")),))
+    ranked = sorted(duos, key=lambda d: tuple(-x for x in team_rank_key(d)) + (str(d.get("id", "")),))
     def team_entry(duo):
-        return {"name": duo.get("teamName", "Equipo"), "teamName": duo.get("teamName", ""), "id": duo.get("id"), "value": " ".join(str(duo.get(k, "")) for k in ("tier", "division")) + f" · {duo.get('lp', 0)} LP"}
-    cards = [{"id": "champion", "title": "Campeón del torneo", "icon": "🏆", "description": "Mayor rango, división y LP. Desempate por winrate.", "entries": [team_entry(d) for d in ranked]}]
+        rank = team_rank(duo)
+        return {"name": duo.get("teamName", "Equipo"), "teamName": duo.get("teamName", ""), "id": duo.get("id"), "value": rank['label'], "rankReady": rank['ready']}
+    cards = [{"id": "champion", "title": "Campeón del torneo", "icon": "🏆", "description": "Mayor media de ELO de las cuentas seleccionadas de ambos integrantes. Desempate por winrate conjunto de esas cuentas.", "entries": [team_entry(d) for d in ranked]}]
     for role, label in ROLES.items():
         candidates = []
         for duo in duos:
@@ -59,11 +51,14 @@ def build_trophies(duos, end_date):
             candidate.pop("_ratio")
         cards.append({"id": role, "title": f"Mejor {label}", "icon": "🏅", "description": "Mayor KDA acumulado. Desempate por partidas disputadas; si persiste, premio pendiente de desempate.", "entries": candidates})
     for card, ordered in ((cards[0], ranked),):
-        if len(ordered) > 1 and rank_key(ordered[0]) == rank_key(ordered[1]):
+        if len(ordered) > 1 and team_rank_key(ordered[0]) == team_rank_key(ordered[1]):
             for entry, duo in zip(card["entries"], ordered):
-                entry["tied"] = rank_key(duo) == rank_key(ordered[0])
+                entry["tied"] = team_rank_key(duo) == team_rank_key(ordered[0])
     cards.append({"id": "dishonor", "title": "Pin de la deshonra", "icon": "📌", "description": "Dúo que termina más abajo en la clasificación.", "entries": [team_entry(d) for d in reversed(ranked)]})
-    if len(ranked) > 1 and rank_key(ranked[-1]) == rank_key(ranked[-2]):
+    if len(ranked) > 1 and team_rank_key(ranked[-1]) == team_rank_key(ranked[-2]):
         for entry, duo in zip(cards[-1]["entries"], reversed(ranked)):
-            entry["tied"] = rank_key(duo) == rank_key(ranked[-1])
-    return {"status": "provisional", "endDate": end_date, "roleMode": "main_role_matches", "cards": cards}
+            entry["tied"] = team_rank_key(duo) == team_rank_key(ranked[-1])
+    ready = bool(duos) and all(team_rank(d)['ready'] for d in duos)
+    for card in (cards[0], cards[-1]):
+        card['rankPending'] = not ready
+    return {"status": "provisional", "endDate": end_date, "roleMode": "main_role_matches", "standingsReady": ready, "cards": cards}

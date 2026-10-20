@@ -183,7 +183,7 @@ function renderPlayerRank(duo, playerKey) {
   const player = duo[playerKey];
   if (!player?.name) return '<span class="player-rank-pending">—</span>';
   // Older saves have only the first participant's rank on the duo itself.
-  const rank = player.rank || (playerKey === 'player1' && !Object.prototype.hasOwnProperty.call(player, 'rank') ? duo : null);
+  const rank = competitionPlayerRank(duo, playerKey);
   if (!rank?.tier) return '<span class="player-rank-pending">Pendiente</span>';
   const tier = String(rank.tier);
   const isUnranked = tier.toUpperCase() === 'UNRANKED';
@@ -214,7 +214,7 @@ function renderLeaderboardTable() {
                         p1Name.includes(query) ||
                         p2Name.includes(query) ||
                         [duo.player1, duo.player2].some(player => String(player?.displayName || '').toLowerCase().includes(query));
-    const matchesTier = selectedTier === 'ALL' || duo.tier.toUpperCase() === selectedTier;
+    const matchesTier = selectedTier === 'ALL' || competitionAverageRank(duo).tier === selectedTier;
     return matchesName && matchesTier;
   });
 
@@ -246,7 +246,7 @@ function renderLeaderboardTable() {
 
   const positions = new Map([...currentDuos].sort(compareCompetitionRank).map((duo, index) => [duo.id, index + 1]));
   filtered.forEach(duo => {
-    const rankPos = positions.get(duo.id);
+    const rankPos = competitionAverageRank(duo).ready ? positions.get(duo.id) : null;
     const record = challengeRecord(duo);
     const winrate = Math.round(record.winrate * 100);
 
@@ -287,7 +287,7 @@ function renderLeaderboardTable() {
 
     tr.innerHTML = `
       <td>
-        <div class="${posClass}"><span class="rank-position-number">${rankPos}</span></div>
+        <div class="${posClass}"><span class="rank-position-number">${rankPos ?? '—'}</span></div>
       </td>
       <td>
         <div class="team-name-cell">
@@ -295,6 +295,7 @@ function renderLeaderboardTable() {
             <i class="fa-solid fa-users text-cyan" aria-hidden="true"></i>
             <span>${escapeHtml(duo.teamName)}</span>
           </div>
+          <span class="duo-average-elo" title="Media aritmética de las cuentas seleccionadas para ELO de ambos integrantes">${escapeHtml(competitionAverageRank(duo).label)}</span>
 
         </div>
       </td>
@@ -613,13 +614,39 @@ async function triggerManualSync() {
 
 async function triggerFetchMatches() { await triggerManualSync(); }
 
+function competitionPlayerRank(duo, key) {
+  const player = duo[key];
+  if (!player?.name) return null;
+  if (player.accounts?.length) return participantEloAccount(player).rank || null;
+  return Object.prototype.hasOwnProperty.call(player, 'rank') ? player.rank : key === 'player1' ? duo : null;
+}
+
+function competitionRankPoints(rank) {
+  if (!rank) return null;
+  const tiers = {IRON:0,BRONZE:400,SILVER:800,GOLD:1200,PLATINUM:1600,EMERALD:2000,DIAMOND:2400,MASTER:2800,GRANDMASTER:2800,CHALLENGER:2800};
+  const divisions = {IV:0,III:100,II:200,I:300};
+  const tier = String(rank.tier || '').toUpperCase();
+  const division = String(rank.division || '').toUpperCase();
+  const lp = Number(rank.lp || 0);
+  if (!(tier in tiers) || !Number.isFinite(lp) || lp < 0 || (tiers[tier] < 2800 && !(division in divisions))) return null;
+  return tiers[tier] + (tiers[tier] < 2800 ? divisions[division] : 0) + lp;
+}
+
+function competitionAverageRank(duo) {
+  const ranks = ['player1', 'player2'].map(key => competitionPlayerRank(duo, key));
+  const points = ranks.map(competitionRankPoints);
+  if (points.some(p => p === null)) return {ready:false,totalLp:-1,rate:0,tier:'UNRANKED',label:'Media de ELO pendiente'};
+  const totalLp = (points[0] + points[1]) / 2;
+  const wins = ranks.reduce((sum, rank) => sum + Math.max(0, Number(rank.wins) || 0), 0);
+  const losses = ranks.reduce((sum, rank) => sum + Math.max(0, Number(rank.losses) || 0), 0);
+  const tiers = ['IRON','BRONZE','SILVER','GOLD','PLATINUM','EMERALD','DIAMOND','MASTER'];
+  const tier = tiers[Math.min(7, Math.floor(totalLp / 400))];
+  return {ready:true,totalLp,rate:wins / Math.max(1,wins + losses),tier,label:`ELO medio: ${totalLp.toLocaleString('es-ES', {maximumFractionDigits:2})} pts`};
+}
+
 function compareCompetitionRank(a, b) {
-  const rate = duo => Number(duo.wins) / ((Number(duo.wins) + Number(duo.losses)) || 1);
-  const tiers = ['UNRANKED', 'IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
-  const tier = duo => Math.max(0, tiers.indexOf(String(duo.tier || '').toUpperCase()));
-  const division = duo => tier(duo) >= 8 || tier(duo) === 0 ? 0 : ({IV: 0, III: 1, II: 2, I: 3}[String(duo.division || '').toUpperCase()] || 0);
-  const lp = duo => tier(duo) === 0 ? 0 : Number(duo.lp) || 0;
-  return tier(b) - tier(a) || division(b) - division(a) || lp(b) - lp(a) || rate(b) - rate(a) || String(a.id).localeCompare(String(b.id));
+  const first = competitionAverageRank(a), second = competitionAverageRank(b);
+  return Number(second.ready) - Number(first.ready) || second.totalLp - first.totalLp || second.rate - first.rate || String(a.id).localeCompare(String(b.id));
 }
 
 function showToast(msg) {
@@ -735,7 +762,8 @@ function calcTotalLpHelper(tier, division, lp) {
   const divMap = { IV: 0, III: 100, II: 200, I: 300, '': 0 };
   const t = String(tier || 'UNRANKED').toUpperCase();
   const d = String(division || '').toUpperCase();
-  return (tierMap[t] || 0) + (divMap[d] || 0) + (parseInt(lp, 10) || 0);
+  if (t === 'UNRANKED') return 0;
+  return (tierMap[t] || 0) + (tierMap[t] >= 2800 ? 0 : divMap[d] || 0) + (parseInt(lp, 10) || 0);
 }
 
 function str(val) { return String(val || ''); }

@@ -255,8 +255,31 @@ const discordTestRequests = [];
         {id:'grandmaster',tier:'Grandmaster',lp:600},
         {id:'challenger',tier:'Challenger',lp:1000}
       ];
-      return ranks.sort(compareCompetitionRank).map(x => x.id).join(',');
+      return ranks.map(rank => ({...rank, player1:{name:'P1',rank},player2:{name:'P2',rank}})).sort(compareCompetitionRank).map(x => x.id).join(',');
     }), 'challenger,grandmaster,master,gold3,gold4,iron,unranked');
+    assert.deepEqual(await page.evaluate(() => {
+      const rank = (tier, lp=0) => ({tier,division:'IV',lp});
+      const a = {id:'A',tier:'Iron',player1:{name:'P1',rank:rank('Gold')},player2:{name:'P2',rank:rank('Diamond')}};
+      const b = {id:'B',tier:'Challenger',player1:{name:'Q1',rank:rank('Platinum')},player2:{name:'Q2',rank:rank('Platinum')}};
+      const order = [b,a].sort(compareCompetitionRank).map(d=>d.id);
+      for (const key of ['player1','player2']) {
+        a[key].accounts = [{id:'main',name:'Main',rank:rank('Challenger',900)}, {id:'alt',name:'Alt',rank:rank('Silver',51)}];
+        a[key].eloAccountId = 'alt';
+      }
+      const selected = competitionAverageRank(a).totalLp;
+      a.player2.accounts[1].rank = null;
+      const pending = competitionAverageRank(a).ready;
+      return {order,selected,pending,master:competitionRankPoints({tier:'Grandmaster',division:'I',lp:500}),
+        half:competitionAverageRank({player1:{name:'P',rank:rank('Gold',1)},player2:{name:'Q',rank:rank('Gold')}}).totalLp};
+    }), {order:['A','B'],selected:851,pending:false,master:3300,half:1200.5});
+    assert.match(await page.locator('.duo-row[data-id="Primero"] .duo-average-elo').textContent(), /1[.\s]?677,5/);
+    await page.selectOption('#tier-filter','PLATINUM');
+    assert.equal(await page.locator('.duo-row').count(),1,'tier filter follows average, not player one');
+    assert.equal(await page.locator('.duo-row').first().getAttribute('data-id'),'Primero');
+    await page.selectOption('#tier-filter','UNRANKED');
+    assert.equal(await page.locator('.duo-row').count(),2);
+    assert.deepEqual(await page.locator('.duo-row .rank-position-number').allTextContents(),['—','—']);
+    await page.selectOption('#tier-filter','ALL');
 
     assert.equal(await page.locator('#rules, #trophies, #shell-rewards, #roulette-rules').count(), 0);
     await page.waitForFunction(() => document.querySelector('#recent-attacks-tbody').textContent.includes('Sin Flash'));

@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta
 from fractions import Fraction
 from pathlib import Path
-from trophies import rank_key
+from competition_ranking import average_rank, average_rank_key
 from shell_rules import individual_shell_criteria
 import weekly_summary as weeks
 
@@ -35,11 +35,11 @@ CATEGORIES = [{'id': 'unique_champions', 'kind': 'range', 'icon': '?', 'placehol
                'options': OPTIONS},
               {'id': 'weekly_leader', 'kind': 'team', 'icon': '🏆', 'placeholder': 'Selecciona un equipo',
                'title': '¿Qué equipo terminará primero esta semana?',
-               'description': 'Último ELO registrado antes de terminar la semana: rango, división y LP; desempate por winrate. En empate exacto, valen los equipos empatados.'},
+               'description': 'Mayor media de ELO de ambos integrantes al cierre, usando la cuenta seleccionada de cada uno; desempate por winrate conjunto de esas cuentas. En empate exacto, valen los equipos empatados.'},
               {'id': 'first_week_last', 'kind': 'team', 'icon': '🪦', 'eventLabel': 'ESTRENO DEL TORNEO',
                'placeholder': 'Selecciona un equipo',
                'title': '¿Qué equipo quedará último la primera semana?',
-               'description': 'El equipo con menor ELO al cierre de la primera semana: rango, división y LP; desempate por winrate. En empate exacto, valen todos los equipos empatados.'},
+               'description': 'Menor media de ELO de ambos integrantes al cierre de la primera semana, usando la cuenta seleccionada de cada uno; desempate por winrate conjunto de esas cuentas. En empate exacto, valen todos los equipos empatados.'},
               {'id': 'best_game_kda', 'kind': 'player', 'icon': '⚔', 'placeholder': 'Selecciona un jugador',
                'title': '¿Quién hará la partida con mejor KDA?',
                'description': 'La mejor partida individual de la semana: (asesinatos + asistencias) / máximo(muertes, 1). En empate exacto, valen todos los empatados.'},
@@ -324,38 +324,58 @@ def best_champion_winrate(db, board, category):
             'summary':f'Mejor winrate semanal · {float(best * 100):.2f} % · mínimo 3 partidas'}
 
 
+def participant_rank_observation(duo, key, bounds, previous=None):
+    """Only evidence for the account selected before this week's deadline."""
+    player = duo.get(key) or {}
+    selected = player_accounts.elo_account_at(player, bounds['endsAt'])
+    identity = account(selected)
+    candidates = []
+    if previous and previous.get('account') == identity:
+        candidates.append(previous)
+    current = player_accounts.elo_account(player)
+    if current is selected or account(current) == identity:
+        if selected.get('rank'):
+            candidates.append(selected['rank'])
+        # Older records put only P1's rank on the team, never P2's.
+        if key == 'player1' and not player.get('accounts') and 'rank' not in player and duo.get('rankObservedAt'):
+            candidates.append({**{k: duo.get(k) for k in ('tier','division','lp','wins','losses')}, 'observedAt':duo['rankObservedAt']})
+    candidates += selected.get('eloHistory', [])
+    for owner in (player, duo) if key == 'player1' else (player,):
+        marker = owner.get('eloHistoryAccount')
+        if marker and account({'name':marker[0], 'tag':marker[1]}) == identity:
+            candidates += owner.get('eloHistory', [])
+    candidates = [p for p in candidates if p.get('source','riot') == 'riot' and p.get('tier')
+                  and bounds['startsAt'] <= weeks.timestamp(p.get('observedAt')) < bounds['endsAt']]
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda p: weeks.timestamp(p['observedAt']))
+    return {**{k:latest.get(k) for k in ('tier','division','lp','wins','losses','observedAt')}, 'account':identity}
+
+
 def capture_rankings(db):
     """Preserve pre-close observations before the daily ELO point can be overwritten."""
     changed = False
     for board in (db.get('pickem') or {}).get('weeks', {}).values():
         if not any(c['id'] in RANK_CATEGORIES and c['id'] not in board['results'] for c in board['categories']): continue
+        for category in board['categories']:
+            if category['id'] in RANK_CATEGORIES and category['id'] not in board['results']:
+                description = next(c['description'] for c in CATEGORIES if c['id'] == category['id'])
+                if category.get('description') != description:
+                    category['description'] = description
+                    changed = True
         try: bounds = period(db, board['week'])
         except ValueError: continue
         observations = board.get('rankObservations', {})
         for duo in db.get('duos', []):
-            player = duo.get('player1') or {}
-            rank_player = player_accounts.elo_account_at(player, bounds['endsAt'])
-            identity = account(rank_player)
-            candidates = []
-            # The team leaderboard uses the first account's rank, just like the main table.
-            if duo.get('rankObservedAt') and account(player_accounts.elo_account(player)) == identity and not ('rank' in player and player['rank'] is None):
-                candidates.append({**{k: duo.get(k) for k in ('tier','division','lp','wins','losses')},
-                                   'observedAt': duo['rankObservedAt']})
-            for owner in (duo, player, rank_player):
-                if owner.get('eloHistoryAccount') == player_accounts.elo_identity(player):
-                    candidates += owner.get('eloHistory', [])
-            if rank_player is not player:
-                candidates += rank_player.get('eloHistory', [])
-                if rank_player.get('rank'):
-                    candidates.append(rank_player['rank'])
-            candidates = [p for p in candidates if p.get('source','riot') == 'riot' and p.get('tier')
-                          and bounds['startsAt'] <= weeks.timestamp(p.get('observedAt')) < bounds['endsAt']]
-            if not candidates: continue
-            latest = max(candidates, key=lambda p: weeks.timestamp(p['observedAt']))
-            snapshot = {k: latest.get(k) for k in ('tier','division','lp','wins','losses','observedAt')}
-            snapshot['account'] = identity
             existing = observations.get(duo['id'])
-            if not existing or existing['account'] != identity or weeks.timestamp(snapshot['observedAt']) > weeks.timestamp(existing['observedAt']):
+            previous = (existing or {}).get('players', {})
+            if existing and existing.get('version') != 2:
+                previous = {'player1':existing}  # Upgrade old P1-only evidence, not its result.
+            players = {key:participant_rank_observation(duo, key, bounds, previous.get(key)) for key in ('player1','player2')}
+            if not any(players.values()): continue
+            snapshot = average_rank(players['player1'], players['player2'])
+            snapshot.update(players=players, observedAt=min(weeks.timestamp(p['observedAt']) for p in players.values() if p))
+            if snapshot != existing:
                 observations[duo['id']] = snapshot
                 changed = True
         if observations: board['rankObservations'] = observations
@@ -373,17 +393,20 @@ def weekly_rank_result(db, board, category, lowest=False):
     for duo in db.get('duos', []):
         if duo['id'] not in available: continue
         rank = observations.get(duo['id'])
-        if not rank or rank['account'] != account(player_accounts.elo_account_at(duo.get('player1') or {}, period(db, board['week'])['endsAt'])):
+        end = period(db, board['week'])['endsAt']
+        if not rank or not rank.get('ready') or rank.get('version') != 2 or any(
+                (rank.get('players', {}).get(key) or {}).get('account') != account(player_accounts.elo_account_at(duo.get(key) or {}, end))
+                for key in ('player1','player2')):
             return {'status':'NO_DATA', 'optionIds':[], 'summary':'Sin observaciones de ELO suficientes antes del cierre. Esta categoría no suma un acierto.'}
         candidates.append((duo['id'], rank))
     if lowest and available - {oid for oid,_ in candidates}:
         return {'status':'NO_DATA', 'optionIds':[], 'summary':'Falta un equipo del listado de la primera semana. Esta categoría no suma un acierto.'}
-    if not candidates or not any(rank_key(rank)[0] for _,rank in candidates):
+    if not candidates:
         return {'status':'NO_DATA', 'optionIds':[], 'summary':'Sin clasificación semanal disponible. Esta categoría no suma un acierto.'}
-    best = (min if lowest else max)(rank_key(rank) for _,rank in candidates)
-    leaders = [(oid,rank) for oid,rank in candidates if rank_key(rank)==best]
+    best = (min if lowest else max)(average_rank_key(rank) for _,rank in candidates)
+    leaders = [(oid,rank) for oid,rank in candidates if average_rank_key(rank)==best]
     rank = leaders[0][1]
-    elo = f"{rank['tier']} {rank.get('division') or ''} · {rank.get('lp') or 0} LP".replace('  ', ' ')
+    elo = f"ELO medio: {rank['totalLp']:g} puntos · {rank['label']}"
     label = 'Último puesto de la primera semana' if lowest else 'Primer puesto'
     return {'status':'SETTLED', 'optionIds':[oid for oid,_ in leaders], 'summary':f'{label} · {elo}',
             'observedAt':min(weeks.timestamp(rank['observedAt']) for _,rank in leaders)}
