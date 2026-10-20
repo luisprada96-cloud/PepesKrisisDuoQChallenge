@@ -155,12 +155,77 @@ class BettingTests(unittest.TestCase):
         self.assertEqual(self.balances(),[10,10,10])
         self.assertEqual(self.db['betting']['rounds'][0]['reason'],'target_changed')
 
-    def test_integer_payouts_distribute_every_coin_by_largest_remainder(self):
+    def test_fifo_matching_returns_the_unmatched_remainder_in_whole_coins(self):
         create(self.db,amount=2);join(self.db,side='WIN',amount=1);join(self.db,owner='c',side='LOSS',amount=2)
         self.receive(game(),NOW+1300)
         settled=self.db['betting']['bets']
-        self.assertEqual([b['payout'] for b in settled],[3,2,0])
+        self.assertEqual([b['payout'] for b in settled],[4,1,0])
+        self.assertEqual([b['matchedAmount'] for b in settled],[2,0,2])
+        self.assertEqual([b['refundAmount'] for b in settled],[0,1,0])
         self.assertEqual(sum(self.balances()),30)
+
+    def test_ten_against_one_never_risks_more_than_one_on_either_side(self):
+        for result in ('WIN','LOSS'):
+            with self.subTest(result=result):
+                self.db=database();bets.maintain(self.db,NOW)
+                create(self.db,amount=10);join(self.db,amount=1)
+                self.receive(game(result=result),NOW+1300)
+                state=self.db['betting'];one,two=state['bets']
+                self.assertEqual([one['matchedAmount'],two['matchedAmount']],[1,1])
+                self.assertEqual([one['refundAmount'],two['refundAmount']],[9,0])
+                self.assertEqual([one['payout'],two['payout']],[11,0] if result=='WIN' else [9,2])
+                self.assertEqual([one['profit'],two['profit']],[1,-1] if result=='WIN' else [-1,1])
+                self.assertEqual(self.balances(),[11,9,10] if result=='WIN' else [9,11,10])
+                self.assertEqual((state['rounds'][0]['pool'],state['rounds'][0]['reservedPool']),(2,11))
+                self.assertEqual(state['rounds'][0]['unmatchedReturned'],9)
+                self.assertFalse(bets.maintain(self.db,NOW+1301))
+
+    def test_fifo_pairs_multiple_counterparties_and_respects_actual_arrival_time(self):
+        entries=[{'id':'late','side':'WIN','amount':10,'createdAt':20},
+                 {'id':'first','side':'WIN','amount':3,'createdAt':10},
+                 {'id':'opposite1','side':'LOSS','amount':2,'createdAt':12},
+                 {'id':'opposite2','side':'LOSS','amount':4,'createdAt':15}]
+        matched,pairs=bets.match_contributions(entries)
+        self.assertEqual(matched,{'late':3,'first':3,'opposite1':2,'opposite2':4})
+        self.assertEqual(pairs,[{'leftBetId':'first','rightBetId':'opposite1','amount':2},
+                                {'leftBetId':'first','rightBetId':'opposite2','amount':1},
+                                {'leftBetId':'late','rightBetId':'opposite2','amount':3}])
+
+    def test_arbitrary_pools_conserve_gold_and_each_risk_is_fully_backed(self):
+        import random
+        rng=random.Random(5101)
+        for case in range(200):
+            entries=[{'id':str(i),'teamId':str(i%3),'side':rng.choice(('OVER','UNDER')),
+                      'amount':rng.randint(1,100),'createdAt':rng.randint(0,20)} for i in range(rng.randint(1,25))]
+            winner=rng.choice(('OVER','UNDER'))
+            state={'wallets':{str(i):{'balance':0} for i in range(3)},'ledger':[],'rounds':[]}
+            bets.settle_pool(state,{'id':'market'},entries,'match',NOW,winner,8,NOW+1)
+            total=sum(b['amount'] for b in entries)
+            self.assertEqual(sum(w['balance'] for w in state['wallets'].values()),total)
+            expected=min(sum(b['amount'] for b in entries if b['side']=='OVER'),sum(b['amount'] for b in entries if b['side']=='UNDER'))
+            for side in ('OVER','UNDER'):
+                self.assertEqual(sum(b['matchedAmount'] for b in entries if b['side']==side),expected)
+            for bet in entries:
+                self.assertEqual(bet['amount'],bet['matchedAmount']+bet['refundAmount'])
+                self.assertEqual(bet['profit'],bet['matchedAmount']*(1 if bet['side']==winner else -1))
+                self.assertGreaterEqual(bet['payout'],bet['refundAmount'])
+            self.assertEqual(state['rounds'][0]['pool'],2*expected)
+
+    def test_legacy_settled_rounds_and_wallets_are_not_recalculated(self):
+        create(self.db,amount=10);join(self.db,amount=1)
+        state=self.db['betting'];one,two=state['bets']
+        for bet,payout in ((one,0),(two,11)):
+            bet.update(status='SETTLED',payout=payout,roundId='legacy')
+        state['wallets']['b']['balance']+=11
+        state['rounds']=[{'id':'legacy','marketId':one['marketId'],'matchId':'old',
+            'receivedAt':NOW,'settledAt':NOW,'winner':'LOSS','value':'LOSS','pool':11,
+            'status':'SETTLED','reason':None,'bets':[one['id'],two['id']]}]
+        before=copy.deepcopy(self.db)
+        self.assertFalse(bets.maintain(self.db,NOW+1300))
+        self.assertEqual(self.db,before)
+        public=bets.public_board(self.db,'a',view='history')
+        self.assertNotIn('payoutRule',public['markets'][0]['lastRound'])
+        self.assertEqual(public['markets'][0]['lastRound']['pool'],11)
 
     def test_validation_has_no_wallet_or_market_side_effects(self):
         cases=[{'amount':True},{'amount':-1},{'amount':0},{'amount':1.5},{'amount':'5'},{'amount':11},
@@ -228,6 +293,24 @@ class BettingEndpointTests(unittest.TestCase):
         result,_=self.call(client,'/api/bets',self.payload(),headers=auth)
         self.assertEqual(result['wallet']['balance'],5)
         self.assertEqual(len(server.load_db()['betting']['bets']),1)
+
+    def test_unbalanced_pool_api_reports_refund_risk_and_private_pairings(self):
+        with patch.object(bets.time,'time',return_value=NOW):
+            one,_=self.client();two,_=self.client();a=self.login(one);b=self.login(two,'b')
+            first,_=self.call(one,'/api/bets',{**self.payload(),'amount':10},headers=a)
+            self.call(two,'/api/bets',{'action':'join','marketId':first['markets'][0]['id'],'side':'LOSS','amount':1,'requestId':'one-coin-counterparty-123'},headers=b)
+        with patch.object(bets.time,'time',return_value=NOW+1300):
+            db=server.load_db();db['duos'][1]['history']=[game(result='LOSS')];server.save_db(db)
+            result,_=self.call(one,'/api/bets?view=history',headers=a)
+            self.assertEqual(result['wallet']['balance'],9)
+            own=result['markets'][0]['mine'][0]
+            self.assertEqual((own['matchedAmount'],own['refundAmount'],own['payout'],own['profit']),(1,9,9,-1))
+            self.assertEqual(result['markets'][0]['lastRound']['pool'],2)
+            self.assertNotIn('pairings',json.dumps(result))
+            self.assertNotIn('leftBetId',json.dumps(result))
+            opposite,_=self.call(two,'/api/bets?view=history',headers=b)
+            self.assertEqual(opposite['wallet']['balance'],11)
+            self.assertEqual(opposite['markets'][0]['mine'][0]['payout'],2)
 
     def test_receipts_settlement_are_saved_in_the_same_state_as_history(self):
         with patch.object(bets.time,'time',return_value=NOW):

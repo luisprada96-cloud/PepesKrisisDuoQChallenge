@@ -116,23 +116,43 @@ def credit(state, bet, amount, round_id, now):
     bet.update(status='SETTLED', payout=amount, roundId=round_id, settledAt=now)
 
 
+def match_contributions(bets):
+    """Pair whole coins FIFO on each side; ties retain persisted arrival order."""
+    sides = list(dict.fromkeys(b['side'] for b in bets))
+    matched = {b['id']:0 for b in bets}
+    pairs = []
+    if len(sides)!=2:
+        return matched,pairs
+    left,right = [sorted((b for b in bets if b['side']==side),key=lambda b:b['createdAt']) for side in sides]
+    i=j=0
+    while i<len(left) and j<len(right):
+        one,two = left[i],right[j]
+        amount = min(one['amount']-matched[one['id']],two['amount']-matched[two['id']])
+        matched[one['id']] += amount
+        matched[two['id']] += amount
+        pairs.append({'leftBetId':one['id'],'rightBetId':two['id'],'amount':amount})
+        if matched[one['id']]==one['amount']: i+=1
+        if matched[two['id']]==two['amount']: j+=1
+    return matched,pairs
+
+
 def settle_pool(state, market, bets, match_id, received_at, winning, value, now, reason=None):
     round_id = str(uuid.uuid4())
-    sides = {b['side'] for b in bets}
-    refund = reason is not None or len(sides)<2
-    pool = sum(b['amount'] for b in bets)
-    payouts = {b['id']:b['amount'] if refund else 0 for b in bets}
-    winners = [b for b in bets if b['side']==winning]
-    if not refund:
-        total = sum(b['amount'] for b in winners)
-        for b in winners: payouts[b['id']] = pool*b['amount']//total
-        remainder = pool-sum(payouts.values())
-        order = sorted(winners,key=lambda b:(-(pool*b['amount']%total),b['createdAt'],b['id']))
-        for b in order[:remainder]: payouts[b['id']] += 1
-    for bet in bets: credit(state,bet,payouts[bet['id']],round_id,now)
+    matched,pairs = match_contributions(bets) if reason is None else ({b['id']:0 for b in bets},[])
+    matched_per_side = sum(pair['amount'] for pair in pairs)
+    reserved = sum(b['amount'] for b in bets)
+    pool = 2*matched_per_side
+    for bet in bets:
+        risk = matched[bet['id']]
+        returned = bet['amount']-risk
+        payout = returned + (2*risk if bet['side']==winning else 0)
+        bet.update(matchedAmount=risk, refundAmount=returned, profit=payout-bet['amount'])
+        credit(state,bet,payout,round_id,now)
     state['rounds'].append({'id':round_id,'marketId':market['id'],'matchId':match_id,
         'receivedAt':received_at, 'settledAt':now,'winner':winning,'value':value,'pool':pool,
-        'status':'REFUNDED' if refund else 'SETTLED', 'reason':reason or ('no_opposition' if refund else None),
+        'reservedPool':reserved,'matchedPerSide':matched_per_side,'unmatchedReturned':reserved-pool,
+        'payoutRule':'matched_1_to_1','pairings':pairs,
+        'status':'SETTLED' if pool else 'REFUNDED', 'reason':reason or ('no_opposition' if not pool else None),
         'bets':[b['id'] for b in bets]})
 
 
@@ -256,14 +276,16 @@ def public_board(db, team_id=None, offset=0, limit=12, view='open'):
         card.update(status='OPEN' if active else 'CLOSED', sides={side:sum(b['amount'] for b in active if b['side']==side)
             for side in (('WIN','LOSS') if market['metric']=='result' else ('OVER','UNDER'))},
             participants=len({b['teamId'] for b in active}), lastRound=copy.deepcopy(rounds[-1]) if rounds else None,
-            mine=[{k:b[k] for k in ('id','side','amount','createdAt','eligibleAt','status','payout','roundId','waitingMatchId') if k in b}
+            mine=[{k:b[k] for k in ('id','side','amount','createdAt','eligibleAt','status','payout','roundId','waitingMatchId','matchedAmount','refundAmount','profit') if k in b}
                   for b in bets if b['teamId']==team_id])
-        card['rounds'] = [{key:value for key,value in r.items() if key!='bets'} for r in rounds]
+        card['rounds'] = [{key:value for key,value in r.items() if key not in ('bets','pairings')} for r in rounds]
         by_round = {r['id']:r for r in rounds}
         for own in card['mine']:
             if own.get('roundId') in by_round:
                 own['matchId'] = by_round[own['roundId']]['matchId']
-        if card['lastRound']: card['lastRound'].pop('bets',None)
+        if card['lastRound']:
+            card['lastRound'].pop('bets',None)
+            card['lastRound'].pop('pairings',None)
         cards.append(card)
     wallet = state['wallets'].get(team_id)
     return {'markets':cards[offset:offset+limit], 'total':len(cards),'offset':offset,'limit':limit,
@@ -271,4 +293,4 @@ def public_board(db, team_id=None, offset=0, limit=12, view='open'):
                   'reserved':sum(b['amount'] for b in pending if b['teamId']==team_id)} if wallet and team_id in teams else None,
         'teams':[{'id':d['id'],'name':d['teamName'],'players':[{'key':key,'name':(d.get(key) or {}).get('displayName') or d[key]['name']}
                    for key in ('player1','player2') if (d.get(key) or {}).get('name')]} for d in db.get('duos',[]) if d.get('id')],
-        'rules':{'dailyGold':DAILY_GOLD,'initialGold':INITIAL_GOLD,'waitSeconds':WAIT_SECONDS,'timezone':'Europe/Madrid'}}
+        'rules':{'dailyGold':DAILY_GOLD,'initialGold':INITIAL_GOLD,'waitSeconds':WAIT_SECONDS,'timezone':'Europe/Madrid','payoutRule':'matched_1_to_1','matchingOrder':'FIFO'}}
