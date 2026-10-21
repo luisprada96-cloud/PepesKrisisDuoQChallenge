@@ -94,3 +94,10 @@
 !apuestas.html
 !apuestas.js
 !apuestas.css
+
+!shop_service.py
+!tienda.html
+!tienda.js
+!tienda.css
+!assets/shop/
+!assets/shop/*.webp
