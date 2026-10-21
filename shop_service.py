@@ -1,16 +1,19 @@
 """Team gold purchases. Call under the same lock/storage transaction as betting."""
 import re
+import secrets
 import time
 import uuid
 
 PEPAZO_PRICE = 70
+# Shared by all clients of this server version; a deploy/restart deals a new order.
+QUOTE_SEED = secrets.randbits(32)
 
 
 def public_shop(db, team_id=None):
     duo = next((d for d in db.get('duos', []) if d.get('id') == team_id), None)
     state = db.get('betting', {})
     wallet = state.get('wallets', {}).get(team_id) if duo else None
-    return {'product': {'id': 'pepazo', 'name': 'Pepazo', 'unitPrice': PEPAZO_PRICE},
+    return {'product': {'id': 'pepazo', 'name': 'Pepazo', 'unitPrice': PEPAZO_PRICE}, 'quoteSeed': QUOTE_SEED,
             'wallet': {'teamId': team_id, 'teamName': duo.get('teamName', ''),
                        'balance': wallet['balance'], 'inventory': duo.get('blueShells', 0),
                        'reserved': sum(b['amount'] for b in state.get('bets', [])

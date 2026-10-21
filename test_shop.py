@@ -59,6 +59,9 @@ class ShopTests(unittest.TestCase):
         with self.assertRaises(FileExistsError): shop.purchase(self.db, 'a', payload())
         self.assertIsNone(shop.public_shop(self.db)['wallet'])
         own = shop.public_shop(self.db, 'a')
+        self.assertEqual(own['quoteSeed'], shop.public_shop(self.db, 'a')['quoteSeed'])
+        self.assertIs(type(own['quoteSeed']), int)
+        self.assertTrue(0 <= own['quoteSeed'] <= 0xffffffff)
         self.assertEqual(own['wallet'], {'teamId': 'a', 'teamName': 'A', 'balance': 69, 'reserved': 141, 'inventory': 4})
         self.assertNotIn('purchases', json.dumps(own))
         self.assertEqual(shop.public_shop(self.db, 'b')['wallet']['balance'], 10)
@@ -79,7 +82,7 @@ class ShopEndpointTests(unittest.TestCase):
     def test_auth_origin_privacy_and_forged_price_owner(self):
         client, _ = self.client()
         public, headers = self.call(client, '/api/shop')
-        self.assertEqual(public, {'product': {'id': 'pepazo', 'name': 'Pepazo', 'unitPrice': 70}, 'wallet': None})
+        self.assertEqual(public, {'product': {'id': 'pepazo', 'name': 'Pepazo', 'unitPrice': 70}, 'quoteSeed': shop.QUOTE_SEED, 'wallet': None})
         self.assertIn('Authorization', headers['Vary'])
         self.call(client, '/api/shop', payload(), status=401)
         auth = self.login(client); self.fund()

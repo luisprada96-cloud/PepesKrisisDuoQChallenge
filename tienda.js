@@ -3,52 +3,75 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const dialog = $('shop-confirm');
+  const longQuote = `En realidad no hay limite de caracteres aqui puedo poner lo que quiera por ejemplo: El Partido Socialista Obrero Español se fundó en Madrid el 2 de mayo de 1879 por el tipógrafo ferrolano Pablo Iglesias Posse,[35] constituyendo uno de los partidos obreros más antiguos de Europa, solo superado por el Partido Socialdemócrata de Alemania. Desde sus inicios, aspiraba a agrupar al proletariado industrial español bajo la ideología marxista. No obstante, su implementación fue muy irregular: sus principales núcleos se desarrollaron en Madrid, Asturias y el País Vasco, disponiendo de poca presencia en Cataluña, el mayor foco industrial de España. El atraso de la sociedad española y el frágil desarrollo industrial, así como la fuerza del anarquismo y el anarcosindicalismo entre los sectores obreros barceloneses, explican la poca relevancia que el PSOE alcanzó en los primeros años tras su fundación, al contrario que sus homólogos europeos.[cita requerida]
+
+El PSOE celebró su primer congreso en Barcelona en 1888, aunque no logró representación parlamentaria hasta el 8 de mayo de 1910, cuando la Conjunción Republicano-Socialista permitió a Pablo Iglesias obtener 40 899 sufragios y el acta de diputado a Cortes.[36] Fue reelegido en 1914, en vísperas del asesinato de Jean Jaurès, con 21 956 sufragios, esta vez presentándose por Oviedo.
+
+A partir de la alianza con los republicanos y la entrada en el parlamento, su presencia y su importancia en la sociedad española fue en aumento, tanto por su propia actividad como partido como por la fuerza de la Unión General de Trabajadores (UGT), sindicato socialista fundado por Pablo Iglesias en 1888 en la ciudad de Barcelona e íntimamente ligado al PSOE, ya que hasta la década de 1980 la sindicación a UGT suponía la afiliación al PSOE y viceversa.
+
+Aunque históricamente la lucha contra el clericalismo no les había parecido a los dirigentes e ideólogos socialistas que fuese la causa del movimiento obrero, el contacto con la cultura política republicana junto con el crecimiento de los sindicatos católicos «amarillos», le hizo adoptar una postura anticlerical como se pudo comprobar en el programa de 1918 en el que, además de propugnar la «supresión del presupuesto del clero y confiscación de sus bienes» y la enseñanza «gratuita y laica» (reivindicaciones que aparecían en el programa de 1888), se defendía «la disolución de todas las órdenes religiosas» (la máxima reivindicación anticlerical del republicanismo). Precisamente cuando la oleada anticlerical de la primera década del siglo XX remitió, los socialistas se convirtieron en «los mejores custodios de la tradición laicista de la izquierda española».[37]
+
+El 9 de abril de 1916, Pablo Iglesias repitió escaño con 18 054 sufragios. Debido al papel activo que tuvieron durante la huelga general de 1917, los futuros líderes socialistas Francisco Largo Caballero y Julián Besteiro fueron detenidos, juzgados y encarcelados con una condena a cadena perpetua, aunque eso no impidió que en las elecciones generales españolas de febrero de 1918 todos fueran elegidos diputados. En 1919, Pablo Iglesias empezó a abandonar sus obligaciones políticas debido a problemas de salud, falleciendo en 1925.`;
   const quotes = [
-    'No vendo manos. Eso sigue siendo cosa tuya.',
-    'Excelente inversión. Terrible persona.',
-    'Tu rival financia mis vacaciones.',
-    'No hay reembolso por llorar en el chat.',
-    'Tengo pociones de maná, pero de macro no me quedan.',
-    'Este pepazo estaba así cuando llegó.',
-    'El jungla no viene, pero tu pedido sí.',
-    'Compra tranquilo. El tilt viene incluido.',
-    'Oro virtual, rencor real.',
-    'No tengo cambio para un ego tan grande.',
-    'El mapa no lo miras, pero el catálogo sí.',
-    'Tu dúo lo habría aprobado. Probablemente.',
-    'Si no puedes ganar la línea, gana enemigos.',
-    'Hay wards más baratos, pero sé que no venías a por eso.',
-    'Este negocio se sostiene gracias a los «última y me voy».',
-    'No cura el tilt. Lo reparte.',
-    'Gastas mejor el oro aquí que en tu última build.',
-    'Oferta especial: te llevas un pepazo y pierdes un amigo.',
-    'En esta tienda el único que está fed soy yo.',
-    'Te iba a recomendar paciencia, pero no deja margen.',
-    'Contra el rival, por favor. El monitor no tiene la culpa.',
-    'Me dicen que alguno ha perdido la cabeza ya',
-    'Reportalos a todosss',
-    'un torneo para volverlos locos a todos',
-    'Última hora: un jungla visita top. Se investigan los hechos.',
-    'Científicos descubren que comprar wards permite ver cosas.',
-    'La Asociación de Minions denuncia abandono reiterado de oleadas.',
-    'Un jugador anuncia «última y me voy». Lleva seis partidas más.',
-    'El Banco de la Grieta desaconseja invertir todos tus ahorros en un Yasuo.',
-    'Pepe niega estar financiando ambos bandos. Procede a vender otro pepazo.',
-    'Aumenta la demanda de pepazos. Los psicólogos del torneo solicitan refuerzos.',
-    'Detectado un support con oro. Las autoridades buscan al ADC.',
-    'Un equipo asegura que está escalando. Se refería a la tensión en Discord.',
-    'El Ministerio del Tilt recomienda no escribir «?» después de una muerte.',
-    'Un jugador consigue mirar el minimapa. Sus compañeros piden repetir el experimento.',
-    'La organización recuerda que ganar una discusión en Discord no otorga LP.',
-    'Encuentran una pink sin usar en el inventario. La familia pide privacidad.',
-    'Pepe declara beneficios récord y recomienda mantener las rivalidades.',
-    'Un dúo atribuye su derrota al lag. Ambos estaban en la misma habitación.'
+    "He visto tu siguiente partida. Prefiero que me pagues antes.",
+    "Hay wards más baratos, pero sé que no venías a por eso.",
+    "Te iba a recomendar paciencia, pero no deja margen.",
+    "Los supports convocan una huelga: cobrar en «gj» ya no paga las wards.",
+    "La organización recuerda que ganar una discusión en Discord no otorga LP.",
+    "un torneo para volverlos locos a todos",
+    "Tu dúo lo habría aprobado. Probablemente.",
+    "Un jugador consigue mirar el minimapa. Sus compañeros piden repetir el experimento.",
+    "Contra el rival, por favor. El monitor no tiene la culpa.",
+    "Un equipo asegura que está escalando. Se refería a la tensión en Discord.",
+    "En esta tienda el único que está fed soy yo.",
+    "El mapa no lo miras, pero el catálogo sí.",
+    "Aumenta la demanda de pepazos. Los psicólogos del torneo solicitan refuerzos.",
+    "Tu rival financia mis vacaciones.",
+    "El Banco de la Grieta desaconseja invertir todos tus ahorros en un Yasuo.",
+    "Excelente inversión. Terrible persona.",
+    "El jungla no viene, pero tu pedido sí.",
+    "Oro virtual, rencor real.",
+    "Este negocio se sostiene gracias a los «última y me voy».",
+    "Un dúo atribuye su derrota al lag. Ambos estaban en la misma habitación.",
+    "Este pepazo estaba así cuando llegó.",
+    "No hay reembolso por llorar en el chat.",
+    "La Asociación de Minions denuncia abandono reiterado de oleadas.",
+    "Pepe declara beneficios récord y recomienda mantener las rivalidades.",
+    "El redactor de estos rumores pide cobrar en oro. Pepe le ofrece exposición.",
+    "Me dicen que alguno ha perdido la cabeza ya",
+    "Oferta especial: te llevas un pepazo y pierdes un amigo.",
+    "Pepe niega estar financiando ambos bandos. Procede a vender otro pepazo.",
+    "Has conseguido una pentakill. Pepe te ofrece exactamente el mismo precio.",
+    "Tengo pociones de maná, pero de macro no me quedan.",
+    "Compra tranquilo. El tilt viene incluido.",
+    "Cierran una academia de coaching: convertía oro en confianza injustificada.",
+    "Otro pepazo no arreglará vuestro dúo, pero entiendo que queráis probar.",
+    "Gastas mejor el oro aquí que en tu última build.",
+    longQuote,
+    "No cura el tilt. Lo reparte.",
+    "Reportalos a todosss",
+    "Logro desbloqueado: has ganado una discusión en Discord. La derrota sigue contando.",
+    "Vas mejorando. Ya solo te falta todo lo demás.",
+    "Última hora: un jungla visita top. Se investigan los hechos.",
+    "La Grieta pierde altura por la cantidad de jugadores que se están hundiendo solos.",
+    "El Ministerio del Tilt recomienda no escribir «?» después de una muerte.",
+    "No vendo manos. Eso sigue siendo cosa tuya.",
+    "Un jugador anuncia «última y me voy». Lleva seis partidas más.",
+    "Científicos descubren que comprar wards permite ver cosas.",
+    "Si no puedes ganar la línea, gana enemigos.",
+    "Lo que empezó como un torneo entre amigos ya requiere mediación internacional.",
+    "Detectado un support con oro. Las autoridades buscan al ADC.",
+    "Has vuelto a darle a buscar partida. El problema empieza a parecer voluntario.",
+    "Enhorabuena por subir de rango. Tu familia pregunta si eso permite llamarte ahora.",
+    "No tengo cambio para un ego tan grande.",
+    "Encuentran una pink sin usar en el inventario. La familia pide privacidad."
   ];
   const goldQuotes = {
     poor: 'Equipo sin oro anuncia que la tienda está carísima.',
     purchase: 'Pepe mejora sus previsiones económicas.'
   };
   let state = null, busy = false, fresh = false, loadError = false, version = 0, quote = 0, attempt = null, confirmation = null, goldContext = null;
+  let mixedQuotes = quotes.slice(), quoteSeed = null;
   const token = () => { try { return sessionStorage.getItem('pepes_player_token') || ''; } catch (_) { return ''; } };
   const pendingKey = team => 'pepes_shop_pending_' + team;
   const quantity = () => Number($('shop-quantity').value);
@@ -123,15 +146,39 @@
       const data = await api('GET', null, auth);
       if (current !== version || busy || auth !== token()) return;
       if (dialog.open && confirmation?.teamId !== data.wallet?.teamId) { dialog.close(); confirmation = null; }
-      state = data; fresh = true; restore(); render(); updateGoldQuote();
+      state = data; fresh = true; mixQuotes(data.quoteSeed); restore(); render(); updateGoldQuote();
       if (loadError) { feedback(''); loadError = false; }
     } catch (_) {
       if (current !== version || busy) return;
       fresh = false; loadError = true; render(); feedback('La tienda no puede consultar el saldo ahora. Tu oro está a salvo.', true);
     }
   }
+  function mixQuotes(seed) {
+    if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff || seed === quoteSeed) return;
+    quoteSeed = seed;
+    let random = seed || 0x9e3779b9;
+    mixedQuotes = quotes.slice();
+    for (let i = mixedQuotes.length - 1; i > 0; i--) {
+      random ^= random << 13; random ^= random >>> 17; random ^= random << 5;
+      const j = Math.floor((random >>> 0) / 0x100000000 * (i + 1));
+      [mixedQuotes[i], mixedQuotes[j]] = [mixedQuotes[j], mixedQuotes[i]];
+    }
+    quote = 0;
+  }
   function talk(message) {
-    $('shop-quote').textContent = message || quotes[quote++ % quotes.length];
+    const text = message || mixedQuotes[quote++ % mixedQuotes.length], rambling = text.length > 500;
+    $('shop-quote').textContent = text;
+    $('shop-quote').scrollTop = 0;
+    $('shop-speech').classList.toggle('is-rambling', rambling);
+    if (rambling) {
+      $('shop-quote').setAttribute('tabindex', '0');
+      $('shop-quote').setAttribute('role', 'region');
+      $('shop-quote').setAttribute('aria-label', 'El larguísimo discurso de Pepe');
+    } else {
+      for (const attr of ['tabindex', 'role', 'aria-label']) $('shop-quote').removeAttribute(attr);
+    }
+    $('shop-talk').textContent = rambling ? 'Cortar el rollo a Pepe ↻' : 'Hablar con Pepe ↻';
+    $('shop-talk').setAttribute('aria-label', rambling ? 'Cortar el rollo a Pepe' : 'Hablar con Pepe');
   }
   function updateGoldQuote(afterPurchase = false) {
     const wallet = state?.wallet;

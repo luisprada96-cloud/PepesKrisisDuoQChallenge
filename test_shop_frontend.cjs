@@ -6,7 +6,7 @@ const path=require('node:path');
  const browser=await chromium.launch({headless:true,channel:'chrome'});
  try{
   const context=await browser.newContext({viewport:{width:1440,height:1100}});
-  let wallet=null,fail=false,loseResponse=false,slow=false,conflict=false;
+  let wallet=null,fail=false,loseResponse=false,slow=false,conflict=false,quoteSeed=12345;
   const writes=[],errors=[],operations=new Map();
   const allowed=new Set(['tienda.html','tienda.css','tienda.js','navigation.js','styles.css','assets/shop/pepe-shop.webp','assets/shop/pepazo.webp','favicon.ico','favicon.svg']);
   await context.route('**/*',async route=>{
@@ -14,7 +14,7 @@ const path=require('node:path');
    if(url.origin!=='http://shop.test')return route.abort();
    if(url.pathname==='/api/shop'){
     if(fail)return route.abort();
-    const board=()=>({product:{id:'pepazo',name:'Pepazo',unitPrice:70},wallet});
+    const board=()=>({product:{id:'pepazo',name:'Pepazo',unitPrice:70},quoteSeed,wallet});
     if(req.method()==='POST'){
      const body=req.postDataJSON();writes.push(body);
      if(slow)await new Promise(resolve=>setTimeout(resolve,150));
@@ -57,7 +57,49 @@ const path=require('node:path');
   await page.locator('#shop-buy').click();
   assert.match(await page.locator('#shop-confirm-description').textContent(),/140.*Marx&Mises.*2 pepazos/);
   await page.locator('#shop-cancel').click();assert.equal(writes.length,0);
-  await page.locator('#shop-talk').click();assert.match(await page.locator('#shop-quote').textContent(),/No vendo manos/);
+  async function readCycle(inspectLong=false){
+   const result=[];
+   for(let i=0;i<52;i++){
+    await page.locator('#shop-talk').click();
+    const text=await page.locator('#shop-quote').textContent();result.push(text);
+    if(inspectLong&&text.startsWith('En realidad no hay limite')){
+     assert.ok(text.endsWith('falleciendo en 1925.'));
+     assert.ok(!/https?:|\]\(/.test(text),'the supplied monologue is plain text without hyperlinks');
+     assert.equal(await page.locator('#shop-quote a').count(),0);
+     assert.equal(await page.locator('#shop-speech').evaluate(el=>el.classList.contains('is-rambling')),true);
+     for(const width of [1440,390,320]){
+      await page.setViewportSize({width,height:900});
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+      assert.equal(await page.locator('#shop-quote').evaluate(el=>el.scrollHeight>el.clientHeight),true);
+      assert.equal(await page.locator('#shop-talk').isVisible(),true);
+      assert.equal(await page.locator('#shop-buy').isEnabled(),true);
+      await page.locator('#shop-quote').focus();await page.keyboard.press('End');
+      if(width===390){
+       fs.mkdirSync(path.join(__dirname,'preview'),{recursive:true});
+       await page.locator('#shop-quote').evaluate(el=>el.scrollTop=0);
+       await page.screenshot({path:path.join(__dirname,'preview','tienda-pepe-monologo-mobile.png'),fullPage:true});
+      }
+     }
+     await page.setViewportSize({width:1440,height:1100});
+    }
+   }
+   assert.equal(new Set(result).size,52,'every phrase appears exactly once per cycle');
+   return result;
+  }
+  const cycle=await readCycle(true);
+  assert.ok(cycle.includes('Los supports convocan una huelga: cobrar en «gj» ya no paga las wards.'));
+  assert.ok(cycle.includes('Has conseguido una pentakill. Pepe te ofrece exactamente el mismo precio.'));
+  await page.reload();await page.waitForFunction(()=>document.querySelector('#shop-balance').textContent==='230');
+  assert.deepEqual(await readCycle(),cycle,'the same deployment keeps its shuffled order after reload');
+  quoteSeed=67890;
+  await page.reload();await page.waitForFunction(()=>document.querySelector('#shop-balance').textContent==='230');
+  const nextCycle=await readCycle();
+  assert.notDeepEqual(nextCycle,cycle,'a new deployment reshuffles the phrases');
+  assert.deepEqual([...nextCycle].sort(),[...cycle].sort(),'reshuffling neither loses nor duplicates phrases');
+  await page.locator('#shop-talk').click();
+  if(await page.locator('#shop-speech').evaluate(el=>el.classList.contains('is-rambling')))await page.locator('#shop-talk').click();
+  assert.equal(await page.locator('#shop-speech').evaluate(el=>el.classList.contains('is-rambling')),false);
+  await page.locator('#shop-quantity').fill('2');
   await page.locator('#shop-buy').click();
   loseResponse=true;
   await page.locator('#shop-confirm-buy').click();
