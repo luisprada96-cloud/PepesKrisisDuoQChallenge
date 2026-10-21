@@ -12,7 +12,37 @@ let playerPenaltyView = 'pending';
 let playerHistoryPage = 1;
 const PLAYER_HISTORY_PAGE_SIZE = 20;
 const PLAYER_STREAK_REWARD_WINS = 4;
-let playerSessionToken = sessionStorage.getItem('pepes_player_token') || '';
+let playerSessionToken = PlayerSession.token();
+let playerSessionRevision = 0;
+
+async function restorePlayerSession() {
+  const revision = ++playerSessionRevision;
+  const state = await DataStore.getPlayerState(PlayerSession.token());
+  if (revision !== playerSessionRevision) return;
+  playerSessionToken = PlayerSession.token();
+  if (state.success && state.duo) {
+    if (activeDuo && activeDuo.id !== state.duo.id) resetPlayerRoulette();
+    activeDuo = state.duo;
+    PlayerSession.profile(activeDuo);
+    showDashboardView();
+  } else if (state.status === 401) {
+    resetPlayerRoulette();
+    activeDuo = null;
+    playerSessionToken = '';
+    PlayerSession.clear();
+    showLoginView();
+  } else if (!activeDuo) {
+    showLoginView();
+    showPlayerToast('No se pudo comprobar tu sesión. Reintentaremos al recuperar la conexión.', true);
+  }
+}
+
+function resetPlayerRoulette() {
+  rouletteBusy = false;
+  const inline = document.getElementById('inline-roulette-container');
+  if (inline) inline.style.display = 'none';
+  RouletteWindow.update({phase:'unavailable', teamName:'Tu equipo', message:'La sesión ha cambiado. Vuelve al panel de tu equipo.'});
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   initPlayerApp();
@@ -22,30 +52,8 @@ async function initPlayerApp() {
   allDuos = await DataStore.getDuos();
   populateTeamsDropdown();
 
-  // Check existing session
-  const savedSession = sessionStorage.getItem('pepes_player_session');
-  if (savedSession && playerSessionToken) {
-    try {
-      const state = await DataStore.getPlayerState(playerSessionToken);
-      if (!state.success || !state.duo) {
-        if (state.status === 401) throw new Error('Sesión caducada');
-        showLoginView(); setupPlayerListeners(); return;
-      }
-      activeDuo = state.duo;
-      sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
-      showDashboardView();
-    } catch (e) {
-      sessionStorage.removeItem('pepes_player_session');
-      const previousToken = playerSessionToken;
-      sessionStorage.removeItem('pepes_player_token');
-      playerSessionToken = '';
-      DataStore.logoutPlayer(previousToken);
-      document.dispatchEvent(new Event('player-session-changed'));
-      showLoginView();
-    }
-  } else {
-    showLoginView();
-  }
+  // Ask the server even in a fresh browser tab: the cookie is not readable by JS.
+  await restorePlayerSession();
 
   setupPlayerListeners();
 
@@ -55,7 +63,10 @@ async function initPlayerApp() {
       if (!document.hidden) {
         allDuos = await DataStore.getDuos();
         if (activeDuo && !rouletteBusy) {
-          const state = await DataStore.getPlayerState(playerSessionToken);
+          const revision = playerSessionRevision;
+          const state = await DataStore.getPlayerState(PlayerSession.token());
+          playerSessionToken = PlayerSession.token();
+          if (revision !== playerSessionRevision) return;
           if (rouletteBusy) return;
           if (state.success && state.duo) {
             const next = JSON.stringify([state.duo, allDuos]);
@@ -64,11 +75,10 @@ async function initPlayerApp() {
           } else if (state.status === 401) {
             activeDuo = null;
             playerSessionToken = '';
-            sessionStorage.removeItem('pepes_player_session');
-            sessionStorage.removeItem('pepes_player_token');
+            PlayerSession.clear();
             showLoginView();
           }
-        } else { populateTeamsDropdown(); }
+        } else { populateTeamsDropdown(); if (!activeDuo) await restorePlayerSession(); }
       }
     } finally { setTimeout(refresh, 15000); }
   }
@@ -311,7 +321,7 @@ function renderActiveDebuffs() {
 }
 
 window.openShellRouletteOutside = function(attackId) {
-  if (rouletteBusy || !playerSessionToken) return;
+  if (rouletteBusy || !activeDuo) return;
   const attack = activeDuo?.pendingShellAttacks?.find(item => item.id === attackId);
   if (!attack) return;
   RouletteWindow.update({phase: 'prepared', teamName: activeDuo.teamName, attackId,
@@ -326,17 +336,18 @@ window.openShellRouletteOutside = function(attackId) {
 window.spinShellHandler = async function(attackId, outside = false) {
   if (rouletteBusy) return;
   const teamName = activeDuo?.teamName || 'Tu equipo';
-  if (!playerSessionToken || !activeDuo?.pendingShellAttacks?.some(attack => attack.id === attackId)) {
+  if (!activeDuo?.pendingShellAttacks?.some(attack => attack.id === attackId)) {
     if (outside) RouletteWindow.update({phase: 'unavailable', teamName, message: 'Este pepazo ya no está pendiente. Vuelve al panel de tu equipo.'});
     return;
   }
   rouletteBusy = true;
-  const spinToken = playerSessionToken;
+  const spinToken = PlayerSession.token();
+  const spinRevision = playerSessionRevision;
   document.querySelectorAll('[data-spin-id], [data-spin-outside-id]').forEach(button => { button.disabled = true; });
   RouletteWindow.update(outside ? {phase: 'waiting', teamName} :
     {phase: 'unavailable', teamName, message: 'La ruleta se está girando en el panel del equipo.'});
   const res = await DataStore.spinShell(attackId, spinToken);
-  if (playerSessionToken !== spinToken) {
+  if (playerSessionRevision !== spinRevision) {
     rouletteBusy = false;
     RouletteWindow.update({phase: 'unavailable', teamName, message: 'La sesión del equipo ha terminado. Vuelve a entrar desde el panel.'});
     return;
@@ -356,9 +367,9 @@ window.spinShellHandler = async function(attackId, outside = false) {
   };
   const finish = async () => {
     rouletteBusy = false;
-    if (playerSessionToken !== spinToken) return;
+    if (playerSessionRevision !== spinRevision) { renderDashboardData(); return; }
     activeDuo = res.duo;
-    sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
+    PlayerSession.profile(activeDuo);
     allDuos = await DataStore.getDuos();
     renderDashboardData();
   };
@@ -421,17 +432,17 @@ function setupPlayerListeners() {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const teamId = document.getElementById('login-team-select').value;
-      const pwd = document.getElementById('login-password-input').value;
+      const pwdInput = document.getElementById('login-password-input');
+      const pwd = pwdInput.value;
       const errorMsg = document.getElementById('login-error-msg');
       const errorText = document.getElementById('login-error-text');
 
       const res = await DataStore.loginPlayer(teamId, pwd);
       if (res.success && res.duo) {
+        if (pwdInput) pwdInput.value = '';
         activeDuo = res.duo;
-        playerSessionToken = res.sessionToken || '';
-        sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
-        sessionStorage.setItem('pepes_player_token', playerSessionToken);
-        document.dispatchEvent(new Event('player-session-changed'));
+        playerSessionToken = PlayerSession.token();
+        PlayerSession.profile(activeDuo);
         if (errorMsg) errorMsg.style.display = 'none';
         showDashboardView();
       } else {
@@ -467,10 +478,15 @@ function setupPlayerListeners() {
       }
 
       try {
-        const res = await DataStore.launchShell(targetId, playerSessionToken);
+        const revision = playerSessionRevision;
+        const res = await DataStore.launchShell(targetId, PlayerSession.token());
+        if (revision !== playerSessionRevision) {
+          if (btnSubmit) { btnSubmit.disabled = false; btnSubmit.textContent = '🐢⚡ ¡Lanzar Pepazo!'; }
+          return;
+        }
         if (res && res.success) {
           activeDuo = res.attacker;
-          sessionStorage.setItem('pepes_player_session', JSON.stringify(activeDuo));
+          PlayerSession.profile(activeDuo);
           allDuos = await DataStore.getDuos();
           renderDashboardData();
           showPlayerToast(`Pepazo enviado a ${targetName}. Ellos girarán la ruleta.`);
@@ -493,14 +509,14 @@ function setupPlayerListeners() {
   }
 
   if (btnLogout) {
-    btnLogout.addEventListener('click', () => {
+    btnLogout.addEventListener('click', async () => {
+      btnLogout.disabled = true;
+      const result = await DataStore.logoutPlayer(PlayerSession.token());
+      btnLogout.disabled = false;
+      if (!result.success) { showPlayerToast('No se pudo cerrar la sesión. Comprueba la conexión y vuelve a intentarlo.', true); return; }
+      playerSessionRevision++;
       activeDuo = null;
-      sessionStorage.removeItem('pepes_player_session');
-      const previousToken = playerSessionToken;
-      sessionStorage.removeItem('pepes_player_token');
       playerSessionToken = '';
-      DataStore.logoutPlayer(previousToken);
-      document.dispatchEvent(new Event('player-session-changed'));
       showLoginView();
     });
   }
@@ -622,7 +638,13 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('player-session-ended', () => {
+  playerSessionRevision++;
+  resetPlayerRoulette();
   activeDuo = null;
   playerSessionToken = '';
   showLoginView();
+});
+
+document.addEventListener('player-session-changed', () => {
+  restorePlayerSession();
 });

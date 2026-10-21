@@ -73,6 +73,7 @@ const discordTestRequests = [];
     const historyOffsets = [];
     let failReads = false;
     let failWrites = false;
+    let playerLoggedIn = false;
     let syncCount = 0;
     const spins = [];
     const publicRules = {penaltyCatalog: [{id: 'no_flash_one', name: 'Sin Flash · UNO', icon: '⚡', desc: 'Al menos uno debe jugar sin Flash.'}, {id: 'return_shell', name: 'Devuelve el pepazo', icon: '↩️', desc: 'Vuelve al equipo atacante.'}], penaltyWeights: {no_flash_one: 100, return_shell: 0}};
@@ -106,9 +107,13 @@ const discordTestRequests = [];
         else if (url.pathname === '/api/admin/pickem') result = {success:true,week:'2026-10-12',weeks:['2026-10-12'],periods:{'2026-10-12':{startsAt:1792072800,endsAt:1792360800}},categories:[],predictions:[],closesAt:1792360740,endsAt:1792360800};
         else if (url.pathname === '/api/sync') { syncCount++; result = {success: true, job: {running: true}}; }
         else if (url.pathname === '/api/discord/test') { discordTestRequests.push(request.postDataJSON()); result = {success:true}; }
-        else if (url.pathname === '/api/player/login') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}, sessionToken: 'fake'};
+        else if (url.pathname === '/api/player/login') { playerLoggedIn = true; result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}, sessionToken: 'fake'}; }
+        else if (url.pathname === '/api/player/logout') { playerLoggedIn = false; result = {success:true}; }
         else if (url.pathname === '/api/player/spin-shell') { spins.push(request.postDataJSON()); result = {success: true, penalty: {name: 'Sin Flash', desc: 'Prueba', icon: 'X'}, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}}; }
-        else if (url.pathname === '/api/player/state') result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}};
+        else if (url.pathname === '/api/player/state') {
+          if (!playerLoggedIn) return route.fulfill({status:401,json:{success:false,error:'Sesión caducada'}});
+          result = {success: true, duo: {...duos[0], pendingShellAttacks: [], outgoingShellAttacks: []}};
+        }
         else result = {success: true};
         return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(result)});
       }
@@ -532,6 +537,7 @@ const discordTestRequests = [];
     assert.equal(spins[0].attackId, "attack'1");
     assert.equal(spins[0].sessionToken, 'fake');
     await page.locator('#personal-alert-bar').getByRole('button', {name: 'Cerrar sesión', exact: true}).click();
+    await page.waitForFunction(() => document.querySelector('#personal-alert-bar').hidden);
     assert.equal(await page.locator('#personal-alert-bar').isVisible(), false);
     assert.equal(await page.evaluate(() => sessionStorage.getItem('pepes_player_token')), null);
     assert.deepEqual(errors, []);

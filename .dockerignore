@@ -78,6 +78,7 @@
 
 !player_accounts.py
 !participant_roles.py
+!remembered_sessions.py
 !riot_accounts_sync.py
 
 !admin-overlay.js

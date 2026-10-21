@@ -4,6 +4,34 @@
 
 const API_BASE_URL = window.PEPES_API_URL || '/api';
 
+// The remembered credential belongs only in an HttpOnly cookie. Storage carries
+// legacy tab tokens and a non-secret signal to synchronize login/logout tabs.
+const PlayerSession = {
+  token() { try { return sessionStorage.getItem('pepes_player_token') || ''; } catch (_) { return ''; } },
+  profile(duo) { try { sessionStorage.setItem('pepes_player_session', JSON.stringify(duo)); } catch (_) {} },
+  clear() {
+    try { sessionStorage.removeItem('pepes_player_token'); sessionStorage.removeItem('pepes_player_session'); } catch (_) {}
+  },
+  changed() {
+    document.dispatchEvent(new Event('player-session-changed'));
+    try { localStorage.setItem('pepes_auth_changed', `${Date.now()}-${Math.random()}`); } catch (_) {}
+  },
+  accept(result) {
+    this.clear();
+    // Compatibility with an older server; new logins never store a bearer token.
+    if (!result.remembered && result.sessionToken) {
+      try { sessionStorage.setItem('pepes_player_token', result.sessionToken); } catch (_) {}
+    }
+    this.profile(result.duo);
+    this.changed();
+  }
+};
+window.addEventListener('storage', event => {
+  if (event.key !== 'pepes_auth_changed') return;
+  PlayerSession.clear();
+  document.dispatchEvent(new Event('player-session-changed'));
+});
+
 // Visible es_ES names from Riot Data Dragon 16.19.1. Keep IDs in stored data
 // and icon URLs; only presentation uses these names, without extra API calls.
 const CHAMPION_DISPLAY_NAMES = Object.freeze({
@@ -184,7 +212,7 @@ async function apiRequest(path, payload, method = 'POST') {
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      method, signal: controller.signal,
+      method, signal: controller.signal, credentials: 'same-origin',
       ...(method === 'GET' ? {} : {headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload || {})})
     });
     const result = await response.json();
@@ -243,9 +271,29 @@ const DataStore = {
   triggerTwitchSync: authPin => mutation('/twitch/sync', {authPin}),
   testDiscord: authPin => mutation('/discord/test', {authPin}),
   calculateShells: authPin => mutation('/calculate-shells', {authPin}),
-  loginPlayer: (teamId, password) => mutation('/player/login', {teamId, password}),
-  logoutPlayer: sessionToken => mutation('/player/logout', {sessionToken}),
-  getPlayerState: sessionToken => mutation('/player/state', {sessionToken}),
+  async loginPlayer(teamId, password) {
+    const result = await mutation('/player/login', {teamId, password});
+    if (result.success && result.duo) PlayerSession.accept(result);
+    return result;
+  },
+  async logoutPlayer(sessionToken) {
+    const result = await mutation('/player/logout', {sessionToken});
+    // Do not claim to log out if the server could not revoke the cookie.
+    if (result.success) { PlayerSession.clear(); PlayerSession.changed(); }
+    return result;
+  },
+  async getPlayerState(sessionToken) {
+    let result = await mutation('/player/state', {sessionToken});
+    if (result.status === 401 && sessionToken) {
+      // An old tab token can expire at a restart while its cookie remains valid.
+      result = await mutation('/player/state', {});
+      if (result.success || result.status === 401) {
+        PlayerSession.clear();
+        if (result.duo) PlayerSession.profile(result.duo);
+      }
+    }
+    return result;
+  },
   launchShell: (targetId, sessionToken) => mutation('/player/launch-shell', {targetId, sessionToken}),
   spinShell: (attackId, sessionToken) => mutation('/player/spin-shell', {attackId, sessionToken}),
   adminResolvePenalty: (penaltyInstanceId, action, note, authPin) => mutation('/admin/resolve-penalty', {penaltyInstanceId, action, note, authPin}),

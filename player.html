@@ -74,7 +74,7 @@
           <label style="display: block; font-size: 0.85rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.4rem;">
             Contraseña del Dúo
           </label>
-          <input type="password" id="login-password-input" class="form-control" placeholder="Introduce tu contraseña (por defecto: 1234)" required>
+          <input type="password" id="login-password-input" name="password" autocomplete="current-password" class="form-control" placeholder="Introduce tu contraseña (por defecto: 1234)" required>
         </div>
 
         <div id="login-error-msg" style="color: #ff4d4d; font-size: 0.85rem; font-weight: 700; display: none; margin-bottom: 1rem;">
@@ -85,6 +85,7 @@
           <i class="fa-solid fa-right-to-bracket"></i> Entrar a Mi Panel
         </button>
       </form>
+      <p class="player-penalties-intro" style="margin-top: 1rem;">Recordaremos tu equipo en este navegador durante 30 días. Si compartes el dispositivo, cierra sesión al terminar.</p>
     </div>
 
     <!-- Player Dashboard Content (Shown when logged in) -->

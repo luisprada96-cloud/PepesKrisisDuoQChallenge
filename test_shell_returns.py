@@ -111,7 +111,7 @@ class ShellReturnTests(unittest.TestCase):
     def test_concurrent_spins_cannot_duplicate_a_return(self):
         original = self.prepare()
         def request(_):
-            req = urllib.request.Request(self.base+'/api/player/spin-shell', data=json.dumps({'sessionToken':self.receiver,'attackId':original['id']}).encode(), method='POST')
+            req = urllib.request.Request(self.base+'/api/player/spin-shell', data=json.dumps({'sessionToken':self.receiver,'attackId':original['id']}).encode(), headers={'Content-Type':'application/json'}, method='POST')
             try:
                 with urllib.request.urlopen(req, timeout=3) as response:
                     return response.status

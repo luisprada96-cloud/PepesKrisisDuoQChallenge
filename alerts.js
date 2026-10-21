@@ -158,11 +158,12 @@
   }
 
   async function connect(generation) {
-    if (!token || generation !== sessionGeneration) return;
+    if (!team || generation !== sessionGeneration) return;
     const current = new AbortController();
     controller = current;
     try {
-      const response = await fetch(`${API_BASE_URL}/player/events`, {headers: {Authorization: `Bearer ${token}`}, signal: current.signal});
+      const response = await fetch(`${API_BASE_URL}/player/events`, {headers: token ? {Authorization: `Bearer ${token}`} : {}, credentials: 'same-origin', signal: current.signal});
+      if (generation !== sessionGeneration || current.signal.aborted) return;
       if (response.status === 401) { endSession(); return; }
       if (!response.ok || !response.body) throw new Error('No se pudo conectar el canal de avisos.');
       const reader = response.body.getReader();
@@ -185,7 +186,7 @@
     } catch (error) {
       if (error.name !== 'AbortError') connected = false;
     } finally {
-      if (generation === sessionGeneration && !current.signal.aborted && token) {
+      if (generation === sessionGeneration && !current.signal.aborted && team) {
         connected = false; render();
         retryTimer = setTimeout(() => connect(generation), 3000);
       }
@@ -195,10 +196,10 @@
   async function refreshSession() {
     const generation = ++sessionGeneration;
     disconnect(); stopSound();
-    token = sessionStorage.getItem('pepes_player_token') || '';
-    if (!token) { team = null; enabled = false; render(); if (notice) notice.hidden = true; return; }
+    token = PlayerSession.token();
     const state = await DataStore.getPlayerState(token);
     if (generation !== sessionGeneration) return;
+    token = PlayerSession.token();
     if (!state.success || !state.duo) {
       if (state.status === 401) endSession();
       else retryTimer = setTimeout(refreshSession, 5000);
@@ -253,7 +254,13 @@
       } catch (error) { showNotice(error.message); }
     });
     preview.addEventListener('click', playBomb);
-    logout.addEventListener('click', () => { const oldToken = token; endSession(); DataStore.logoutPlayer(oldToken); });
+    logout.addEventListener('click', async () => {
+      logout.disabled = true;
+      const result = await DataStore.logoutPlayer(PlayerSession.token());
+      logout.disabled = false;
+      if (result.success) endSession();
+      else showNotice('No se pudo cerrar la sesión. Comprueba la conexión y vuelve a intentarlo.');
+    });
     refreshSession();
   });
   document.addEventListener('player-session-changed', refreshSession);

@@ -7,6 +7,7 @@ Features: Real ELO Tracking, Match-V5, Player Panels, Pepazos Gamification & Aut
 import os
 import overlay_effects
 import overlay_sessions
+import remembered_sessions
 import sys
 import json
 import time
@@ -328,10 +329,14 @@ def page_args(parsed):
     return max(0, int(query.get("offset", [0])[0])), min(100, max(1, int(query.get("limit", [30])[0])))
 
 
-def session_team(token):
+def session_team(token, db=None):
     session = player_sessions.get(str(token or ""))
     if not session or session.get("expiresAt", 0) < time.time():
         return None
+    if db is not None and session.get('rememberDigest'):
+        record = db.get('rememberedTeamSessions', {}).get(session['rememberDigest'])
+        if not remembered_sessions.valid_record(db, record):
+            return None
     return session.get("teamId")
 
 def notify_shell_receivers():
@@ -341,10 +346,11 @@ def notify_shell_receivers():
         shell_notifications.notify_all()
 
 
-def receiver_notification_state(token):
+def receiver_notification_state(token, remembered=False):
     with db_lock:
         db = load_db()
-        team_id = session_team(token) or overlay_sessions.team(db, token)
+        team_id = (remembered_sessions.team(db, token) if remembered else
+                   session_team(token, db) or overlay_sessions.team(db, token))
         if not team_id:
             return None
         duo = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
@@ -2006,11 +2012,31 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(origin)
         return parsed.scheme in ('http', 'https') and parsed.netloc == self.headers.get('Host')
 
-    def clips_team(self, db):
+    def team_cookie_token(self):
+        return self.clips_visitor(remembered_sessions.COOKIE)
+
+    def team_cookie(self, token='', clear=False):
+        # Production is HTTPS (including behind Render's TLS proxy). Allow HTTP
+        # only for loopback development; never weaken the cookie for public HTTP.
+        host = urlparse('//' + self.headers.get('Host', '')).hostname
+        secure = host not in ('localhost', '127.0.0.1', '::1') or self.headers.get('X-Forwarded-Proto', '').split(',')[0].strip() == 'https'
+        return (f'{remembered_sessions.COOKIE}={token}; Path=/; Max-Age={0 if clear else remembered_sessions.LIFETIME}; '
+                'HttpOnly; SameSite=Lax' + ('; Secure' if secure else ''))
+
+    def authenticated_team(self, db, body_token=None):
+        # Explicit invalid credentials must never silently become another team
+        # through a cookie. OBS tokens are deliberately not accepted here.
         authorization = self.headers.get('Authorization', '')
-        token = authorization[7:] if authorization.startswith('Bearer ') else ''
-        team_id = session_team(token)
+        if authorization:
+            team_id = session_team(authorization[7:], db) if authorization.startswith('Bearer ') else None
+        elif body_token:
+            team_id = session_team(body_token, db)
+        else:
+            team_id = remembered_sessions.team(db, self.team_cookie_token())
         return team_id if any(duo.get('id') == team_id for duo in db.get('duos', [])) else None
+
+    def clips_team(self, db):
+        return self.authenticated_team(db)
 
     def do_OPTIONS(self):
         self.send_response(200)
@@ -2030,10 +2056,13 @@ class CustomHandler(BaseHTTPRequestHandler):
     def stream_shell_notifications(self):
         authorization = self.headers.get("Authorization", "")
         token = authorization.removeprefix("Bearer ") if authorization.startswith("Bearer ") else ""
+        remembered = not authorization
+        if remembered:
+            token = self.team_cookie_token()
         # Read the revision first so a concurrent launch cannot be missed.
         with shell_notifications:
             revision = shell_notification_revision
-        state = receiver_notification_state(token)
+        state = receiver_notification_state(token, remembered)
         if state is None:
             self._send_json({"success": False, "error": "Sesión caducada"}, 401)
             return
@@ -2062,7 +2091,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                 with shell_notifications:
                     shell_notifications.wait_for(lambda: shell_notification_revision != revision, timeout=15)
                     revision = shell_notification_revision
-                state = receiver_notification_state(token)
+                state = receiver_notification_state(token, remembered)
         except (OSError, StorageError):
             # Disconnection and temporary storage errors reconnect on the client.
             return
@@ -2360,6 +2389,13 @@ class CustomHandler(BaseHTTPRequestHandler):
     @http_errors
     def do_POST(self):
         path = urlparse(self.path).path
+        if path.startswith('/api/player/') or self.team_cookie_token():
+            if not self.clips_origin_allowed() or self.headers.get('Sec-Fetch-Site') == 'cross-site':
+                self._send_json({'success': False, 'error': 'Origen no permitido.'}, 403)
+                return
+            if self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/json' and path != '/api/admin/overlay/upload':
+                self._send_json({'success': False, 'error': 'Se requiere JSON.'}, 415)
+                return
         if path == '/api/admin/overlay/upload':
             self.upload_overlay()
             return
@@ -2735,7 +2771,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                     self._send_json({'success': False, 'error': 'Contraseña o equipo incorrecto'}, 401)
                     return
             else:
-                team_id = session_team(token) if parsed.path == '/api/overlay/session' else overlay_sessions.team(db, token)
+                team_id = self.authenticated_team(db, token) if parsed.path == '/api/overlay/session' else overlay_sessions.team(db, token)
                 duo = next((d for d in db.get('duos', []) if d.get('id') == team_id), None)
                 if not duo:
                     self._send_json({'success': False, 'error': 'Sesión caducada'}, 401)
@@ -2756,18 +2792,36 @@ class CustomHandler(BaseHTTPRequestHandler):
             
             stored_password = (duo or {}).get("passwordHash") or (duo or {}).get("password", "1234")
             if duo and verify_secret(pwd, stored_password):
+                previous = self.team_cookie_token()
+                remembered_sessions.revoke(db, previous)
+                remember_token = remembered_sessions.create(db, duo)
+                save_db(db)
                 token = create_player_session(duo["id"])
-                self._send_json({"success": True, "duo": player_state(db, duo), "sessionToken": token})
+                player_sessions[token]['rememberDigest'] = remembered_sessions.digest(remember_token)
+                self._send_json({"success": True, "duo": player_state(db, duo), "sessionToken": token, 'remembered': True},
+                                headers={'Set-Cookie': self.team_cookie(remember_token)})
+                notify_shell_receivers()
             else:
                 self._send_json({"success": False, "error": "Contraseña o equipo incorrecto"}, 401)
 
         elif parsed.path == '/api/player/logout':
-            player_sessions.pop(str(data.get('sessionToken', '')), None)
+            legacy = player_sessions.get(str(data.get('sessionToken', '')), {})
+            keys = {remembered_sessions.digest(self.team_cookie_token()), legacy.get('rememberDigest')} - {None}
+            sessions = db.get('rememberedTeamSessions', {})
+            changed = False
+            for key in keys:
+                if sessions.pop(key, None) is not None:
+                    changed = True
+            if changed:
+                save_db(db)
+            for token, record in list(player_sessions.items()):
+                if record.get('rememberDigest') in keys or token == data.get('sessionToken'):
+                    player_sessions.pop(token, None)
             notify_shell_receivers()
-            self._send_json({'success': True})
+            self._send_json({'success': True}, headers={'Set-Cookie': self.team_cookie(clear=True)})
 
         elif parsed.path == '/api/player/state':
-            team_id = session_team(data.get("sessionToken"))
+            team_id = self.authenticated_team(db, data.get("sessionToken"))
             duo = next((d for d in db.get("duos", []) if d.get("id") == team_id), None)
             if not duo:
                 self._send_json({"success": False, "error": "Sesión caducada"}, 401)
@@ -2775,7 +2829,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True, "duo": player_state(db, duo)})
 
         elif parsed.path == '/api/player/launch-shell':
-            attacker_id = session_team(data.get("sessionToken"))
+            attacker_id = self.authenticated_team(db, data.get("sessionToken"))
             target_id = data.get("targetId")
             duos = db.get("duos", [])
 
@@ -2825,7 +2879,7 @@ class CustomHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True, "attacker": player_state(db, attacker), "attack": attack, "event": event})
 
         elif parsed.path == '/api/player/spin-shell':
-            team_id = session_team(data.get("sessionToken"))
+            team_id = self.authenticated_team(db, data.get("sessionToken"))
             attack_id = str(data.get("attackId", ""))
             if not team_id:
                 self._send_json({"success": False, "error": "Sesión caducada"}, 401)

@@ -92,7 +92,7 @@ class EndpointRegressionTests(unittest.TestCase):
             start.assert_not_called()
 
     def test_invalid_json_returns_400_and_server_remains_healthy(self):
-        req = urllib.request.Request(self.base + "/api/player/login", data=b"{bad", method="POST")
+        req = urllib.request.Request(self.base + "/api/player/login", data=b"{bad", headers={'Content-Type':'application/json'}, method="POST")
         with self.assertRaises(urllib.error.HTTPError) as context:
             urllib.request.urlopen(req, timeout=3)
         self.assertEqual(context.exception.code, 400)
@@ -132,7 +132,7 @@ class EndpointRegressionTests(unittest.TestCase):
     def test_concurrent_launch_cannot_spend_same_shell_twice(self):
         login = self.post("/api/player/login", {"teamId": "a", "password": "a-pass"})
         def launch():
-            req = urllib.request.Request(self.base + "/api/player/launch-shell", data=json.dumps({"sessionToken": login["sessionToken"], "targetId": "b"}).encode(), method="POST")
+            req = urllib.request.Request(self.base + "/api/player/launch-shell", data=json.dumps({"sessionToken": login["sessionToken"], "targetId": "b"}).encode(), headers={'Content-Type':'application/json'}, method="POST")
             try:
                 with urllib.request.urlopen(req, timeout=3) as response:
                     return response.status
