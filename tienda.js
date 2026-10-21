@@ -24,7 +24,10 @@
     'Oferta especial: te llevas un pepazo y pierdes un amigo.',
     'En esta tienda el único que está fed soy yo.',
     'Te iba a recomendar paciencia, pero no deja margen.',
-    'Contra el rival, por favor. El monitor no tiene la culpa.'
+    'Contra el rival, por favor. El monitor no tiene la culpa.',
+    'Me dicen que alguno ha perdido la cabeza ya',
+    'Reportalos a todosss',
+    'un torneo para volverlos locos a todos'
   ];
   let state = null, busy = false, fresh = false, loadError = false, version = 0, quote = 0, attempt = null, confirmation = null;
   const token = () => { try { return sessionStorage.getItem('pepes_player_token') || ''; } catch (_) { return ''; } };
