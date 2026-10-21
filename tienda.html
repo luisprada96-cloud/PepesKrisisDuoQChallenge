@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
+  <title>Tienda | Pepes Krisis Duo Q Challenge</title>
+  <meta name="description" content="El Chiringuito de Pepe: cambia el oro de tu equipo por pepazos. 70 monedas por unidad.">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="tienda.css">
+  <script src="navigation.js" defer></script>
+  <script src="tienda.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="navbar" aria-label="Navegación principal">
+      <div class="container nav-container">
+        <a href="index.html" class="brand-logo" aria-label="Pepes Krisis Duo Q · Inicio">
+          <i class="fa-solid fa-trophy brand-icon" aria-hidden="true"></i>
+          <span class="brand-text text-gradient-cyan"><span class="brand-full">Pepes Krisis Duo Q</span><span class="brand-short">Pepes Krisis</span></span>
+        </a>
+        <div class="nav-actions">
+          <button type="button" class="nav-toggle" id="nav-menu-toggle" aria-controls="primary-navigation" aria-expanded="false" aria-label="Abrir menú de navegación" hidden><i class="fa-solid fa-bars" aria-hidden="true"></i><span class="nav-menu-label">Menú</span></button>
+          <a href="player.html" class="btn-player-panel" id="nav-player-link" aria-label="Mi Panel" title="Mi Panel"><i class="fa-solid fa-gamepad" aria-hidden="true"></i><span class="nav-action-label">Mi Panel</span></a>
+          <a href="admin.html" class="btn-admin" id="nav-admin-link" aria-label="Panel Admin" title="Panel Admin"><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span class="nav-action-label">Panel Admin</span></a>
+        </div>
+        <ul class="nav-links" id="primary-navigation">
+          <li><a href="index.html" class="nav-link"><i class="fa-solid fa-list-ol" aria-hidden="true"></i> Clasificación</a></li>
+          <li><a href="torneo.html" class="nav-link"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Torneo</a></li>
+          <li><a href="premios.html" class="nav-link"><i class="fa-solid fa-award" aria-hidden="true"></i> Premios</a></li>
+          <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
+          <li><a href="apuestas.html" class="nav-link"><i class="fa-solid fa-coins" aria-hidden="true"></i> Apuestas</a></li>
+          <li><a href="tienda.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-store" aria-hidden="true"></i> Tienda</a></li>
+          <li><a href="pickem.html" class="nav-link"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
+          <li><a href="campeones.html" class="nav-link"><i class="fa-solid fa-chess-knight" aria-hidden="true"></i> Campeones</a></li>
+          <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
+          <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
+          <li><a href="porra.html" class="nav-link"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i> Porra final</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+  <main class="container shop-page" id="shop">
+    <div class="shop-heading">
+      <div><p class="shop-eyebrow">LA TIENDA DE LA GRIETA</p><h1>El Chiringuito de Pepe</h1><p class="shop-tagline">Oro por problemas. Sin devoluciones emocionales.</p></div>
+      <div class="shop-wallet"><span id="shop-team">Oro de tu equipo</span><strong><span class="shop-coin" aria-hidden="true">✦</span> <span id="shop-balance">—</span> <small>oro</small></strong><span id="shop-reserved">El mismo saldo que en Apuestas</span></div>
+    </div>
+    <section class="shop-frame" aria-label="Comprar pepazos">
+      <div class="shop-scene">
+        <img class="shop-backdrop" src="assets/shop/pepe-shop.webp" alt="Pepe atiende su tienda de la Grieta entre pociones, faroles y pepazos, junto a un poro dormido." fetchpriority="high" width="1536" height="1024">
+        <div class="shop-ambience" aria-hidden="true"><i class="shop-lantern"></i><i class="shop-crystal"></i><i class="shop-mote"></i><i class="shop-mote"></i><i class="shop-mote"></i><i class="shop-mote"></i><i class="shop-mote"></i><i class="shop-mote"></i></div>
+        <span class="shop-open"><span aria-hidden="true"></span> Abierto. Tu rival lo lamenta.</span>
+        <button class="shop-speech" id="shop-talk" type="button" aria-label="Hablar con Pepe"><span id="shop-quote">¿Vienes a comprar o a llorar por el matchmaking?</span><small>Hablar con Pepe <span aria-hidden="true">↻</span></small></button>
+        <button class="shop-merchant" id="shop-merchant" type="button" aria-label="Pedir otro consejo a Pepe"></button>
+        <div class="shop-scene-caption"><span>SE ACEPTA ORO. EL ELO NO.</span><p>Mercancía de dudosa procedencia.<br>Satisfacción del rival no garantizada.</p></div>
+      </div>
+      <form class="shop-counter" id="shop-form">
+        <div class="shop-item-art"><div class="shop-item-halo" aria-hidden="true"></div><img id="shop-item" src="assets/shop/pepazo.webp" alt="Pepazo de la tienda" width="480" height="480"></div>
+        <span class="shop-item-type">MUNICIÓN PARA EL SALSEO</span>
+        <h2>Pepazo</h2><p class="shop-item-description">Un regalo que tu rival no pidió.</p>
+        <p class="shop-unit-price"><span class="shop-coin" aria-hidden="true">✦</span> <strong id="shop-price">70</strong> <span>oro / unidad</span></p>
+        <label class="shop-quantity-label" for="shop-quantity">Cantidad</label>
+        <div class="shop-quantity"><button id="shop-minus" type="button" aria-label="Quitar un pepazo" disabled>−</button><input id="shop-quantity" type="number" inputmode="numeric" value="1" min="1" max="1" step="1" required disabled><button id="shop-plus" type="button" aria-label="Añadir un pepazo" disabled>+</button></div>
+        <div class="shop-totals"><p><span>Total</span><strong><span id="shop-total">70</span> oro</strong></p><p><span>Te quedan</span><span id="shop-after">—</span></p></div>
+        <button class="shop-buy" id="shop-buy" type="submit" disabled>Comprar 1 pepazo</button>
+        <p class="shop-notice" id="shop-notice">Consultando el oro de tu equipo…</p>
+        <a class="shop-login" id="shop-login" href="player.html" hidden>Entrar con mi equipo →</a>
+        <a class="shop-launch" href="player.html">Ir a lanzar pepazos <span aria-hidden="true">→</span></a>
+      </form>
+    </section>
+    <div class="shop-inventory" id="shop-inventory"><img src="assets/shop/pepazo.webp" width="48" height="48" alt=""><p>Inventario de tu equipo <strong id="shop-stock">—</strong></p><span>El oro reservado en apuestas sigue reservado.</span></div>
+    <p class="shop-feedback" id="shop-feedback" role="status" aria-live="polite"></p>
+    <noscript><p class="shop-noscript">Activa JavaScript para consultar tu saldo y comprar. Puedes acceder a <a href="player.html">Mi Panel</a> para ver tu equipo.</p></noscript>
+    <dialog class="shop-dialog" id="shop-confirm" aria-labelledby="shop-confirm-title"><form method="dialog"><span class="shop-eyebrow">TRATO CON EL MERCADER</span><h2 id="shop-confirm-title">¿Cerramos el trato?</h2><p id="shop-confirm-description"></p><p class="shop-confirm-note" id="shop-confirm-note">Se añadirán al inventario de tu equipo.</p><p class="shop-error" id="shop-error" role="alert" hidden></p><div class="shop-dialog-actions"><button id="shop-cancel" type="button">Seguir mirando</button><button class="shop-buy" id="shop-confirm-buy" type="button">Confirmar compra</button></div></form></dialog>
+  </main>
+  <footer class="footer"><div class="container"><p><strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026.</p></div></footer>
+</body>
+</html>

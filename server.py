@@ -28,6 +28,7 @@ import discord_shells
 import tierlists_service
 import final_predictions
 import betting_service
+import shop_service
 import pickem_service
 import champions_service
 import stat_progression
@@ -2105,6 +2106,12 @@ class CustomHandler(BaseHTTPRequestHandler):
             else:
                 self._send_bytes(payload, 'video/webm', headers=headers)
             return
+        if path == '/api/shop':
+            with db_lock:
+                db = load_db()
+                result = shop_service.public_shop(db, self.clips_team(db))
+            self._send_json(result, headers={'Vary': 'Cookie, Authorization'})
+            return
         if path == '/api/bets':
             offset, limit = page_args(parsed)
             view = urllib.parse.parse_qs(parsed.query).get('view', ['open'])[0]
@@ -2268,13 +2275,17 @@ class CustomHandler(BaseHTTPRequestHandler):
         public_files.update({'campeones.html', 'campeones.js', 'campeones.css'})
         public_files.update({'favicon.svg', 'favicon.ico'})
         public_files.update({'apuestas.html', 'apuestas.js', 'apuestas.css'})
+        public_files.update({'tienda.html', 'tienda.js', 'tienda.css'})
+        shop_assets = {'assets/shop/pepe-shop.webp', 'assets/shop/pepazo.webp'}
         tierlist_assets = {item['image'].lstrip('/') for item in tierlists_service.ALL_ITEMS}
         filename = "index.html" if path == "/" else path.removeprefix("/")
-        if filename not in public_files and filename not in tierlist_assets:
+        if filename not in public_files and filename not in tierlist_assets and filename not in shop_assets:
             self._send_json({"error": "File Not Found"}, 404)
             return
         filepath = os.path.realpath(os.path.join(BASE_DIR, filename))
         expected_directory = os.path.join(BASE_DIR, 'assets', 'tierlist') if filename in tierlist_assets else BASE_DIR
+        if filename in shop_assets:
+            expected_directory = os.path.join(BASE_DIR, 'assets', 'shop')
         if os.path.dirname(filepath) != expected_directory or not os.path.isfile(filepath):
             self._send_json({"error": "File Not Found"}, 404)
             return
@@ -2362,6 +2373,27 @@ class CustomHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         data = self.read_body()
         db = load_db()
+
+        if parsed.path == '/api/shop':
+            if not self.clips_origin_allowed():
+                self._send_json({'error': 'Origen no permitido.'}, 403)
+                return
+            team_id = self.clips_team(db)
+            if not team_id:
+                self._send_json({'error': 'Inicia sesión con tu equipo para comprar.'}, 401)
+                return
+            try:
+                receipt = shop_service.purchase(db, team_id, data)
+            except FileExistsError as error:
+                self._send_json({'error': str(error)}, 409)
+                return
+            except ValueError as error:
+                self._send_json({'error': str(error)}, 400)
+                return
+            save_db(db)
+            self._send_json({'success': True, 'purchase': receipt, **shop_service.public_shop(db, team_id)},
+                            headers={'Vary': 'Cookie, Authorization'})
+            return
 
         if parsed.path == '/api/bets':
             if not self.clips_origin_allowed():

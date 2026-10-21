@@ -7,7 +7,7 @@ const path = require('node:path');
 (async () => {
   const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL||'chrome'});
   try {
-    const pages=['index.html','torneo.html','premios.html','clips.html','resumen.html','tierlist.html','porra.html','pickem.html','player.html','admin.html','campeones.html','apuestas.html'];
+    const pages=['index.html','torneo.html','premios.html','clips.html','resumen.html','tierlist.html','porra.html','pickem.html','player.html','admin.html','campeones.html','apuestas.html','tienda.html'];
     const context=await browser.newContext();
     const requests=[],errors=[];
     await context.route('**/*',async route=>{
@@ -21,7 +21,7 @@ const path = require('node:path');
         return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
       }
       const file=url.pathname.slice(1);
-      if(![...pages,'navigation.js','data.js','torneo.js','premios.js','styles.css','clips.css','tierlist.css','porra.css','pickem.css','resumen.css','campeones.css'].includes(file))return route.fulfill({status:404,body:''});
+      if(![...pages,'navigation.js','data.js','torneo.js','premios.js','styles.css','clips.css','tierlist.css','porra.css','pickem.css','resumen.css','campeones.css','tienda.css'].includes(file))return route.fulfill({status:404,body:''});
       let body=fs.readFileSync(path.join(__dirname,file));
       // Other feature behavior has its own suites; preserve only the scripts under test.
       if(file.endsWith('.html'))body=body.toString().replace(/<script\b[^>]*src="([^"]+)"[^>]*>\s*<\/script>/g,(tag,src)=>['navigation.js','data.js','torneo.js','premios.js'].includes(src)?tag:'');
@@ -32,7 +32,8 @@ const path = require('node:path');
       await page.setViewportSize({width:1440,height:1000});
       await page.goto('http://pepes.test/'+file);
       const header=page.locator('.site-header');
-      assert.equal(await header.locator('#primary-navigation a').count(),10);
+      assert.equal(await header.locator('#primary-navigation a').count(),11);
+      assert.equal(await header.getByRole('link',{name:'Tienda',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Campeones',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Torneo',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Premios',exact:true}).count(),1);
@@ -101,6 +102,6 @@ const path = require('node:path');
     assert.equal(await fallback.locator('#nav-menu-toggle').isVisible(),false);
     await noJs.close();
     assert.deepEqual(errors,[]);
-    console.log('Navigation checks passed: 12 pages, separate tabs/data, 4 widths, keyboard/menu, resize, legacy trophy link and no-JS fallback.');
+    console.log('Navigation checks passed: 13 pages, separate tabs/data, 4 widths, keyboard/menu, resize, legacy trophy link and no-JS fallback.');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

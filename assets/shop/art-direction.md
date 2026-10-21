@@ -1,0 +1,18 @@
+# El Chiringuito de Pepe — imágenes
+
+Generadas con la herramienta integrada **image_gen** de Codex, usando la segunda propuesta visual aprobada como referencia de estilo. Son ilustraciones originales; no son capturas del cliente de LoL. La interfaz, el texto y el precio de 70 monedas están en HTML/JS, fuera de las imágenes. El movimiento ambiental y la celebración se añaden con CSS y Web Animations; la ilustración no contiene animación facial.
+
+Archivos finales:
+
+- `pepe-shop.webp`: escena RGB, 1536 × 1024, 352516 bytes.
+- `pepazo.webp`: objeto RGBA con transparencia conservada, 640 × 640, 65182 bytes.
+
+Los PNG originales se conservaron en la carpeta de imágenes generadas de Codex. Se convirtieron a WebP con calidad 88; el objeto se redujo a 640 × 640 para su uso en la página.
+
+## Prompt final de la escena
+
+Asset extraction and refinement for implementing the approved website. Use the attached image ONLY as visual style and shop scene reference. Output a SINGLE landscape 3:2 illustration of the MAIN FANTASY SHOP SCENE ONLY, without ANY UI, letters, numbers, logos, frames, panels, borders, speech bubbles, navigation, title, prices or typography. This will be a website background; all interface and text will be coded separately. Preserve the recognizable 3D cartoon Pepe merchant with droopy eyes, wide mouth, brown leather vest and hood, tiny sleeping fluffy poro, cozy timber/stone shop counter on the LEFT, full green turtle shells with large hexagonal curved plates on the counter, blue glowing crystals, golden lanterns, rich hand-painted game textures, the approved League of Legends Summoner's Rift blue base fantasy setting, smooth curved high quality stylized 3D video game render, NO PIXEL ART. Recompose to make a complete beautiful illustration rather than cropping the screenshot. Pepe is at x38% y60%, seen waist-up behind counter, warm face clearly readable, no foreground object hiding his eyes. Sleeping poro at x15% y72%. Shelves with magical potions at left, one ornate warm lantern on upper-left, blue crystal and stonework and forest at right, counter through bottom foreground. Leave top quarter dark low contrast natural environment and leave upper-right rather quiet so real web UI can overlay later. No fake painted rectangle for space, entire image coherent. Crisp richly dimensional game art, warm gold lights against cool blue atmosphere. Remove every bit of text present in the reference. Keep the scene largely static with no motion blur; animation will be coded as separate ambient light and particle layers. Landscape 1536x1024 feel. No watermark.
+
+## Prompt final del pepazo
+
+Create ONE standalone inventory item asset: a glossy dimensional emerald GREEN TURTLE SHELL (Pepazo), matching the item in the RIGHT product panel of the attached approved fantasy shop mockup. The reference is STYLE AND SUBJECT REFERENCE ONLY; do not output the website. Single shell centered in a square canvas with generous transparent padding, three quarter view from above so its large hexagonal plates and rounded cream ivory outer rim are clearly visible. High-quality stylized 3D game inventory icon with hand-painted surfaces like League of Legends item art, elegant highlights and a subtle golden glimmer. Rich emerald green, dark recessed seams, bevelled organic plates, ivory rim, rounded shadowed underside. Object looks smooth and sculpted, NOT pixel art, not a flat vector, no black square, no decorative card frame. Truly TRANSPARENT BACKGROUND, no floor, no pedestal, no text, no watermark, no extra objects. Occupy about 75% of canvas width. Preserve the recognizable round green shell design shown in the reference. Clean alpha edges suitable to float over a dark navy web purchase card.
