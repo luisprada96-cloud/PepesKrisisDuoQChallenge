@@ -23,16 +23,16 @@ def discovery(latest, pending=(), account=None):
 def game(mid):
     return {"matchId": mid, "statsVersion": 2, "matchDetailsVersion": 1, "gameStartTimestamp": 1800000000000,
             "gameEndTimestamp": 1800000100000, "result": "WIN",
-            "player1Stats": {"puuid": "p1", "participantId": 1, "championName": "Ahri", "win": True},
-            "player2Stats": {"puuid": "p2", "participantId": 2, "championName": "Lux", "win": True}}
+            "player1Stats": {"puuid": "p1", "participantId": 1, "teamId":100, "championName": "Ahri", "win": True},
+            "player2Stats": {"puuid": "p2", "participantId": 2, "teamId":100, "championName": "Lux", "win": True}}
 
 
 def detail():
-    return {"info": {"gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800001200000,
+    return {"info": {"queueId":420, "gameStartTimestamp": 1800000000000, "gameEndTimestamp": 1800001200000,
             "gameDuration": 1200, "participants": [
-                {"puuid": "p1", "participantId": 1, "championName": "Ahri", "win": True,
+                {"puuid": "p1", "participantId": 1, "teamId":100, "championName": "Ahri", "win": True,
                  "profileIcon": 30, "summoner1Id": 14, "summoner2Id": 12},
-                {"puuid": "p2", "participantId": 2, "championName": "Lux", "win": True,
+                {"puuid": "p2", "participantId": 2, "teamId":100, "championName": "Lux", "win": True,
                  "profileIcon": 31, "summoner1Id": 14, "summoner2Id": 12}]}}
 
 

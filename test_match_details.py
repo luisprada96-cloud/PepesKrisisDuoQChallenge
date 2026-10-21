@@ -163,10 +163,10 @@ class MatchDetailsSyncTests(unittest.TestCase):
             return normal(request,**kwargs)
         with patch.object(server,'get_riot_api_key',return_value='fake'), patch.object(server,'riot_open',side_effect=fail_second_account), patch.object(server.time,'sleep'):
             self.assertFalse(server.sync_riot_data()['success'])
-        match=server.load_db()['duos'][0]['history'][0]
-        self.assertIsNone(match['player2Stats'])
-        self.assertFalse(match['participantsChecked']['player2'])
-        self.assertTrue(needs_match_details(match))
+        saved=server.load_db()['duos'][0]
+        self.assertEqual(saved['history'], [], 'Unknown partner identity must not count a solo game.')
+        self.assertIn('EUW1_ACCOUNT', saved['riotMatchDiscovery']['pendingMatchIds'])
+        self.assertNotIn('EUW1_ACCOUNT', saved.get('excludedRiotMatches', {}))
         calls=[]
         self.assertTrue(self.sync(['EUW1_ACCOUNT'],calls)['success'])
         self.assertEqual(sum(url.endswith('/EUW1_ACCOUNT') for url in calls),1)

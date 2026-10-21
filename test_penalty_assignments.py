@@ -172,10 +172,10 @@ class PenaltyAssignmentEndpointTests(unittest.TestCase):
                 payload = ['EUW1_CORRECT','EUW1_WRONG'] if second_game else ['EUW1_WRONG']
             else:
                 correct = url.endswith('EUW1_CORRECT')
-                payload = {'info': {'gameStartTimestamp':1800000000000 + (200000 if correct else 0),
+                payload = {'info': {'queueId':420, 'gameStartTimestamp':1800000000000 + (200000 if correct else 0),
                     'gameEndTimestamp':1800001200000 + (200000 if correct else 0), 'gameDuration':1200,
-                    'participants': [{'puuid':'p1','championName':'Ahri','summoner1Id':14,'summoner2Id':12},
-                                     {'puuid':'p2','championName':'Lux','summoner1Id':14 if correct else 4,'summoner2Id':12}]}}
+                    'participants': [{'puuid':'p1','teamId':100,'championName':'Ahri','summoner1Id':14,'summoner2Id':12},
+                                     {'puuid':'p2','teamId':100,'championName':'Lux','summoner1Id':14 if correct else 4,'summoner2Id':12}]}}
             return io.BytesIO(json.dumps(payload).encode())
         with patch.object(server, 'get_riot_api_key', return_value='fake'), patch.object(server, 'riot_open', side_effect=reply), patch.object(server.time, 'sleep'):
             self.assertTrue(server.sync_riot_data()['success'])

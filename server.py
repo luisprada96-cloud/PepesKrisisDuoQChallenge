@@ -276,6 +276,7 @@ def safe_duo_for_player(duo):
     participant_roles.update_roles(result)
     result.pop("passwordHash", None)
     result.pop("riotMatchDiscovery", None)
+    result.pop("excludedRiotMatches", None)
     result.pop("discordWebhook", None)
     result.pop("discordRoleId", None)
     return result
@@ -1476,9 +1477,8 @@ def merge_riot_result(original, scanned):
                     record_player_elo(duo[key], calc_total_lp(rank.get("tier"), rank.get("division"), rank.get("lp")), rank["observedAt"])
                     if len(duo[key].get("accounts", [])) == 1:
                         duo[key]["accounts"][0]["eloHistory"] = copy.deepcopy(duo[key].get("eloHistory", []))
-            excluded = {**incoming.get("excludedRiotMatches", {}), **duo.get("excludedRiotMatches", {})}
-            if excluded:
-                duo["excludedRiotMatches"] = excluded
+            excluded = riot_match_policy.merge_exclusions(duo, incoming, old)
+            duo["excludedRiotMatches"] = excluded
             matches = {m["matchId"]: m for m in duo.get("history", []) if m.get("matchId") and m["matchId"] not in excluded}
             unkeyed = [m for m in duo.get("history", []) if not m.get("matchId")]
             for match in incoming.get("history", []):
@@ -1501,6 +1501,7 @@ def merge_riot_result(original, scanned):
             # Apply the same date rule to stored or concurrently scanned evidence
             # before it can contribute to rewards, penalties or aggregate stats.
             riot_match_policy.prune_history(duo)
+            riot_match_policy.prune_duo_history(duo)
             # History can arrive after the roulette draw. Resolve only empty
             # references before evaluating it, preserving existing player draws.
             for debuff in fill_pending_penalty_favorites(duo) + fill_pending_flash_baselines(duo) + fill_pending_penalty_roles(duo):
@@ -1524,7 +1525,7 @@ def merge_riot_result(original, scanned):
         pickem_service.capture_rankings(current)
         weekly_summary.maintain(current, refresh=True)
         save_db(current)
-        return sum(int(m.get("statsVersion", 0) or 0) < 2 or needs_match_details(m)
+        return sum(int(m.get("statsVersion", 0) or 0) < 2 or needs_match_details(m) or riot_match_policy.needs_pair_validation(d, m)
                    for d in current.get("duos", []) for m in d.get("history", []) if not m.get("isTest"))
 
 
@@ -1651,6 +1652,7 @@ def sync_riot_data():
             p1_tag = duo["player1"].get("tag", "EUW")
             puuid1 = duo["player1"].get("puuid")
             puuid2 = duo.get("player2", {}).get("puuid") if duo.get("player2") else None
+            resolved_accounts = {'player1': False, 'player2': False}
 
             # 1. Refresh PUUIDs on every sync. Riot can rotate encrypted PUUIDs,
             # so a permanently cached value may start returning "Exception decrypting".
@@ -1660,7 +1662,10 @@ def sync_riot_data():
                     acc_data1 = fetch_json(url_acc1)
                     puuid1 = acc_data1.get("puuid")
                     if puuid1:
-                        duo["player1"]["puuid"] = puuid1
+                        player_accounts.remember_puuid(duo['player1'], puuid1)
+                        for account in duo['player1'].get('accounts', []):
+                            player_accounts.remember_puuid(account, puuid1)
+                        resolved_accounts['player1'] = True
                         updated = True
                 except Exception as ex_p1:
                     record_failure(ex_p1)
@@ -1674,7 +1679,10 @@ def sync_riot_data():
                     acc_data2 = fetch_json(url_acc2)
                     puuid2 = acc_data2.get("puuid")
                     if puuid2:
-                        duo["player2"]["puuid"] = puuid2
+                        player_accounts.remember_puuid(duo['player2'], puuid2)
+                        for account in duo['player2'].get('accounts', []):
+                            player_accounts.remember_puuid(account, puuid2)
+                        resolved_accounts['player2'] = True
                         updated = True
                 except Exception as ex_p2:
                     record_failure(ex_p2)
@@ -1751,6 +1759,7 @@ def sync_riot_data():
                 safe_print(f"[Riot Sync League Error] {e}")
 
             # 4. Incremental Match-V5 fetch + progressive legacy backfill.
+            riot_match_policy.prune_duo_history(duo)
             existing_history = duo.get("history", [])
             existing_by_id = {
                 match.get("matchId"): match
@@ -1770,9 +1779,13 @@ def sync_riot_data():
                 if isinstance(match, dict)
                 and not match.get("isTest")
                 and match.get("matchId")
-                and (int(match.get("statsVersion", 0) or 0) < 2 or not match.get("gameStartTimestamp") or needs_match_details(match))
+                and (int(match.get("statsVersion", 0) or 0) < 2 or not match.get("gameStartTimestamp") or needs_match_details(match)
+                     or riot_match_policy.needs_pair_validation(duo, match))
             ]
-            fetch_ids = list(dict.fromkeys(new_match_ids + legacy_ids))[:RIOT_MATCH_DETAIL_BATCH_PER_DUO]
+            for match in existing_history:
+                if riot_match_policy.needs_pair_validation(duo, match):
+                    match['matchDetailsVersion'] = 0
+            fetch_ids = list(dict.fromkeys(new_match_ids + legacy_ids + riot_match_policy.pair_rechecks(duo)))[:RIOT_MATCH_DETAIL_BATCH_PER_DUO]
             new_matches = []
             enriched_count = 0
 
@@ -1790,6 +1803,13 @@ def sync_riot_data():
                         existing_history = [m for m in existing_history if m.get("matchId") != mid]
                         continue
                     duration_sec = int(info.get("gameDuration", 0) or 0)
+                    if info.get('queueId') is None:
+                        raise ValueError('La partida no confirma el tipo de cola; se reintentará.')
+                    if info['queueId'] != 420:
+                        duo.setdefault('excludedRiotMatches', {})[mid] = {'reason': 'wrong_queue', 'queueId': info['queueId']}
+                        existing_by_id.pop(mid, None)
+                        existing_history = [m for m in existing_history if m.get('matchId') != mid]
+                        continue
                     if 0 < duration_sec < MIN_RIOT_MATCH_DURATION_SECONDS:
                         duo.setdefault("excludedRiotMatches", {})[mid] = {
                             "reason": "duration_below_minimum", "durationSeconds": duration_sec,
@@ -1801,6 +1821,17 @@ def sync_riot_data():
                         continue
                     mins, secs = divmod(duration_sec, 60)
                     game_end_ms = info.get("gameEndTimestamp") or info.get("gameStartTimestamp") or 0
+
+                    participants = info.get('participants', [])
+                    if not participants or not isinstance(participants, list) or any(not isinstance(p, dict) or not p.get('puuid') for p in participants):
+                        raise ValueError('La partida no confirma sus participantes; se reintentará.')
+                    found = {key: next((p for p in participants if uid and p.get('puuid') == uid), None)
+                             for key, uid in (('player1', puuid1), ('player2', puuid2))}
+                    reason = riot_match_policy.validate_pair(duo, found, resolved_accounts)
+                    if reason:
+                        riot_match_policy.exclude_pair(duo, mid, reason, existing_by_id.pop(mid, None))
+                        existing_history = [m for m in existing_history if m.get('matchId') != mid]
+                        continue
 
                     if mid in existing_by_id:
                         match = existing_by_id[mid]
@@ -1820,10 +1851,12 @@ def sync_riot_data():
                             "date": date_str,
                             "pentaKill": False
                         }
+                        match.update(copy.deepcopy((duo.get('excludedRiotMatches', {}).get(mid) or {}).get('match') or {}))
 
                     match["gameStartTimestamp"] = int(info.get("gameStartTimestamp", 0) or 0)
                     match["gameEndTimestamp"] = int(game_end_ms or 0)
                     p1_detail, p2_detail = enrich_match_record(match, info, puuid1, puuid2)
+                    duo.get('excludedRiotMatches', {}).pop(mid, None)
                     record_flash_baselines(duo, match)
                     if (duo.get("player2") or {}).get("name") and not puuid2:
                         # Retry details once the second account can be identified.
@@ -1844,6 +1877,7 @@ def sync_riot_data():
                     safe_print(f"[Riot Sync Match Detail Error] {mid}: {ex_m}")
 
             discovery["pendingMatchIds"] = [mid for mid in new_match_ids if mid not in existing_by_id and mid not in duo.get("excludedRiotMatches", {})]
+            discovery['pendingMatchIds'] = list(dict.fromkeys(discovery['pendingMatchIds'] + riot_match_policy.pair_rechecks(duo)))
             pending_imports += len(discovery["pendingMatchIds"])
             if new_matches:
                 existing_history = new_matches + existing_history
