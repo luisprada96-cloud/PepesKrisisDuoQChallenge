@@ -9,7 +9,22 @@
     'Tu rival financia mis vacaciones.',
     'No hay reembolso por llorar en el chat.',
     'Tengo pociones de maná, pero de macro no me quedan.',
-    'Este pepazo estaba así cuando llegó.'
+    'Este pepazo estaba así cuando llegó.',
+    'El jungla no viene, pero tu pedido sí.',
+    'Compra tranquilo. El tilt viene incluido.',
+    'Oro virtual, rencor real.',
+    'No tengo cambio para un ego tan grande.',
+    'El mapa no lo miras, pero el catálogo sí.',
+    'Tu dúo lo habría aprobado. Probablemente.',
+    'Si no puedes ganar la línea, gana enemigos.',
+    'Hay wards más baratos, pero sé que no venías a por eso.',
+    'Este negocio se sostiene gracias a los «última y me voy».',
+    'No cura el tilt. Lo reparte.',
+    'Gastas mejor el oro aquí que en tu última build.',
+    'Oferta especial: te llevas un pepazo y pierdes un amigo.',
+    'En esta tienda el único que está fed soy yo.',
+    'Te iba a recomendar paciencia, pero no deja margen.',
+    'Contra el rival, por favor. El monitor no tiene la culpa.'
   ];
   let state = null, busy = false, fresh = false, loadError = false, version = 0, quote = 0, attempt = null, confirmation = null;
   const token = () => { try { return sessionStorage.getItem('pepes_player_token') || ''; } catch (_) { return ''; } };
