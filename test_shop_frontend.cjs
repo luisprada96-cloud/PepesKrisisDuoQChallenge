@@ -60,7 +60,7 @@ const path=require('node:path');
   async function readCycle(inspectLong=false){
    const result=[];
    for(let i=0;i<52;i++){
-    await page.locator('#shop-talk').click();
+    await page.locator('#shop-scene').click({position:{x:10,y:10}});
     const text=await page.locator('#shop-quote').textContent();result.push(text);
     if(inspectLong&&text.startsWith('En realidad no hay limite')){
      assert.ok(text.endsWith('falleciendo en 1925.'));
@@ -70,8 +70,10 @@ const path=require('node:path');
      for(const width of [1440,390,320]){
       await page.setViewportSize({width,height:900});
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-      assert.equal(await page.locator('#shop-quote').evaluate(el=>el.scrollHeight>el.clientHeight),true);
-      assert.equal(await page.locator('#shop-talk').isVisible(),true);
+      const quoteSize=await page.locator('#shop-quote').evaluate(el=>({scroll:el.scrollHeight,visible:el.clientHeight,bubble:el.parentElement.clientHeight,scene:el.closest('.shop-scene').clientHeight}));
+      assert.ok(quoteSize.visible<=quoteSize.scene,'the monologue stays inside the image');
+      if(width<=390)assert.ok(quoteSize.scroll>quoteSize.visible,`scrollable monologue at ${width}px: ${JSON.stringify(quoteSize)}`);
+      assert.equal(await page.locator('#shop-next').isVisible(),true);
       assert.equal(await page.locator('#shop-buy').isEnabled(),true);
       await page.locator('#shop-quote').focus();await page.keyboard.press('End');
       if(width===390){
@@ -96,9 +98,25 @@ const path=require('node:path');
   const nextCycle=await readCycle();
   assert.notDeepEqual(nextCycle,cycle,'a new deployment reshuffles the phrases');
   assert.deepEqual([...nextCycle].sort(),[...cycle].sort(),'reshuffling neither loses nor duplicates phrases');
-  await page.locator('#shop-talk').click();
-  if(await page.locator('#shop-speech').evaluate(el=>el.classList.contains('is-rambling')))await page.locator('#shop-talk').click();
+  await page.locator('#shop-scene').click({position:{x:10,y:10}});
+  if(await page.locator('#shop-speech').evaluate(el=>el.classList.contains('is-rambling')))await page.locator('#shop-scene').click({position:{x:10,y:10}});
   assert.equal(await page.locator('#shop-speech').evaluate(el=>el.classList.contains('is-rambling')),false);
+  assert.equal(await page.locator('#shop-speech button').count(),0,'the speech bubble only contains the quote');
+  const sceneBounds=await page.locator('#shop-scene').boundingBox();
+  let position=nextCycle.indexOf(await page.locator('#shop-quote').textContent());
+  async function advancedOnce(){
+   position=(position+1)%nextCycle.length;
+   assert.equal(await page.locator('#shop-quote').textContent(),nextCycle[position],'one action advances exactly one phrase');
+  }
+  for(const point of [{x:10,y:10},{x:sceneBounds.width-10,y:10},{x:10,y:sceneBounds.height-10},{x:sceneBounds.width-10,y:sceneBounds.height-10}]){
+   await page.locator('#shop-scene').click({position:point});await advancedOnce();
+  }
+  await page.locator('#shop-quote').click();await advancedOnce();
+  await page.locator('#shop-next').focus();await page.keyboard.press('Enter');await advancedOnce();
+  await page.keyboard.press('Space');await advancedOnce();
+  const beforeCounter=await page.locator('#shop-quote').textContent();
+  await page.locator('.shop-item-description').click();
+  assert.equal(await page.locator('#shop-quote').textContent(),beforeCounter,'buy panel is outside the dialogue click area');
   await page.locator('#shop-quantity').fill('2');
   await page.locator('#shop-buy').click();
   loseResponse=true;
@@ -144,7 +162,7 @@ const path=require('node:path');
   assert.equal(await page.locator('#shop-buy').isDisabled(),true);
   assert.match(await page.locator('#shop-notice').textContent(),/faltan 40/);
   assert.equal(await page.locator('#shop-quote').textContent(),'Equipo sin oro anuncia que la tienda está carísima.');
-  await page.locator('#shop-talk').click();
+  await page.locator('#shop-scene').click({position:{x:10,y:10}});
   const chosenQuote=await page.locator('#shop-quote').textContent();
   assert.notEqual(chosenQuote,'Equipo sin oro anuncia que la tienda está carísima.');
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));

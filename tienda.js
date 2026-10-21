@@ -177,8 +177,6 @@ El 9 de abril de 1916, Pablo Iglesias repitió escaño con 18 054 sufragios. Deb
     } else {
       for (const attr of ['tabindex', 'role', 'aria-label']) $('shop-quote').removeAttribute(attr);
     }
-    $('shop-talk').textContent = rambling ? 'Cortar el rollo a Pepe ↻' : 'Hablar con Pepe ↻';
-    $('shop-talk').setAttribute('aria-label', rambling ? 'Cortar el rollo a Pepe' : 'Hablar con Pepe');
   }
   function updateGoldQuote(afterPurchase = false) {
     const wallet = state?.wallet;
@@ -201,10 +199,10 @@ El 9 de abril de 1916, Pablo Iglesias repitió escaño con 18 054 sufragios. Deb
       animation.onfinish = () => node.remove();
       setTimeout(() => node.remove(), delay + 1500);
     };
-    const wallet = $('shop-balance').getBoundingClientRect(), scene = $('shop-merchant').getBoundingClientRect();
+    const wallet = $('shop-balance').getBoundingClientRect(), scene = $('shop-scene').getBoundingClientRect();
     for (let i = 0; i < 5; i++) {
       const coin = document.createElement('span'); coin.className = 'shop-flying-coin'; coin.textContent = '✦'; coin.setAttribute('aria-hidden', 'true');
-      fly(coin, {x: wallet.left + i * 4, y: wallet.top}, {x: scene.left + scene.width / 2, y: scene.bottom - 20}, i * 80);
+      fly(coin, {x: wallet.left + i * 4, y: wallet.top}, {x: scene.left + scene.width * .33, y: scene.top + scene.height * .64}, i * 80);
     }
     const art = $('shop-item').getBoundingClientRect(), stock = $('shop-inventory').getBoundingClientRect();
     const shell = document.createElement('img'); shell.className = 'shop-flying-item'; shell.src = 'assets/shop/pepazo.webp'; shell.alt = '';
@@ -212,8 +210,7 @@ El 9 de abril de 1916, Pablo Iglesias repitió escaño con 18 054 sufragios. Deb
     $('shop-inventory').classList.remove('is-celebrating');
     requestAnimationFrame(() => $('shop-inventory').classList.add('is-celebrating'));
   }
-  $('shop-talk').addEventListener('click', () => talk());
-  $('shop-merchant').addEventListener('click', () => talk());
+  $('shop-scene').addEventListener('click', () => talk());
   $('shop-minus').addEventListener('click', () => { $('shop-quantity').value = String(quantity() - 1); render(); });
   $('shop-plus').addEventListener('click', () => { $('shop-quantity').value = String(quantity() + 1); render(); });
   $('shop-quantity').addEventListener('input', render);
