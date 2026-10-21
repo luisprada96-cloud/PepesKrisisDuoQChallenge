@@ -27,9 +27,28 @@
     'Contra el rival, por favor. El monitor no tiene la culpa.',
     'Me dicen que alguno ha perdido la cabeza ya',
     'Reportalos a todosss',
-    'un torneo para volverlos locos a todos'
+    'un torneo para volverlos locos a todos',
+    'Última hora: un jungla visita top. Se investigan los hechos.',
+    'Científicos descubren que comprar wards permite ver cosas.',
+    'La Asociación de Minions denuncia abandono reiterado de oleadas.',
+    'Un jugador anuncia «última y me voy». Lleva seis partidas más.',
+    'El Banco de la Grieta desaconseja invertir todos tus ahorros en un Yasuo.',
+    'Pepe niega estar financiando ambos bandos. Procede a vender otro pepazo.',
+    'Aumenta la demanda de pepazos. Los psicólogos del torneo solicitan refuerzos.',
+    'Detectado un support con oro. Las autoridades buscan al ADC.',
+    'Un equipo asegura que está escalando. Se refería a la tensión en Discord.',
+    'El Ministerio del Tilt recomienda no escribir «?» después de una muerte.',
+    'Un jugador consigue mirar el minimapa. Sus compañeros piden repetir el experimento.',
+    'La organización recuerda que ganar una discusión en Discord no otorga LP.',
+    'Encuentran una pink sin usar en el inventario. La familia pide privacidad.',
+    'Pepe declara beneficios récord y recomienda mantener las rivalidades.',
+    'Un dúo atribuye su derrota al lag. Ambos estaban en la misma habitación.'
   ];
-  let state = null, busy = false, fresh = false, loadError = false, version = 0, quote = 0, attempt = null, confirmation = null;
+  const goldQuotes = {
+    poor: 'Equipo sin oro anuncia que la tienda está carísima.',
+    purchase: 'Pepe mejora sus previsiones económicas.'
+  };
+  let state = null, busy = false, fresh = false, loadError = false, version = 0, quote = 0, attempt = null, confirmation = null, goldContext = null;
   const token = () => { try { return sessionStorage.getItem('pepes_player_token') || ''; } catch (_) { return ''; } };
   const pendingKey = team => 'pepes_shop_pending_' + team;
   const quantity = () => Number($('shop-quantity').value);
@@ -104,7 +123,7 @@
       const data = await api('GET', null, auth);
       if (current !== version || busy || auth !== token()) return;
       if (dialog.open && confirmation?.teamId !== data.wallet?.teamId) { dialog.close(); confirmation = null; }
-      state = data; fresh = true; restore(); render();
+      state = data; fresh = true; restore(); render(); updateGoldQuote();
       if (loadError) { feedback(''); loadError = false; }
     } catch (_) {
       if (current !== version || busy) return;
@@ -114,8 +133,18 @@
   function talk(message) {
     $('shop-quote').textContent = message || quotes[quote++ % quotes.length];
   }
+  function updateGoldQuote(afterPurchase = false) {
+    const wallet = state?.wallet;
+    const context = wallet ? `${wallet.teamId}:${wallet.balance < price() ? 'poor' : 'funded'}` : null;
+    if (context === goldContext) return;
+    goldContext = context;
+    if (afterPurchase) return;
+    if (wallet && wallet.balance < price()) talk(goldQuotes.poor);
+    else if ($('shop-quote').textContent === goldQuotes.poor) talk();
+  }
   function celebrate() {
-    talk('Excelente inversión. Terrible persona.');
+    updateGoldQuote(true);
+    talk(goldQuotes.purchase);
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const fly = (node, from, to, delay) => {
       node.style.left = `${from.x}px`; node.style.top = `${from.y}px`; document.body.append(node);
