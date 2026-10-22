@@ -105,6 +105,9 @@
 .clip-header .clip-title { flex: 1; }
 .clip-seen { flex: 0 0 40px; width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--border-subtle); border-radius: 8px; color: var(--text-muted); background: var(--bg-card-hover); cursor: pointer; }
 .clip-seen:hover, .clip-seen[aria-pressed="true"] { color: var(--cyan-primary); border-color: var(--cyan-primary); background: rgba(0, 240, 255, .09); }
+.clip-delete { margin-left: auto; min-height: 36px; padding: .4rem .65rem; border: 1px solid rgba(255, 85, 115, .4); border-radius: 7px; color: #ff758f; background: rgba(255, 85, 115, .06); font: inherit; cursor: pointer; }
+.clip-delete:hover { border-color: #ff758f; background: rgba(255, 85, 115, .12); }
+.clip-delete[hidden], #clips-moderation[hidden] { display: none; }
 .clips-pagination { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
 .clips-pagination[hidden] { display: none; }
 .clips-pagination [data-clips-page-info] { color: var(--text-muted); font-size: .8rem; text-align: center; }

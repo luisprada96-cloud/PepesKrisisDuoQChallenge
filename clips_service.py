@@ -1,6 +1,7 @@
 """Weekly clips, authenticated team votes and guest discussions in the database."""
 import copy
 import hashlib
+import hmac
 import re
 import time
 import uuid
@@ -183,14 +184,14 @@ def board_for(db, preview=False, now=None):
     return board, True
 
 
-def public_payload(db, team_id=None, preview=False, visitor=None, week=None, now=None):
+def public_payload(db, team_id=None, preview=False, visitor=None, week=None, now=None, admin=False):
     timestamp = time.time() if now is None else now
     current, changed = board_for(db, preview, timestamp)
     boards = {**db.get('clipArchives', {}), current['week']: current}
     selected = week or current['week']
     if selected not in boards:
         raise LookupError('Semana de clips no encontrada.')
-    result = public_board(boards[selected], team_id, preview, db.get('duos', []), visitor, timestamp)
+    result = public_board(boards[selected], team_id, preview, db.get('duos', []), visitor, timestamp, admin)
     result['currentWeek'] = current['week']
     result['weeks'] = [{'week': key, 'startsAt': item.get('startsAt', weekly_summary.timestamp(key)),
                        'endsAt': item['endsAt'] if 'endsAt' in item else board_closes_at(item) + 60,
@@ -203,13 +204,13 @@ def visitor_hash(token):
     return hashlib.sha256(token.encode('ascii')).hexdigest()
 
 
-def public_board(board, team_id=None, preview=False, duos=(), visitor=None, now=None):
+def public_board(board, team_id=None, preview=False, duos=(), visitor=None, now=None, admin=False):
     voter = next((duo for duo in duos if duo['id'] == team_id), None)
     posts = []
     for post in board['posts']:
         item = {key: post[key] for key in ('id', 'title', 'teamId', 'team', 'initials', 'duration', 'scene', 'createdAt', 'slug', 'url', 'example') if key in post}
         item.update(votes=vote_count(post), liked=bool(voter) and browser_liked(post, visitor),
-                    commentCount=len(post.get('comments', [])))
+                    commentCount=len(post.get('comments', [])), canDelete=can_delete(post, visitor, team_id, admin))
         posts.append(item)
     return {'week': board['week'], 'preview': preview, 'clips': posts,
             'voting': {'teamId': voter['id'], 'teamName': voter['teamName']} if voter else None,
@@ -301,7 +302,7 @@ def parse_url(value):
     return slug
 
 
-def publish(board, title, url, now=None, team=None):
+def publish(board, title, url, now=None, team=None, visitor=None, uploader_team_id=None):
     timestamp = time.time() if now is None else now
     if board.get('archived') or board.get('weeklyAward') or timestamp >= board_closes_at(board):
         raise FileExistsError('La votación semanal ha cerrado. Podrás publicar de nuevo el lunes a las 00:00.')
@@ -318,8 +319,49 @@ def publish(board, title, url, now=None, team=None):
             'url': f'https://clips.twitch.tv/{slug}', 'teamId': team['id'], 'team': team['teamName'],
             'initials': ''.join(word[0] for word in team['teamName'].split()[:2]).upper()[:2] or 'CL',
             'createdAt': timestamp, 'scene': 1, 'teamVotes': {}}
+    if visitor:
+        post['uploaderVisitor'] = visitor
+    if uploader_team_id:
+        post['uploaderTeamId'] = uploader_team_id
     board['posts'].append(post)
     return post
+
+
+def can_delete(post, visitor=None, team_id=None, admin=False):
+    if post.get('example'):
+        return False
+    return bool(admin or (isinstance(visitor, str) and visitor and
+                          isinstance(post.get('uploaderVisitor'), str) and
+                          hmac.compare_digest(visitor, post['uploaderVisitor'])) or
+                (team_id and post.get('uploaderTeamId') == team_id))
+
+
+def remove_clip(db, week, clip_id, visitor=None, team_id=None, admin=False, now=None):
+    """Withdraw a post and its discussion; retain private recovery/audit evidence.
+
+    Already-settled prizes are immutable, even if an archived winner is removed.
+    """
+    if not isinstance(week, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', week):
+        raise ValueError('Indica la semana del clip.')
+    if not isinstance(clip_id, str) or not clip_id or len(clip_id) > 80:
+        raise ValueError('Indica un clip válido.')
+    boards = [db.get('clips') or {}, *db.get('clipArchives', {}).values()]
+    board = next((b for b in boards if b.get('week') == week), None)
+    post = next((p for p in (board or {}).get('posts', []) if p['id'] == clip_id), None)
+    deleted = db.get('deletedClips', {}).get(clip_id)
+    if post is None:
+        if deleted and deleted.get('week') == week:
+            if not can_delete(deleted['post'], visitor, team_id, admin):
+                raise PermissionError('Solo quien publicó el clip o el administrador puede borrarlo.')
+            return False  # A retry after a lost response cannot delete twice.
+        raise LookupError('Clip no encontrado en esta semana.')
+    if not can_delete(post, visitor, team_id, admin):
+        raise PermissionError('Solo quien publicó el clip o el administrador puede borrarlo.')
+    db.setdefault('deletedClips', {})[clip_id] = {
+        'week': week, 'post': copy.deepcopy(post), 'deletedAt': time.time() if now is None else now,
+        'deletedBy': 'admin' if admin else 'uploader', 'teamId': team_id if not admin else None}
+    board['posts'] = [p for p in board['posts'] if p['id'] != clip_id]
+    return True
 
 
 def set_like(board, clip_id, team_id, visitor, liked, now=None):

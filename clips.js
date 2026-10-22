@@ -20,6 +20,9 @@
   let voting = null;
   let seen = new Set();
   const commentStates = new Map();
+  let moderationPin = '';
+  const moderationForm = document.getElementById('clips-moderation');
+  if (moderationForm) moderationForm.hidden = new URLSearchParams(location.search).get('moderate') !== '1';
 
   function commentState(id, week = currentWeek) {
     const key = `${week}:${id}`;
@@ -139,6 +142,20 @@
             </section>`}</div>`;
         }
         const viewed = seen.has(clip.id);
+        let deleteButton = post.querySelector('[data-delete-clip]');
+        if (clip.canDelete && !deleteButton) {
+          deleteButton = document.createElement('button');
+          deleteButton.type = 'button';
+          deleteButton.className = 'clip-delete';
+          deleteButton.dataset.deleteClip = clip.id;
+          deleteButton.textContent = '🗑 Borrar';
+          post.querySelector('.clip-footer').append(deleteButton);
+        }
+        if (deleteButton) {
+          deleteButton.hidden = !clip.canDelete;
+          deleteButton.disabled = busy || loadingWeek;
+          deleteButton.setAttribute('aria-label', `Borrar clip: ${clip.title}`);
+        }
         const seenButton = post.querySelector('[data-seen]');
         seenButton.setAttribute('aria-pressed', viewed);
         seenButton.setAttribute('aria-label', `${viewed ? 'Marcar como no visto' : 'Marcar como visto'}: ${clip.title}`);
@@ -160,6 +177,10 @@
     weekSelect.disabled = !ready || busy || loadingWeek;
     publish.disabled = !ready || busy || weekClosed || loadingWeek || !availableTeams.length;
     form.querySelector('button[type="submit"]').disabled = !ready || busy || weekClosed || !availableTeams.length;
+    if (moderationForm) {
+      moderationForm.querySelector('[type="submit"]').disabled = busy || loadingWeek;
+      document.getElementById('clips-moderation-end').disabled = busy || loadingWeek;
+    }
   }
 
   async function request(path, data) {
@@ -317,7 +338,9 @@
     if (document.hidden || busy || (loadingWeek && forWeekChange !== true)) return false;
     const version = ++requestVersion;
     try {
-      const result = await request(`/clips${selectedWeek ? '?week=' + encodeURIComponent(selectedWeek) : ''}`);
+      const result = moderationPin
+        ? await request('/clips/moderate', {authPin: moderationPin, ...(selectedWeek ? {week: selectedWeek} : {})})
+        : await request(`/clips${selectedWeek ? '?week=' + encodeURIComponent(selectedWeek) : ''}`);
       if (version !== requestVersion || busy) return false;
       apply(result);
       return true;
@@ -383,6 +406,27 @@
     }
   });
   feed.addEventListener('click', async event => {
+    const deleteButton = event.target.closest('[data-delete-clip]');
+    if (deleteButton) {
+      if (busy || loadingWeek) return;
+      const id = deleteButton.dataset.deleteClip;
+      const clip = clips.find(item => item.id === id);
+      if (!clip?.canDelete || !window.confirm(`¿Borrar «${clip.title}»? Se retirarán también sus comentarios y likes. Los premios ya concedidos no cambian.`)) return;
+      busy = true;
+      ++requestVersion;
+      render();
+      try {
+        const result = await request('/clips/delete', {clipId: id, week: currentWeek, ...(moderationPin ? {authPin: moderationPin} : {})});
+        opened.delete(id);
+        commentStates.delete(`${currentWeek}:${id}`);
+        apply(result);
+        feedback.textContent = 'Clip eliminado del listado.';
+        document.querySelector('[data-clips-sort]')?.focus({preventScroll: true});
+      } catch (failure) {
+        feedback.textContent = failure.message;
+      } finally { busy = false; render(); }
+      return;
+    }
     const commentsToggle = event.target.closest('[data-comments-toggle]');
     if (commentsToggle) {
       const id = commentsToggle.dataset.commentsToggle;
@@ -554,6 +598,34 @@
   });
 
   publish.disabled = true;
+  moderationForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (busy || loadingWeek) return;
+    const input = document.getElementById('clips-admin-pin');
+    const pin = input.value.trim();
+    const status = document.getElementById('clips-moderation-status');
+    busy = true;
+    ++requestVersion;
+    render();
+    try {
+      const result = await request('/clips/moderate', {authPin: pin, ...(selectedWeek ? {week: selectedWeek} : {})});
+      moderationPin = pin; // In memory only; never in storage or URLs.
+      input.value = '';
+      apply(result);
+      status.textContent = 'Moderación activa: puedes borrar cualquier clip, incluidos los antiguos.';
+      document.getElementById('clips-moderation-end').hidden = false;
+    } catch (failure) { status.textContent = failure.message; }
+    finally { busy = false; render(); }
+  });
+  document.getElementById('clips-moderation-end')?.addEventListener('click', () => {
+    moderationPin = '';
+    ++requestVersion;
+    for (const clip of clips) clip.canDelete = false;
+    render();
+    document.getElementById('clips-moderation-status').textContent = 'Moderación desactivada.';
+    document.getElementById('clips-moderation-end').hidden = true;
+    refresh();
+  });
   form.querySelector('button[type="submit"]').disabled = true;
   feed.innerHTML = '<p class="clips-empty">Cargando clips…</p>';
   async function poll() {

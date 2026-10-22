@@ -46,6 +46,13 @@
       <button type="button" class="clips-publish" id="clips-publish" aria-expanded="false" aria-controls="clips-form"><i class="fa-solid fa-plus" aria-hidden="true"></i> Publicar clip</button>
     </div>
     <div class="clips-week-selector"><label for="clips-week-select">Semana de clips</label><select id="clips-week-select" class="form-control" aria-describedby="clips-archive-status" disabled><option value="">Cargando semanas…</option></select><p id="clips-archive-status" aria-live="polite"></p></div>
+    <form id="clips-moderation" class="clips-form" hidden>
+      <h2>Moderar clips</h2>
+      <label for="clips-admin-pin">PIN de administrador</label>
+      <input id="clips-admin-pin" class="form-control" type="password" autocomplete="off" required>
+      <div class="clips-form-actions"><button class="clips-publish" type="submit">Activar moderación</button><button id="clips-moderation-end" class="clips-secondary" type="button" hidden>Salir de moderación</button></div>
+      <p id="clips-moderation-status" role="status"></p>
+    </form>
     <div class="clips-preview-note"><i class="fa-brands fa-twitch" aria-hidden="true"></i><span>Cargando la semana actual…</span></div>
     <div class="clips-layout">
       <section class="clips-content" aria-label="Publicaciones de la semana">

@@ -22,7 +22,7 @@ const path = require('node:path');
       const url = new URL(req.url());
       if (url.origin !== 'http://pepes.test') return route.abort();
       if (url.pathname.startsWith('/api/')) {
-        if (req.method() === 'POST') {
+        if (req.method() === 'POST' && url.pathname.startsWith('/api/clips')) {
           writes.push({path: url.pathname, body: req.postDataJSON(), authorization:req.headers().authorization});
           if (url.pathname === '/api/clips/like') {
             const body = req.postDataJSON();

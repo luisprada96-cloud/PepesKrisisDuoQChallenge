@@ -2593,6 +2593,40 @@ class CustomHandler(BaseHTTPRequestHandler):
             self._send_json({'success': True, 'postId': post['id'], **tierlists_service.public_board(db, team_id, clips_service.visitor_hash(visitor_token), kind=post['kind'])})
             return
 
+        if parsed.path in ('/api/clips/delete', '/api/clips/moderate'):
+            if (not self.clips_origin_allowed() or self.headers.get('Sec-Fetch-Site') == 'cross-site'
+                    or self.headers.get('Content-Type', '').split(';')[0].strip().lower() != 'application/json'):
+                self._send_json({'error': 'Solicitud no permitida. Usa JSON desde esta web.'}, 403)
+                return
+            admin = False
+            if parsed.path == '/api/clips/moderate' or 'authPin' in data:
+                admin = verify_admin_pin(db, str(data.get('authPin', '')).strip())
+                if not admin:
+                    self._send_json({'error': 'PIN de administrador incorrecto.'}, 401)
+                    return
+            token = self.clips_visitor()
+            if not token and not admin:
+                self._send_json({'error': 'Activa las cookies y recarga la página.'}, 401)
+                return
+            visitor = clips_service.visitor_hash(token) if token else None
+            team_id = self.clips_team(db)
+            try:
+                if parsed.path == '/api/clips/delete':
+                    changed = clips_service.remove_clip(db, data.get('week'), data.get('clipId'), visitor, team_id, admin)
+                    if changed:
+                        save_db(db)
+                result, changed = clips_service.public_payload(db, team_id, CLIPS_PREVIEW, visitor, data.get('week'), admin=admin)
+                if changed:
+                    save_db(db)
+            except PermissionError as error:
+                self._send_json({'error': str(error)}, 403)
+                return
+            except LookupError as error:
+                self._send_json({'error': str(error)}, 404)
+                return
+            self._send_json({'success': True, **result}, headers={'Vary': 'Cookie, Authorization'})
+            return
+
         if parsed.path == '/api/clips/comments':
             if not self.clips_origin_allowed():
                 self._send_json({'error':'Origen no permitido.'}, 403)
@@ -2645,7 +2679,8 @@ class CustomHandler(BaseHTTPRequestHandler):
                     changed = clips_service.set_like(board, data.get('clipId'), team_id, clips_service.visitor_hash(visitor_token), data.get('liked')) or changed
                 else:
                     team = next((duo for duo in db.get('duos', []) if duo['id'] == data.get('teamId')), None)
-                    clips_service.publish(board, data.get('title'), data.get('url'), team=team)
+                    clips_service.publish(board, data.get('title'), data.get('url'), team=team,
+                                          visitor=clips_service.visitor_hash(visitor_token), uploader_team_id=team_id)
                     changed = True
             except LookupError as error:
                 if changed:
