@@ -92,10 +92,8 @@ SECRET_HASH_PREFIX = "pbkdf2_sha256"
 PENALTY_CATALOG = [
     {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido por la ruleta (50/50) debe jugar fuera de su rol principal.", "defaultWeight": 12},
     {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Los dos deben jugar fuera de sus roles principales.", "defaultWeight": 5},
-    {"id": "no_main_champion_one", "baseId": "no_main_champion", "scope": "ONE", "name": "Sin campeón favorito · UNO", "icon": "🚫", "desc": "El integrante elegido por la ruleta (50/50) debe evitar su campeón más jugado.", "defaultWeight": 16},
-    {"id": "no_main_champion_both", "baseId": "no_main_champion", "scope": "BOTH", "name": "Sin campeón favorito · AMBOS", "icon": "🚫", "desc": "Los dos deben evitar sus campeones más jugados.", "defaultWeight": 7},
-    {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido por la ruleta (50/50) debe jugar su campeón aleatorio asignado.", "defaultWeight": 12},
-    {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón aleatorio asignado.", "defaultWeight": 5},
+    {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido por la ruleta (50/50) debe jugar su campeón aleatorio asignado.", "defaultWeight": 28},
+    {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón aleatorio asignado.", "defaultWeight": 12},
     {"id": "no_flash_one", "baseId": "no_flash", "scope": "ONE", "name": "Sin Flash · UNO", "icon": "⚡", "desc": "El integrante elegido por la ruleta (50/50) debe jugar sin Flash.", "defaultWeight": 14},
     {"id": "no_flash_both", "baseId": "no_flash", "scope": "BOTH", "name": "Sin Flash · AMBOS", "icon": "⚡", "desc": "Los dos deben jugar sin Flash.", "defaultWeight": 6},
     {"id": "swap_flash_one", "baseId": "swap_flash", "scope": "ONE", "name": "Flash al otro lado · UNO", "icon": "🔄", "desc": "El integrante elegido por la ruleta (50/50) debe llevar Flash en la posición contraria a la registrada en su primera partida con Flash. El otro hechizo es libre.", "defaultWeight": 12},
@@ -185,6 +183,11 @@ def default_penalty_weights():
     return {item["id"]: item["defaultWeight"] for item in PENALTY_CATALOG}
 
 RETIRED_PENALTY_IDS = {"no_boots", "basic_boots_15", "basic_boots_15_one", "basic_boots_15_both"}
+# Remove these outcomes from future draws, without cancelling already assigned penalties.
+REPLACED_PENALTY_WEIGHTS = {
+    "no_main_champion_one": "random_champion_one",
+    "no_main_champion_both": "random_champion_both",
+}
 
 
 def is_retired_penalty(penalty):
@@ -192,8 +195,12 @@ def is_retired_penalty(penalty):
 
 
 def without_retired_weights(weights):
-    """Preserve remaining odds, recovering old wheels with only retired outcomes."""
-    remaining = {key: value for key, value in weights.items() if key not in RETIRED_PENALTY_IDS}
+    """Transfer removed favorite odds by scope; preserve all other available odds."""
+    remaining = {key: value for key, value in weights.items()
+                 if key not in RETIRED_PENALTY_IDS and key not in REPLACED_PENALTY_WEIGHTS}
+    for old_id, replacement in REPLACED_PENALTY_WEIGHTS.items():
+        if old_id in weights:
+            remaining[replacement] = int(remaining.get(replacement, 0) or 0) + int(weights[old_id] or 0)
     if any(int(weights.get(key, 0) or 0) > 0 for key in RETIRED_PENALTY_IDS):
         if not any(int(remaining.get(item["id"], 0) or 0) > 0 for item in PENALTY_CATALOG):
             return default_penalty_weights()
@@ -207,7 +214,7 @@ def retire_removed_penalties(db):
     for owner in wheels:
         key = "penaltyWeights" if owner is config else "wheelSnapshot"
         weights = owner.get(key)
-        if isinstance(weights, dict) and RETIRED_PENALTY_IDS.intersection(weights):
+        if isinstance(weights, dict) and (RETIRED_PENALTY_IDS | REPLACED_PENALTY_WEIGHTS.keys()).intersection(weights):
             owner[key] = without_retired_weights(weights)
             changed = True
     for duo in db.get("duos", []):
@@ -232,6 +239,7 @@ def ensure_shell_schema(db):
     if not isinstance(configured, dict):
         config["penaltyWeights"] = defaults
     else:
+        configured = without_retired_weights(configured)
         config["penaltyWeights"] = {
             item["id"]: int(configured.get(item["id"], defaults[item["id"]]) or 0)
             for item in PENALTY_CATALOG
@@ -397,6 +405,7 @@ def create_pending_shell(db, attacker, target, wheel_snapshot=None, returned_fro
 
 
 def weighted_penalty(snapshot):
+    snapshot = without_retired_weights(snapshot)
     available = [(item, max(0, int(snapshot.get(item["id"], 0) or 0))) for item in PENALTY_CATALOG]
     total = sum(weight for _, weight in available)
     if total <= 0:
@@ -3056,6 +3065,8 @@ class CustomHandler(BaseHTTPRequestHandler):
             new_config.pop("twitchClientSecretConfigured", None)
             submitted_weights = new_config.get("penaltyWeights", {})
             try:
+                # An admin tab opened before deployment may still submit the old catalog.
+                submitted_weights = without_retired_weights(submitted_weights)
                 normalized_weights = {item["id"]: max(0, int(submitted_weights.get(item["id"], 0))) for item in PENALTY_CATALOG}
             except (TypeError, ValueError):
                 self._send_json({"success": False, "error": "Los porcentajes de la ruleta deben ser números enteros."}, 400)

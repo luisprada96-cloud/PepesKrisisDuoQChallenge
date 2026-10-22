@@ -13,7 +13,7 @@ const vm = require('node:vm');
   assert.equal(core.window.ShellRoulette.revealMs, 4704);
   assert.equal(core.window.ShellRoulette.frame(state, 5703).revealed, false);
   for (let elapsed = 0; elapsed < core.window.ShellRoulette.revealMs; elapsed += 25) {
-    assert.doesNotMatch(core.window.ShellRoulette.frame(state, state.startedAt + elapsed).name, /BOTAS/);
+    assert.doesNotMatch(core.window.ShellRoulette.frame(state, state.startedAt + elapsed).name, /BOTAS|FAVORITO/);
   }
   assert.equal(core.window.ShellRoulette.frame(state, 5704).revealed, true);
   assert.equal(core.window.ShellRoulette.frame({...state,penalty:{...state.penalty,assignment:'Debe cumplirlo: Luis'}},5704).assignment,'Debe cumplirlo: Luis');

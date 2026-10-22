@@ -18,6 +18,9 @@ def duo_fixture():
 
 
 def catalog(base, scope='ONE'):
+    if base == 'no_main_champion':
+        # Historical assignments remain enforceable, but are no longer in the roulette.
+        return {'id': f'{base}_{scope.lower()}', 'baseId': base, 'scope': scope}
     return next(p for p in server.PENALTY_CATALOG if p['baseId'] == base and p['scope'] == scope)
 
 

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const options = [
-    {name: 'POLIVALENTE', icon: '🎲'}, {name: 'SIN CAMPEÓN FAVORITO', icon: '🚫'},
+    {name: 'POLIVALENTE', icon: '🎲'},
     {name: 'CAMPEÓN ALEATORIO', icon: '🎯'}, {name: 'SIN FLASH', icon: '⚡'},
     {name: 'FLASH AL OTRO LADO', icon: '🔄'},
     {name: 'DEVUELVE EL PEPAZO', icon: '↩️'}
