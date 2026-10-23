@@ -61,7 +61,7 @@ class PenaltyAssignmentTests(unittest.TestCase):
                     def qualify(key, passed):
                         stats = game[f'{key}Stats']
                         if base == 'autofill':
-                            stats['position'] = 'MIDDLE' if passed else duo[key]['mainRole']
+                            stats['position'] = req['randomPositions'].get(key, 'MIDDLE') if passed else duo[key]['mainRole']
                         elif base == 'no_main_champion':
                             stats['championName'] = 'Lux' if passed else req['favoriteChampions'][key][0]
                         elif base == 'random_champion':

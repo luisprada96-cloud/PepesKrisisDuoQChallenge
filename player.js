@@ -199,7 +199,10 @@ function renderOutgoingShells() {
     const result = attack.result;
     const status = attack.status === 'PENDING_SPIN' ? 'Esperando que el rival gire' :
       attack.status === 'RETURNED' ? 'Pepazo devuelto' : (result ? result.name : attack.status);
-    return `<div class="outgoing-shell-row"><span>→ ${escapeHtml(attack.targetName || 'Rival')}</span><strong>${escapeHtml(status)}</strong></div>`;
+    const target = allDuos.find(duo => duo.id === attack.targetTeamId) || {};
+    const assignment = result?.baseId === 'autofill' && attack.requirements?.randomPositions
+      ? penaltyAssignmentText({...attack, penalty: result}, target) : '';
+    return `<div class="outgoing-shell-row"><span>→ ${escapeHtml(attack.targetName || 'Rival')}</span><div class="outgoing-shell-result"><strong>${escapeHtml(status)}</strong>${assignment ? `<div class="penalty-assignment">${escapeHtml(assignment)}</div>` : ''}</div></div>`;
   }).join('');
 }
 

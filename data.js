@@ -109,16 +109,22 @@ function penaltyAssignmentText(instance, duo = {}) {
     const slot = req.flashBaselines?.[key]?.slot;
     return slot === 1 || slot === 2 ? `Flash en ${slot === 1 ? 'F' : 'D'} (posición ${slot === 1 ? 2 : 1})` : 'Referencia pendiente: primera partida con Flash';
   };
+  const positionInstruction = key => {
+    if (!Object.prototype.hasOwnProperty.call(req, 'randomPositions')) return '';
+    const positions = {TOP:'Top', JUNGLE:'Jungla', MIDDLE:'Mid', BOTTOM:'ADC', UTILITY:'Support'};
+    return positions[req.randomPositions?.[key]] ? `Posición: ${positions[req.randomPositions[key]]}` : 'Posición pendiente: falta conocer el rol principal';
+  };
   if (scope === 'ONE') {
     const key = req.assignedPlayer;
     if (key !== 'player1' && key !== 'player2') return req.assignmentVersion >= 2 ? 'Asignación pendiente' : 'Puede cumplirlo cualquiera de los dos (castigo anterior).';
-    return `Debe cumplirlo: ${label(key, req.assignedAccount)}${req.randomChampions?.[key] ? ` · Campeón: ${championDisplayName(req.randomChampions[key])}` : ''}${flashInstruction(key) ? ` · ${flashInstruction(key)}` : ''}`;
+    return `Debe cumplirlo: ${label(key, req.assignedAccount)}${req.randomChampions?.[key] ? ` · Campeón: ${championDisplayName(req.randomChampions[key])}` : ''}${positionInstruction(key) ? ` · ${positionInstruction(key)}` : ''}${flashInstruction(key) ? ` · ${flashInstruction(key)}` : ''}`;
   }
   if (scope === 'BOTH') {
     const champions = ['player1', 'player2'].filter(key => req.randomChampions?.[key])
       .map(key => `${label(key)}: ${championDisplayName(req.randomChampions[key])}`);
     const flash = instance?.penalty?.baseId === 'swap_flash' ? ['player1','player2'].map(key => `${label(key, req.flashAccounts?.[key])}: ${flashInstruction(key)}`) : [];
-    return `Lo cumplen ambos integrantes.${champions.length ? ' ' + champions.join(' · ') : ''}${flash.length ? ' ' + flash.join(' · ') : ''}`;
+    const positions = Object.prototype.hasOwnProperty.call(req, 'randomPositions') ? ['player1','player2'].map(key => `${label(key)} · ${positionInstruction(key)}`) : [];
+    return `Lo cumplen ambos integrantes.${champions.length ? ' ' + champions.join(' · ') : ''}${positions.length ? ' ' + positions.join(' · ') : ''}${flash.length ? ' ' + flash.join(' · ') : ''}`;
   }
   return '';
 }

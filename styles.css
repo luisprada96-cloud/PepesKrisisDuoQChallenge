@@ -833,6 +833,8 @@ body {
 
 .outgoing-shell-row span { color: var(--text-muted); }
 .outgoing-shell-row strong { color: var(--gold-hextech); text-align: right; }
+.outgoing-shell-result { min-width: 0; text-align: right; }
+.outgoing-shell-result .penalty-assignment { font-size: .74rem; }
 
 .penalty-weights-grid {
   display: grid;

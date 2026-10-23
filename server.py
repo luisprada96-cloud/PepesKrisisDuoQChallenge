@@ -90,8 +90,8 @@ SECRET_HASH_ITERATIONS = 260000
 SECRET_HASH_PREFIX = "pbkdf2_sha256"
 
 PENALTY_CATALOG = [
-    {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido por la ruleta (50/50) debe jugar fuera de su rol principal.", "defaultWeight": 12},
-    {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Los dos deben jugar fuera de sus roles principales.", "defaultWeight": 5},
+    {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido por la ruleta (50/50) debe jugar en la posición sorteada entre las cuatro distintas de su rol principal.", "defaultWeight": 12},
+    {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Cada integrante debe jugar en su posición sorteada entre las cuatro distintas de su rol principal.", "defaultWeight": 5},
     {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido por la ruleta (50/50) debe jugar su campeón aleatorio asignado.", "defaultWeight": 28},
     {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón aleatorio asignado.", "defaultWeight": 12},
     {"id": "no_flash_one", "baseId": "no_flash", "scope": "ONE", "name": "Sin Flash · UNO", "icon": "⚡", "desc": "El integrante elegido por la ruleta (50/50) debe jugar sin Flash.", "defaultWeight": 14},
@@ -474,11 +474,13 @@ def fill_pending_penalty_roles(duo):
         keys = (assigned,) if scope == 'ONE' and assigned in ('player1','player2') else ('player1','player2')
         roles, updated = req.setdefault('mainRoles', {}), False
         for key in keys:
-            if roles.get(key) in VALID_MAIN_ROLES:
-                continue
-            position = participant_roles.role_summary(duo, key)['position']
-            if position:
-                roles[key] = position
+            if roles.get(key) not in VALID_MAIN_ROLES:
+                position = participant_roles.role_summary(duo, key)['position']
+                if position:
+                    roles[key] = position
+                    updated = True
+            if 'randomPositions' in req and roles.get(key) in VALID_MAIN_ROLES and not req['randomPositions'].get(key):
+                req['randomPositions'][key] = secrets.choice(tuple(role for role in participant_roles.POSITIONS if role != roles[key]))
                 updated = True
         if updated:
             changed.append(debuff)
@@ -570,7 +572,7 @@ def fill_pending_flash_baselines(duo):
     return changed
 
 
-def penalty_requirements(duo, penalty, duos):
+def penalty_requirements(duo, penalty, duos, assign_positions=True):
     requirements = {
         "mainRoles": {key: participant_roles.role_summary(duo, key, time.time()*1000)['position'] for key in ("player1", "player2")},
         "favoriteChampions": favorite_snapshot(duo)
@@ -591,6 +593,12 @@ def penalty_requirements(duo, penalty, duos):
         pool = champion_pool(duos)
         keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
         requirements["randomChampions"] = {key: secrets.choice(pool) for key in keys}
+    if penalty.get("baseId") == "autofill" and assign_positions:
+        keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
+        requirements["randomPositions"] = {
+            key: secrets.choice(tuple(role for role in participant_roles.POSITIONS if role != requirements["mainRoles"][key]))
+            for key in keys if requirements["mainRoles"].get(key) in VALID_MAIN_ROLES
+        }
     if penalty.get("baseId") == "swap_flash":
         keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
         requirements["flashAccounts"] = {key: flash_account(duo.get(key) or {}) for key in keys}
@@ -650,7 +658,7 @@ def migrate_legacy_penalties(db):
                 changed = True
             if "requirements" not in debuff:
                 # Already-open penalties keep their original scope and player assignment.
-                legacy_requirements = penalty_requirements(duo, {**debuff.get("penalty", {}), "scope": "BOTH"}, db.get("duos", []))
+                legacy_requirements = penalty_requirements(duo, {**debuff.get("penalty", {}), "scope": "BOTH"}, db.get("duos", []), assign_positions=False)
                 if (debuff.get("scope") or debuff.get("penalty", {}).get("scope")) == "ONE" and debuff.get("penalty", {}).get("baseId") == "random_champion":
                     key = secrets.choice(("player1", "player2"))
                     legacy_requirements["assignedPlayer"] = key
@@ -1210,6 +1218,8 @@ def evaluate_active_penalties(duo, match):
             if base_id == "autofill":
                 actual, primary = stats.get("position"), req.get("mainRoles", {}).get(player_key)
                 results[player_key] = actual in VALID_MAIN_ROLES and primary in VALID_MAIN_ROLES and actual != primary
+                if "randomPositions" in req:
+                    results[player_key] = results[player_key] and actual == req["randomPositions"].get(player_key)
             elif base_id == "no_main_champion":
                 forbidden = req.get("favoriteChampions", {}).get(player_key, [])
                 results[player_key] = bool(forbidden) and bool(stats.get("championName")) and stats.get("championName") not in forbidden
@@ -1251,6 +1261,8 @@ def evaluate_active_penalties(duo, match):
             debuff["evidence"] = {"players": results, "matchId": match.get("matchId"),
                                   "assignedPlayer": req.get("assignedPlayer"),
                                   "assignedAccount": copy.deepcopy(req.get("assignedAccount"))}
+            if base_id == "autofill" and "randomPositions" in req:
+                debuff["evidence"]["randomPositions"] = copy.deepcopy(req["randomPositions"])
             if base_id == "swap_flash":
                 debuff["evidence"]["flashBaselines"] = {key: value for key, value in flash_evidence.items() if key in req.get("flashAccounts", req.get("flashBaselines", {}))}
                 debuff["evidence"]["summonerSpellIds"] = {key: list((match.get(f"{key}Stats") or {}).get("summonerSpellIds") or []) for key in req.get("flashBaselines", {})}

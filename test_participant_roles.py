@@ -83,7 +83,7 @@ class ParticipantRoleTests(unittest.TestCase):
         roles.update_roles(duo);server.fill_pending_penalty_roles(duo)
         self.assertEqual(duo['player1']['mainRole'],'MIDDLE')
         self.assertEqual(req['mainRoles']['player1'],'TOP')
-        self.assertEqual(server.evaluate_active_penalties(duo,game(7,'MIDDLE','BOTTOM')),1)
+        self.assertEqual(server.evaluate_active_penalties(duo,game(7,req['randomPositions']['player1'],req['randomPositions']['player2'])),1)
 
     def test_pending_automatic_roles_fill_once_without_rewriting_legacy_penalties(self):
         duo=team()

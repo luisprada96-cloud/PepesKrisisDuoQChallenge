@@ -265,6 +265,12 @@ La evaluación de Polivalente, Sin campeón favorito, Campeón aleatorio, Sin Fl
 
 Los castigos que ya estaban abiertos sin destinatario conservan la regla anterior (puede cumplirlos cualquiera); las asignaciones anteriores de campeón aleatorio también se conservan. Los castigos de AMBOS siguen exigiendo a ambos. `test_penalty_assignments.py` verifica todos los tipos, ambos destinatarios, persistencia, compatibilidad y una sincronización completa con respuestas de Riot simuladas.
 
+### Polivalente: posición sorteada
+
+Los nuevos Polivalente sortean también una posición entre las cuatro distintas del rol principal, calculado con las partidas del participante. UNO sortea únicamente para el integrante elegido; AMBOS hace un sorteo independiente por integrante. `requirements.randomPositions` conserva las posiciones junto al rol principal de referencia. Las posiciones no cambian al recargar, reiniciar ni actualizar el historial. Si falta historial para conocer el rol principal, la web indica «Posición pendiente»; la siguiente sincronización con datos suficientes fija la referencia y realiza el sorteo una sola vez.
+
+La posición aparece junto al jugador al revelar el resultado en las ruletas del panel y de la ventana externa, en sus castigos pendientes y cumplidos, en administración, en el historial público y en los últimos lanzamientos del atacante. Una partida posterior a la asignación completa el pepazo solo si cada afectado juega la posición sorteada; jugar otra posición fuera de su principal no basta. La evidencia conserva las posiciones requeridas. Los Polivalente anteriores conservan sus condiciones originales. `test_polivalente.py` y `test_polivalente_frontend.cjs` verifican selección, persistencia, cumplimiento y presentación.
+
 ### Pepazo reverso
 
 «Devuelve el pepazo» crea un ataque `PENDING_SPIN` en la bandeja del equipo que lo lanzó. El receptor original devuelve el ataque sin gastar inventario y el atacante original debe girar su propia ruleta para recibir el castigo. No se devuelve una unidad al inventario; tener cero pepazos o el inventario lleno no impide recibirlo. El nuevo ataque activa las mismas notificaciones personales y aparece como «Pepazo devuelto por…» en Mi Panel.
