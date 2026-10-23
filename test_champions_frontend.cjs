@@ -12,7 +12,7 @@ const path=require('node:path');
     const participants=[{name:'UnluckyPingu',teamName:'LosELOgidos',games:3,statsGames:3,kills:15,deaths:3,assists:6,kda:7,resultGames:3,wins:2,losses:1,winrate:100*2/3},
       {name:'UnluckyPanda',teamName:'LosELOgidos',games:1,statsGames:1,kills:4,deaths:0,assists:7,kda:11,resultGames:1,wins:0,losses:1,winrate:0}];
     const board=()=>{
-      const champions=catalog.champions.map(row=>({id:row.id,name:row.label,games:picks[row.id]||0,played:!!picks[row.id],players:row.id==='Ahri'?participants:[]}));
+      const champions=catalog.champions.map(row=>({id:row.id,name:row.label,games:picks[row.id]||0,played:!!picks[row.id],players:row.id==='Ahri'?participants:row.id==='Lux'?[{name:'Otro jugador',games:2,statsGames:2,kills:10,deaths:1,assists:10,kda:20,resultGames:2,wins:0,losses:2,winrate:0}]:[]}));
       champions.sort((a,b)=>b.games-a.games||a.name.localeCompare(b.name,'es'));
       return {champions,catalogVersion:catalog.version,totalChampions:champions.length,playedChampions:Object.keys(picks).length,totalPicks:Object.values(picks).reduce((a,b)=>a+b,0),totalMatches:4,pendingMatches:1};
     };
@@ -26,6 +26,7 @@ const path=require('node:path');
       if(url.pathname.startsWith('/api/')){
         requests.push({path:url.pathname,method:route.request().method()});
         if(url.pathname==='/api/sync/status')return route.fulfill({json:{riot:{},twitch:{}}});
+        if(url.pathname==='/api/player/state')return route.fulfill({status:401,json:{success:false,error:'Sin sesión'}});
         assert.equal(url.pathname,'/api/champions');
         return fail?route.fulfill({status:503,json:{error:'unavailable'}}):route.fulfill({json:board()});
       }
@@ -40,6 +41,19 @@ const path=require('node:path');
     assert.equal(await page.locator('[aria-current=page]').getAttribute('href'),'campeones.html');
     assert.equal(await page.locator('.champion-tile').first().getAttribute('data-champion-id'),'Ahri');
     assert.equal(await page.locator('.champion-tile.is-played').count(),3);
+    const firstIds = () => page.locator('.champion-tile').evaluateAll(tiles=>tiles.slice(0,3).map(tile=>tile.dataset.championId));
+    const requestsBeforeSort = requests.length;
+    await page.getByLabel('Ordenar por').selectOption('kda');
+    assert.deepEqual(await firstIds(),['Lux','Ahri','MonkeyKing']);
+    await page.getByLabel('Ordenar por').selectOption('winrate');
+    assert.deepEqual(await firstIds(),['Ahri','Lux','MonkeyKing'],'Known zero winrate precedes pending results; use pooled wins, not a mean of player percentages.');
+    await page.locator('#champions-search').fill('lux');
+    assert.equal(await page.locator('.champion-tile').count(),1);
+    assert.equal(await page.getByLabel('Ordenar por').inputValue(),'winrate');
+    await page.locator('#champions-search').fill('');
+    assert.equal(requests.length,requestsBeforeSort,'Sorting and searching use already loaded tournament data.');
+    await page.getByLabel('Ordenar por').selectOption('games');
+    assert.deepEqual(await firstIds(),['Ahri','Lux','MonkeyKing']);
     assert.equal(await page.locator('#champions-progress').textContent(),`3 / ${catalog.champions.length}`);
     assert.equal(await page.locator('#champions-picks').textContent(),'7');
     assert.equal(await page.locator('#champions-warning').isVisible(),true);
@@ -86,9 +100,12 @@ const path=require('node:path');
     assert.match(await page.locator('#champions-status').textContent(),/Conexión interrumpida/);
     await page.locator('#champions-search').fill('');
     fail=false;picks={Ahri:5,Lux:2,MonkeyKing:1,Zed:1};participants[0].games=4;
+    await page.getByLabel('Ordenar por').selectOption('kda');
     await page.locator('#champions-refresh').click();
     await page.waitForFunction(()=>document.querySelector('#champions-picks').textContent==='9');
     assert.equal(await page.locator('.champion-tile.is-played').count(),4);
+    assert.equal(await page.getByLabel('Ordenar por').inputValue(),'kda');
+    assert.equal(await page.locator('.champion-tile').first().getAttribute('data-champion-id'),'Lux');
     for(const width of [1440,768,390,320]){
       await page.setViewportSize({width,height:950});
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`album fits ${width}px`);
@@ -120,7 +137,7 @@ const path=require('node:path');
       await page.waitForTimeout(process.env.CHAMPIONS_REAL_IMAGES?2000:100);
       await page.screenshot({path:process.env.CHAMPIONS_SCREENSHOT});
     }
-    assert.ok(requests.every(request=>request.method==='GET'));
+    assert.ok(requests.every(request=>request.method==='GET'||(request.path==='/api/player/state'&&request.method==='POST')));
     assert.deepEqual(errors,[]);
     console.log('PASS: full catalog, sorted picks, grayscale only played champions, hover/focus/touch, search, offline preservation, refresh and 4 screen sizes.');
   }finally{await browser.close();}

@@ -5,10 +5,8 @@
   const key = value => String(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('es');
   let board = null, selected = '', timer, revision = 0, controller, disconnected = false;
   const detail = champion => `${champion.name} · ${champion.games === 1 ? '1 aparición' : `${champion.games} apariciones`} en el torneo.`;
-  function renderPanel(champion) {
-    $('champion-modal-title').textContent = champion.name;
-    const players = champion.players || [];
-    const totals = players.reduce((total, player) => {
+  function championTotals(champion) {
+    return (champion.players || []).reduce((total, player) => {
       if (player.statsGames > 0 && Number.isFinite(player.kda)) {
         total.games += player.statsGames;
         total.kills += player.kills;
@@ -22,6 +20,11 @@
       }
       return total;
     }, {games:0,kills:0,deaths:0,assists:0,resultGames:0,wins:0,losses:0});
+  }
+  function renderPanel(champion) {
+    $('champion-modal-title').textContent = champion.name;
+    const players = champion.players || [];
+    const totals = championTotals(champion);
     const generalKda = totals.games ? ((totals.kills + totals.assists) / Math.max(1,totals.deaths)).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) : champion.games ? 'pendiente' : '—';
     const partial = totals.games > 0 && totals.games < champion.games ? ` (parcial: ${totals.games} de ${champion.games} apariciones)` : '';
     const generalWinrate = totals.resultGames ? `${(100 * totals.wins / totals.resultGames).toLocaleString('es-ES',{maximumFractionDigits:1})} % (${totals.wins} V / ${totals.losses} D)` : champion.games ? 'pendiente' : '—';
@@ -39,7 +42,20 @@
   function render() {
     if (!board) return;
     const query = key($('champions-search').value.trim());
+    const order = $('champions-sort').value;
     const rows = board.champions.filter(champion => key(champion.name).includes(query) || key(champion.id).includes(query));
+    const scores = new Map(rows.map(champion => {
+      const totals = championTotals(champion);
+      const score = order === 'kda' ? (totals.games ? (totals.kills + totals.assists) / Math.max(1,totals.deaths) : null)
+        : order === 'winrate' ? (totals.resultGames ? 100 * totals.wins / totals.resultGames : null) : champion.games;
+      return [champion.id, score];
+    }));
+    rows.sort((a,b) => {
+      const first = scores.get(a.id), second = scores.get(b.id);
+      if (first === null && second !== null) return 1;
+      if (second === null && first !== null) return -1;
+      return (second - first) || b.games - a.games || a.name.localeCompare(b.name,'es');
+    });
     $('champions-progress').textContent = `${board.playedChampions} / ${board.totalChampions}`;
     $('champions-picks').textContent = String(board.totalPicks);
     $('champions-progress-bar').max = Math.max(1,board.totalChampions);
@@ -54,7 +70,8 @@
     }).join('');
     if (focused) [...$('champions-grid').querySelectorAll('[data-champion-id]')].find(tile => tile.dataset.championId === focused)?.focus({preventScroll:true});
     $('champions-empty').hidden = !!rows.length;
-    $('champions-status').textContent = disconnected ? 'Conexión interrumpida. Conservamos el último recuento confirmado; reintentaremos automáticamente.' : `${rows.length} campeones · Más jugados primero · ${board.totalMatches} ${board.totalMatches === 1 ? 'partida' : 'partidas'} del torneo`;
+    const orderLabel = {games:'Más partidas jugadas',kda:'Mayor KDA',winrate:'Mayor winrate'}[order];
+    $('champions-status').textContent = disconnected ? 'Conexión interrumpida. Conservamos el último recuento confirmado; reintentaremos automáticamente.' : `${rows.length} campeones · ${orderLabel} primero · ${board.totalMatches} ${board.totalMatches === 1 ? 'partida' : 'partidas'} del torneo`;
     $('champions-status').classList.toggle('is-error',disconnected);
     const current = board.champions.find(champion => champion.id === selected);
     if (current) $('champions-detail').textContent = detail(current);
@@ -88,6 +105,7 @@
   }
   document.addEventListener('DOMContentLoaded',() => {
     $('champions-search').addEventListener('input',render);
+    $('champions-sort').addEventListener('change',render);
     $('champions-refresh').addEventListener('click',refresh);
     const modal = $('champion-modal');
     $('champion-modal-close').addEventListener('click', () => modal.close());
