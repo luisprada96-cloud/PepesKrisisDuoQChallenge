@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let currentDuos = [];
 let currentConfig = {};
+let bestMatchesMode = 'duo';
 let countdownInterval = null;
 const expandedDuoIds = new Set();
 
@@ -374,6 +375,29 @@ function renderLeaderboardTable() {
 function renderBestMatchesTable() {
   const tbody = document.getElementById('best-matches-tbody');
   if (!tbody) return;
+  const solo = bestMatchesMode === 'solo';
+  document.querySelectorAll('[data-best-mode]').forEach(button => {
+    button.setAttribute('aria-pressed', String(button.dataset.bestMode === bestMatchesMode));
+    button.onclick = () => {
+      bestMatchesMode = button.dataset.bestMode;
+      renderBestMatchesTable();
+    };
+  });
+  const labels = {
+    'best-matches-entity': solo ? 'Jugador' : 'Dúo',
+    'best-matches-champions': solo ? 'Campeón' : 'Campeones',
+    'best-matches-positions': solo ? 'Línea' : 'Líneas',
+    'best-matches-kda': solo ? 'KDA individual' : 'KDA combinado',
+    'best-matches-formula': `KDA ${solo ? 'individual' : 'combinado'} = (K + A) ÷ muertes`
+  };
+  Object.entries(labels).forEach(([id, label]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = label;
+  });
+  if (solo) {
+    renderBestSoloMatches(tbody);
+    return;
+  }
 
   const ranked = [...currentDuos].sort((a, b) => {
       const matchA = a.bestCombinedKdaMatch;
@@ -439,6 +463,37 @@ function renderBestMatchesTable() {
       </tr>
     `;
   }).join('');
+}
+
+function renderBestSoloMatches(tbody) {
+  const ranked = currentDuos.flatMap(duo => ['player1', 'player2'].flatMap(key => {
+    const player = duo[key];
+    if (!player || !(player.displayName || player.name)) return [];
+    return [{player, teamName: duo.teamName, match: duo.playerInsights?.[key]?.bestMatch}];
+  })).sort((a, b) => {
+    if (!a.match && !b.match) return (a.player.displayName || a.player.name).localeCompare(b.player.displayName || b.player.name);
+    if (!a.match) return 1;
+    if (!b.match) return -1;
+    return (b.match.kda - a.match.kda) ||
+      ((b.match.kills + b.match.assists) - (a.match.kills + a.match.assists)) ||
+      (a.match.deaths - b.match.deaths);
+  });
+  tbody.innerHTML = ranked.map(({player, teamName, match}, index) => {
+    const name = escapeHtml(player.displayName || player.name);
+    const identity = `<strong class="best-match-team">${name}</strong><span class="best-match-date">${escapeHtml(teamName || '')}</span>`;
+    if (!match) return `<tr class="best-match-unavailable"><td><span class="best-match-position">—</span></td><td>${identity}</td><td colspan="5"><span class="best-match-no-data">Sin partidas individuales registradas</span></td></tr>`;
+    const champion = escapeHtml(match.championName || 'Unknown');
+    const championName = escapeHtml(championDisplayName(match.championName) || 'Unknown');
+    return `<tr>
+      <td><span class="best-match-position">${index + 1}</span></td>
+      <td>${identity}<span class="best-match-date">${escapeHtml(match.date || '')}</span></td>
+      <td><div class="best-champions"><span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${champion}.png" alt="${championName}"> ${championName}</span></div></td>
+      <td><span class="best-lines">${POSITION_LABELS[match.position] || 'Sin datos'}</span></td>
+      <td><strong class="combined-kda">${Number(match.kda).toFixed(2)}</strong></td>
+      <td><strong>${match.kills}/${match.deaths}/${match.assists}</strong></td>
+      <td><span class="best-result ${match.result === 'WIN' ? 'best-result-win' : 'best-result-loss'}">${match.result === 'WIN' ? 'Victoria' : 'Derrota'}</span></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" class="best-matches-empty">Todavía no hay partidas individuales para comparar.</td></tr>';
 }
 
 function renderFunStatistics() {

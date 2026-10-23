@@ -1439,6 +1439,21 @@ body {
   text-transform: uppercase;
 }
 
+.best-matches-modes { display: inline-flex; align-items: baseline; white-space: nowrap; }
+.best-matches-mode {
+  padding: 0.15rem 0.1rem 0.25rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.best-matches-mode[aria-pressed="true"] { color: var(--gold-hextech); border-bottom-color: currentColor; }
+.best-matches-mode:hover { color: var(--gold-hextech); }
+.best-matches-mode:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; border-radius: 3px; }
+.best-matches-divider { margin: 0 0.3rem; color: var(--text-muted); }
+
 .kda-formula {
   color: var(--text-muted);
   font-size: 0.75rem;

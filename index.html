@@ -205,19 +205,19 @@
       <div class="best-matches-heading">
         <div>
           <span class="section-eyebrow">Rendimiento destacado</span>
-          <h2 id="best-matches-title"><i class="fa-solid fa-star"></i> Mejor partida de cada dúo</h2>
+          <h2 id="best-matches-title"><i class="fa-solid fa-star" aria-hidden="true"></i> Mejor partida <span class="best-matches-modes" role="group" aria-label="Ver mejores partidas por"><button type="button" class="best-matches-mode" data-best-mode="duo" aria-pressed="true" aria-controls="best-matches-tbody">Dúo</button><span class="best-matches-divider" aria-hidden="true"> / </span><button type="button" class="best-matches-mode" data-best-mode="solo" aria-pressed="false" aria-controls="best-matches-tbody">Solo</button></span></h2>
         </div>
-        <span class="kda-formula">KDA combinado = (K + A) ÷ muertes</span>
+        <span class="kda-formula" id="best-matches-formula">KDA combinado = (K + A) ÷ muertes</span>
       </div>
       <div class="best-matches-table-wrap">
         <table class="leaderboard-table best-matches-table">
           <thead>
             <tr>
               <th>Pos</th>
-              <th>Dúo</th>
-              <th>Campeones</th>
-              <th>Líneas</th>
-              <th>KDA combinado</th>
+              <th id="best-matches-entity">Dúo</th>
+              <th id="best-matches-champions">Campeones</th>
+              <th id="best-matches-positions">Líneas</th>
+              <th id="best-matches-kda">KDA combinado</th>
               <th>Marcador</th>
               <th>Resultado</th>
             </tr>

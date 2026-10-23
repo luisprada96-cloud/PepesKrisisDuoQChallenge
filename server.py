@@ -1265,6 +1265,7 @@ def calculate_player_insights(duo):
         champion_totals = {}
         games_analyzed = 0
         totals = {"kills": 0, "deaths": 0, "assists": 0}
+        best_match = None
 
         for match in duo.get("history", []):
             if not isinstance(match, dict) or match.get("isTest"):
@@ -1287,6 +1288,20 @@ def calculate_player_insights(duo):
                     stats = None
             if not isinstance(stats, dict):
                 continue
+
+            kills, deaths, assists = (int(stats.get(key, 0) or 0) for key in ("kills", "deaths", "assists"))
+            candidate = {
+                "matchId": match.get("matchId"), "date": match.get("date", ""),
+                "result": ("WIN" if stats["win"] else "LOSS") if "win" in stats else match.get("result", ""),
+                "championName": normalize_champion_name(stats.get("championName")),
+                "position": stats.get("position", "UNKNOWN"),
+                "kills": kills, "deaths": deaths, "assists": assists,
+                "kda": (kills + assists) / max(1, deaths)
+            }
+            def best_key(item):
+                return (item["kda"], item["kills"] + item["assists"], -item["deaths"], item["date"])
+            if best_match is None or best_key(candidate) > best_key(best_match):
+                best_match = candidate
 
             games_analyzed += 1
             totals["kills"] += int(stats.get("kills", 0) or 0)
@@ -1317,6 +1332,7 @@ def calculate_player_insights(duo):
 
         insights[player_key] = {
             "gamesAnalyzed": games_analyzed,
+            "bestMatch": best_match,
             "totals": totals,
             "topChampion": top_champion,
             "mostPlayedPosition": most_played_position
