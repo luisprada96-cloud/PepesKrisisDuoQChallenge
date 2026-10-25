@@ -56,7 +56,12 @@
     <div class="clips-preview-note"><i class="fa-brands fa-twitch" aria-hidden="true"></i><span>Cargando la semana actual…</span></div>
     <div class="clips-layout">
       <section class="clips-content" aria-label="Publicaciones de la semana">
-        <div class="clips-toolbar"><div class="clips-sort" role="group" aria-label="Ordenar clips"><button type="button" data-clips-sort="votes" aria-pressed="true"><i class="fa-solid fa-thumbs-up" aria-hidden="true"></i> Más votados</button><button type="button" data-clips-sort="recent" aria-pressed="false"><i class="fa-regular fa-clock" aria-hidden="true"></i> Recientes</button><button type="button" data-clips-sort="unseen" aria-pressed="false"><i class="fa-regular fa-eye" aria-hidden="true"></i> No vistos</button></div><span id="clips-count">0 clips</span></div>
+        <div class="clips-filters" role="search" aria-label="Buscar y filtrar clips">
+          <label for="clips-search"><span>Buscar clips</span><input id="clips-search" class="form-control" type="search" maxlength="150" placeholder="Buscar por título o equipo…" aria-controls="clips-feed" disabled></label>
+          <label for="clips-team-filter"><span>Equipo</span><select id="clips-team-filter" class="form-control" aria-controls="clips-feed" disabled><option value="">Todos los equipos</option></select></label>
+          <button id="clips-clear-filters" class="clips-secondary" type="button" hidden>Limpiar filtros</button>
+        </div>
+        <div class="clips-toolbar"><div class="clips-sort" role="group" aria-label="Ordenar clips"><button type="button" data-clips-sort="votes" aria-pressed="true"><i class="fa-solid fa-thumbs-up" aria-hidden="true"></i> Más votados</button><button type="button" data-clips-sort="recent" aria-pressed="false"><i class="fa-regular fa-clock" aria-hidden="true"></i> Recientes</button><button type="button" data-clips-sort="unseen" aria-pressed="false"><i class="fa-regular fa-eye" aria-hidden="true"></i> No vistos</button></div><span id="clips-count" role="status" aria-live="polite" aria-atomic="true">0 clips</span></div>
         <form class="clips-form" id="clips-form" hidden>
           <h2>Comparte ese momento</h2>
           <p>Pega un clip de Twitch para compartirlo con los demás.</p>

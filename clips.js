@@ -6,6 +6,8 @@
   let busy = false;
   let requestVersion = 0;
   let sort = 'votes';
+  let teamFilter = '';
+  let searchText = '';
   let clipOrder = [];
   const PAGE_SIZE = 15;
   const SEEN_KEY = 'pepes_clips_seen';
@@ -59,7 +61,45 @@
   const publish = document.getElementById('clips-publish');
   const feedback = document.getElementById('clips-feedback');
   const error = document.getElementById('clips-form-error');
+  const searchInput = document.getElementById('clips-search');
+  const teamSelect = document.getElementById('clips-team-filter');
+  const clearFilters = document.getElementById('clips-clear-filters');
   const escape = value => String(value).replace(/[&<>"']/g, ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[ch]));
+
+  const searchable = value => String(value ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('es').trim();
+
+  function clipTeamKey(clip) {
+    if (clip.teamId) return `id:${clip.teamId}`;
+    // Older clips may only store the name, including teams no longer in the roster.
+    const name = searchable(clip.team || 'Comunidad');
+    const team = availableTeams.find(item => searchable(item.name) === name);
+    return team ? `id:${team.id}` : `name:${name}`;
+  }
+
+  function renderTeamFilter() {
+    const options = new Map(availableTeams.map(team => [`id:${team.id}`, team.name]));
+    for (const clip of clips) {
+      const key = clipTeamKey(clip);
+      if (!options.has(key)) options.set(key, clip.team || 'Comunidad');
+    }
+    // Preserve an explicit filter when moving to a week without clips from that team.
+    if (teamFilter && !options.has(teamFilter)) options.set(teamFilter, teamSelect.selectedOptions[0]?.textContent || 'Equipo seleccionado');
+    const choices = [...options].sort((a, b) => a[1].localeCompare(b[1], 'es'));
+    const signature = JSON.stringify(choices);
+    if (teamSelect.dataset.signature !== signature) {
+      teamSelect.replaceChildren(new Option('Todos los equipos', ''), ...choices.map(([id, name]) => new Option(name, id)));
+      teamSelect.dataset.signature = signature;
+    }
+    teamSelect.value = teamFilter;
+  }
+
+  function resetFilters() {
+    teamFilter = '';
+    searchText = '';
+    teamSelect.value = '';
+    searchInput.value = '';
+    currentPage = 1;
+  }
 
   function parseClip(value) {
     try {
@@ -101,7 +141,12 @@
 
   function render() {
     const byId = new Map(clips.map(clip => [clip.id, clip]));
-    const ordered = clipOrder.map(id => byId.get(id)).filter(clip => clip && (sort !== 'unseen' || !seen.has(clip.id)));
+    const terms = searchable(searchText).split(/\s+/).filter(Boolean);
+    const filtering = !!teamFilter || terms.length > 0;
+    const matching = clipOrder.map(id => byId.get(id)).filter(clip => clip &&
+      (!teamFilter || clipTeamKey(clip) === teamFilter) &&
+      terms.every(term => searchable(`${clip.title} ${clip.team || 'Comunidad'}`).includes(term)));
+    const ordered = matching.filter(clip => sort !== 'unseen' || !seen.has(clip.id));
     const pages = Math.max(1, Math.ceil(ordered.length / PAGE_SIZE));
     currentPage = Math.max(1, Math.min(currentPage, pages));
     const offset = (currentPage - 1) * PAGE_SIZE;
@@ -114,7 +159,10 @@
     });
     const existing = new Map([...feed.querySelectorAll('.clip-post')].map(post => [post.dataset.clipId, post]));
     if (!ordered.length) {
-      feed.innerHTML = `<p class="clips-empty">${sort === 'unseen' && clips.length ? '¡Estás al día! Ya has marcado todos los clips como vistos.' : 'Todavía no hay clips esta semana. ¡Comparte el primero!'}</p>`;
+      const message = !clips.length ? 'Todavía no hay clips esta semana. ¡Comparte el primero!'
+        : sort === 'unseen' && matching.length ? filtering ? '¡Estás al día! No quedan clips sin ver con estos filtros.' : '¡Estás al día! Ya has marcado todos los clips como vistos.'
+        : 'No hay clips que coincidan con estos filtros. Prueba otra búsqueda o limpia los filtros.';
+      feed.innerHTML = `<p class="clips-empty">${message}</p>`;
       opened.clear();
     } else {
       feed.querySelector('.clips-empty')?.remove();
@@ -142,6 +190,14 @@
             </section>`}</div>`;
         }
         const viewed = seen.has(clip.id);
+        let seenLabel = post.querySelector('.clip-seen-label');
+        if (!seenLabel) {
+          seenLabel = document.createElement('span');
+          seenLabel.className = 'clip-seen-label';
+          seenLabel.textContent = '✓ Visto';
+          post.querySelector('.clip-meta').append(seenLabel);
+        }
+        seenLabel.hidden = !viewed;
         let deleteButton = post.querySelector('[data-delete-clip]');
         if (clip.canDelete && !deleteButton) {
           deleteButton = document.createElement('button');
@@ -173,7 +229,11 @@
       });
       for (const [id, post] of existing) { post.remove(); opened.delete(id); }
     }
-    document.getElementById('clips-count').textContent = sort === 'unseen' ? `${ordered.length} no vistos · ${clips.length} clips` : `${clips.length} clips`;
+    const count = filtering ? `${matching.length} de ${clips.length} clips` : `${clips.length} clips`;
+    document.getElementById('clips-count').textContent = sort === 'unseen' ? `${ordered.length} no vistos · ${count}` : count;
+    searchInput.disabled = teamSelect.disabled = !ready || loadingWeek;
+    clearFilters.hidden = !teamFilter && !searchText;
+    clearFilters.disabled = !ready || loadingWeek;
     weekSelect.disabled = !ready || busy || loadingWeek;
     publish.disabled = !ready || busy || weekClosed || loadingWeek || !availableTeams.length;
     form.querySelector('button[type="submit"]').disabled = !ready || busy || weekClosed || !availableTeams.length;
@@ -300,6 +360,7 @@
       select.replaceChildren(new Option('Selecciona un equipo', ''), ...teams.map(team => new Option(team.name, team.id)));
       if (teams.some(team => team.id === selected)) select.value = selected;
     }
+    renderTeamFilter();
     const award = result.weeklyReward?.award;
     document.getElementById('clips-reward-status').textContent = weekClosed
       ? award?.status === 'AWARDED' ? `🏆 ${award.teamName} ha ganado +${award.shells} pepazos por «${award.title}» (${award.votes} likes).`
@@ -384,6 +445,21 @@
   }
   publish.addEventListener('click', () => toggleForm(form.hidden));
   document.getElementById('clips-cancel').addEventListener('click', () => toggleForm(false));
+  searchInput.addEventListener('input', () => {
+    searchText = searchInput.value;
+    currentPage = 1;
+    render();
+  });
+  teamSelect.addEventListener('change', () => {
+    teamFilter = teamSelect.value;
+    currentPage = 1;
+    render();
+  });
+  clearFilters.addEventListener('click', () => {
+    resetFilters();
+    render();
+    searchInput.focus({preventScroll: true});
+  });
   document.querySelectorAll('[data-clips-sort]').forEach(button => button.addEventListener('click', () => {
     sort = button.dataset.clipsSort;
     currentPage = 1;
@@ -563,7 +639,7 @@
     try {
       const result = await request('/clips', {title, url: parsed.url, teamId, week: currentWeek});
       sort = 'recent';
-      currentPage = 1;
+      resetFilters();
       document.querySelectorAll('[data-clips-sort]').forEach(button => button.setAttribute('aria-pressed', button.dataset.clipsSort === sort));
       apply(result, true);
       const clip = clips.find(item => item.slug === parsed.slug);
