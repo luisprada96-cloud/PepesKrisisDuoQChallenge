@@ -36,7 +36,7 @@ const path = require('node:path');
           }
         }
         const result = url.pathname === '/api/clips' || url.pathname === '/api/clips/like' ? {week, preview: true, clips, teams, voting: !sessionExpired && req.headers().authorization === 'Bearer test-team-session' ? {teamId:'a',teamName:'Atacante'} : null,
-          weeklyReward:{closed:weekClosed,award:weekClosed ? {status:'AWARDED', teamName:'Atacante', shells:3, title:'Ganador', votes:7} : null}} : {};
+          weeklyReward:{closed:weekClosed,award:weekClosed ? {status:'AWARDED', teamName:'Atacante', shells:1, title:'Ganador', votes:7} : null}} : {};
         return route.fulfill({contentType: 'application/json', body: JSON.stringify(result)});
       }
       const file = url.pathname.slice(1);
@@ -46,6 +46,8 @@ const path = require('node:path');
     const page = await context.newPage();
     await page.goto('http://pepes.test/clips.html');
     await page.locator('.clip-post').first().waitFor();
+    assert.match(await page.locator('.clips-sidebox').first().innerText(), /gana 1 pepazo/);
+    assert.match(await page.locator('#clips-form').textContent(), /recibirá 1 pepazo/);
     const top = page.locator('[data-clips-pagination]').first();
     const next = top.locator('[data-clips-page="next"]');
     const previous = top.locator('[data-clips-page="previous"]');
@@ -241,7 +243,7 @@ const path = require('node:path');
     weekClosed = true;
     await stable.evaluate(() => window.dispatchEvent(new Event('focus')));
     await stable.waitForFunction(() => document.getElementById('clips-publish').disabled);
-    assert.match(await stable.locator('#clips-reward-status').textContent(), /Atacante.*\+3.*Ganador/);
+    assert.match(await stable.locator('#clips-reward-status').textContent(), /Atacante.*\+1 pepazo por.*Ganador/);
     assert.equal(await stable.locator('[data-vote]').first().isDisabled(), true);
     const writeCount = writes.length;
     await stable.locator('[data-vote]').first().dispatchEvent('click');

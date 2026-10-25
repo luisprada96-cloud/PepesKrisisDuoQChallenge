@@ -63,12 +63,12 @@ class WeeklySummaryTests(unittest.TestCase):
         self.assertEqual(recap['clips']['posts'], 1)
         self.assertEqual(recap['clips']['votes'], 2)
         self.assertEqual(recap['clips']['winner']['title'], 'Gran jugada')
-        self.assertEqual(recap['teams'][0]['shells']['clipPrize'], 3)
-        self.assertEqual(db['duos'][0]['blueShells'], 8)
+        self.assertEqual(recap['teams'][0]['shells']['clipPrize'], 1)
+        self.assertEqual(db['duos'][0]['blueShells'], 6)
         restored = json.loads(json.dumps(db))
         self.assertFalse(clips.board_for(restored, now=END+2)[1])
         self.assertFalse(weekly.maintain(restored, END+2, refresh=True))
-        self.assertEqual(restored['duos'][0]['blueShells'], 8)
+        self.assertEqual(restored['duos'][0]['blueShells'], 6)
 
     def test_counts_real_games_stats_and_manual_completions(self):
         db = database()
@@ -243,7 +243,7 @@ class WeeklyEndpointTests(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(get,range(4)))
             self.assertTrue(all(result['summary']['clips']['winner']['votes']==2 for result in results))
             saved=json.loads(Path(server.DB_FILE).read_text(encoding='utf-8'))
-            self.assertEqual(saved['duos'][0]['blueShells'],8)
+            self.assertEqual(saved['duos'][0]['blueShells'],6)
             self.assertEqual(len(saved['weeklySummaries']),1)
 
 if __name__ == '__main__':

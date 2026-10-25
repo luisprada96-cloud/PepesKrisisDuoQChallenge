@@ -68,7 +68,7 @@
           <label for="clip-url">Enlace del clip de Twitch</label><input class="form-control" id="clip-url" type="url" placeholder="https://clips.twitch.tv/…" required>
           <label for="clip-title">Título</label><input class="form-control" id="clip-title" type="text" placeholder="La jugada merece un buen título" maxlength="100" required>
           <label for="clip-team">Equipo al que representa el clip</label><select class="form-control" id="clip-team" required><option value="">Selecciona un equipo</option></select>
-          <p>El equipo elegido recibirá 3 pepazos si este clip gana la votación semanal.</p>
+          <p>El equipo elegido recibirá 1 pepazo si este clip gana la votación semanal.</p>
           <div class="clips-form-actions"><button class="clips-publish" type="submit">Publicar clip</button><button class="clips-secondary" type="button" id="clips-cancel">Cancelar</button></div>
           <p id="clips-form-error" role="alert" hidden></p>
         </form>
@@ -86,7 +86,7 @@
         <p class="clips-feedback" id="clips-feedback" aria-live="polite"></p>
       </section>
       <aside class="clips-sidebar">
-        <section class="clips-sidebox"><h2><i class="fa-solid fa-trophy" aria-hidden="true"></i> Clip de la semana</h2><p>El clip con más likes gana <strong>3 pepazos</strong> para el equipo que representa, aunque supere el límite normal de 5.</p><p>Cierre: <strong id="clips-close-label">domingo a las 23:59</strong>, hora de Madrid.</p><p>En caso de empate gana el publicado primero. Hace falta al menos un like. Solo participan clips con equipo asignado.</p><hr><p id="clips-reward-status" aria-live="polite">La votación está abierta.</p><p id="clips-previous-reward" hidden></p></section>
+        <section class="clips-sidebox"><h2><i class="fa-solid fa-trophy" aria-hidden="true"></i> Clip de la semana</h2><p>El clip con más likes gana <strong>1 pepazo</strong> para el equipo que representa, aunque supere el límite normal de 5.</p><p>Cierre: <strong id="clips-close-label">domingo a las 23:59</strong>, hora de Madrid.</p><p>En caso de empate gana el publicado primero. Hace falta al menos un like. Solo participan clips con equipo asignado.</p><hr><p id="clips-reward-status" aria-live="polite">La votación está abierta.</p><p id="clips-previous-reward" hidden></p></section>
         <section class="clips-sidebox"><h2><i class="fa-regular fa-calendar" aria-hidden="true"></i> Semana seleccionada</h2><strong class="clips-week" id="clips-week"></strong><p id="clips-year"></p><hr><p>La primera ronda dura hasta el domingo 25 de octubre. Después, cada ronda va de lunes a domingo.</p><p>Las rondas cerradas se conservan en el selector para volver a ver sus clips.</p></section>
         <section class="clips-sidebox"><h2><i class="fa-solid fa-users" aria-hidden="true"></i> La comunidad</h2><p>Comparte las jugadas del torneo y vota tus favoritas.</p><hr><p>Pulsa el like para votar y vuelve a pulsarlo para retirarlo.</p><p id="clips-voting-status"></p><a id="clips-login" class="clip-open" href="player.html">Iniciar sesión con mi equipo ↗</a><hr><p>El ojo de cada clip permite marcarlo como visto sin iniciar sesión. «No vistos» muestra los pendientes del más reciente al más antiguo. Las marcas se guardan solo en este navegador.</p></section>
       </aside>

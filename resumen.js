@@ -35,7 +35,7 @@
       } catch (_) {}
       return `<article class="weekly-card weekly-clip">
         ${url ? `<button type="button" class="weekly-play-clip" data-weekly-clip="${escape(url)}"><i class="fa-brands fa-twitch" aria-hidden="true"></i><br>Ver clip ganador</button>` : ''}
-        <div class="weekly-clip-body"><span>CLIP DE LA SEMANA</span><h3>${escape(winner.title)}</h3><p>${escape(winner.teamName)} · ${escape(winner.votes)} likes</p><p><span class="weekly-badge">Premio: +${escape(winner.shells)} pepazos</span></p>
+        <div class="weekly-clip-body"><span>CLIP DE LA SEMANA</span><h3>${escape(winner.title)}</h3><p>${escape(winner.teamName)} · ${escape(winner.votes)} likes</p><p><span class="weekly-badge">Premio: +${escape(winner.shells)} ${winner.shells === 1 ? 'pepazo' : 'pepazos'}</span></p>
         ${url ? `<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">Ver en Twitch ↗</a>` : ''}</div></article><div id="weekly-clip-embed"></div>`;
     }
     const message = summary.status === 'CURRENT' ? 'El clip ganador se decide el domingo a las 23:59.' : clips.available ? 'Esta semana no hubo un clip con votos que pudiera recibir el premio.' : 'No hay registro de los clips de esta semana.';

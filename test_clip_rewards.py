@@ -52,17 +52,20 @@ class ClipRewardTests(unittest.TestCase):
         post(db, slug='Second', team=1)
         self.assertFalse(clips.settle_weekly_reward(db, CLOSE - 0.001))
         self.assertTrue(clips.settle_weekly_reward(db, CLOSE))
-        self.assertEqual(db['duos'][0]['blueShells'], 8)
+        self.assertEqual(db['duos'][0]['blueShells'], 6)
         self.assertEqual(db['duos'][1]['blueShells'], 1)
         award = db['clipWeeklyRewards'][WEEK]
         self.assertEqual(award['clipId'], winner['id'])
         self.assertEqual(award['votes'], 2)
+        self.assertEqual(award['shells'], 1)
+        self.assertEqual(db['duos'][0]['clipShellsEarnedTotal'], 1)
+        self.assertIn('gana 1 pepazo por', db['events'][0]['message'])
         self.assertEqual(len(db['events']), 1)
         restored = json.loads(json.dumps(db))
         self.assertFalse(clips.settle_weekly_reward(restored, CLOSE + 40))
-        self.assertEqual(restored['duos'][0]['blueShells'], 8)
+        self.assertEqual(restored['duos'][0]['blueShells'], 6)
         server.update_duo_shells(restored['duos'][0])
-        self.assertEqual(restored['duos'][0]['blueShells'], 8)
+        self.assertEqual(restored['duos'][0]['blueShells'], 6)
 
     def test_tie_goes_to_first_publication_then_stable_id(self):
         db = database()
@@ -70,12 +73,37 @@ class ClipRewardTests(unittest.TestCase):
         earlier = post(db, slug='Earlier', team=1, created=CLOSE-200)
         clips.settle_weekly_reward(db, CLOSE)
         self.assertEqual(db['clipWeeklyRewards'][WEEK]['clipId'], earlier['id'])
-        self.assertEqual(db['duos'][1]['blueShells'], 4)
+        self.assertEqual(db['duos'][1]['blueShells'], 2)
         db = database()
         p1, p2 = post(db, slug='One'), post(db, slug='Two', team=1)
         p1['id'], p2['id'] = 'b', 'a'
         clips.settle_weekly_reward(db, CLOSE)
         self.assertEqual(db['clipWeeklyRewards'][WEEK]['clipId'], 'a')
+
+    def test_previous_three_shell_award_is_preserved_and_next_award_is_one(self):
+        db = database()
+        post(db)
+        with patch.object(clips, 'WEEKLY_REWARD_SHELLS', 3):
+            self.assertTrue(clips.settle_weekly_reward(db, CLOSE))
+        previous = copy.deepcopy(db)
+        self.assertFalse(clips.settle_weekly_reward(db, CLOSE + 1))
+        self.assertEqual(db, previous)
+        self.assertEqual(db['clipWeeklyRewards'][WEEK]['shells'], 3)
+        self.assertEqual(db['duos'][0]['blueShells'], 8)
+        board, _ = clips.board_for(db, now=CLOSE + 3*86400)
+        self.assertEqual(board['previousWeeklyAward']['shells'], 3)
+        next_close = clips.board_closes_at(board)
+        post(db, slug='NewPrize', created=next_close-100)
+        self.assertTrue(clips.settle_weekly_reward(db, next_close))
+        self.assertEqual(db['clipWeeklyRewards'][board['week']]['shells'], 1)
+        self.assertEqual(db['duos'][0]['blueShells'], 9)
+        self.assertEqual(db['duos'][0]['clipShellsEarnedTotal'], 4)
+
+    def test_public_reward_advertises_one_shell_before_settlement(self):
+        db = database()
+        public = clips.public_board(db['clips'], duos=db['duos'], now=CLOSE-1)
+        self.assertEqual(public['weeklyReward']['shells'], 1)
+        self.assertFalse(public['weeklyReward']['closed'])
 
     def test_no_votes_and_legacy_unassigned_and_examples_never_win(self):
         for kind in ('empty', 'no-votes', 'unassigned', 'example', 'deleted-team', 'wrong-week'):
@@ -101,15 +129,15 @@ class ClipRewardTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual(board['posts'], [])
         self.assertEqual(board['previousWeeklyAward']['clipId'], winner['id'])
-        self.assertEqual(db['duos'][0]['blueShells'], 8)
+        self.assertEqual(db['duos'][0]['blueShells'], 6)
         # Restoring an old weekly board must not recreate an already credited reward.
         db['clips'] = old
         clips.board_for(db, now=CLOSE + 3*86400)
-        self.assertEqual(db['duos'][0]['blueShells'], 8)
+        self.assertEqual(db['duos'][0]['blueShells'], 6)
         next_close = clips.week_closes_at(db['clips']['week'])
         post(db, slug='NextWeek', created=next_close-100)
         clips.settle_weekly_reward(db, next_close)
-        self.assertEqual(db['duos'][0]['blueShells'], 11)
+        self.assertEqual(db['duos'][0]['blueShells'], 7)
         self.assertEqual(len(db['clipWeeklyRewards']), 2)
 
     def test_final_minute_is_read_only_even_if_settlement_was_delayed(self):
@@ -165,7 +193,7 @@ class ClipRewardEndpointTests(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=4) as pool:
                 listings = list(pool.map(read, range(8)))
             db = server.load_db()
-            self.assertEqual(db['duos'][0]['blueShells'], 8)
+            self.assertEqual(db['duos'][0]['blueShells'], 6)
             self.assertEqual(len(db['clipWeeklyRewards']), 1)
             client, _ = self.client()
             listing, _ = self.call(client)
@@ -185,7 +213,7 @@ class ClipRewardEndpointTests(unittest.TestCase):
             self.assertNotIn('clipWeeklyRewards', persisted)
             self.call(client)
             self.call(client)
-            self.assertEqual(server.load_db()['duos'][0]['blueShells'], 8)
+            self.assertEqual(server.load_db()['duos'][0]['blueShells'], 6)
 
 
 if __name__ == '__main__':

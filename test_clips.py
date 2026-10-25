@@ -30,7 +30,7 @@ class WeeklyClipsTests(unittest.TestCase):
             self.assertTrue(changed)
             self.assertNotEqual(old_week, board['week'])
             self.assertEqual(board['posts'], [])
-            self.assertEqual(db['duos'][0]['blueShells'], 8)
+            self.assertEqual(db['duos'][0]['blueShells'], 6)
             self.assertEqual(board['previousWeeklyAward']['teamId'], 'winner')
 
     def test_preview_is_opt_in_and_never_invents_like_counts(self):

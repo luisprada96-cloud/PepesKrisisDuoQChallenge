@@ -39,7 +39,7 @@ class CalendarTests(unittest.TestCase):
         self.assertEqual(clips.board_closes_at(board),CLOSE)
         self.assertFalse(clips.settle_weekly_reward(db,CLOSE-.01))
         self.assertTrue(clips.settle_weekly_reward(db,CLOSE))
-        self.assertEqual(db['duos'][0]['blueShells'],6)
+        self.assertEqual(db['duos'][0]['blueShells'],4)
         self.assertFalse(clips.settle_weekly_reward(db,CLOSE+1))
         archived=copy.deepcopy(board)
         with self.assertRaises(FileExistsError): clips.set_like(board,post['id'],'a','private-voter',False,now=CLOSE)
@@ -61,7 +61,7 @@ class CalendarTests(unittest.TestCase):
         # A stale archived board cannot grant another copy of the same reward.
         db['clips']=copy.deepcopy(saved)
         clips.board_for(db,now=MONDAY+60)
-        self.assertEqual(db['duos'][0]['blueShells'],6)
+        self.assertEqual(db['duos'][0]['blueShells'],4)
 
     def test_migration_merges_sources_preserves_votes_and_active_evidence(self):
         db=database()

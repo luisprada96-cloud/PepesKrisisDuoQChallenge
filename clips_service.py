@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 MADRID = ZoneInfo('Europe/Madrid')
-WEEKLY_REWARD_SHELLS = 3
+WEEKLY_REWARD_SHELLS = 1
 COMMENT_NAME_LIMIT = 15
 COMMENT_TEXT_LIMIT = 200
 COMMENT_PAGE_SIZE = 10
@@ -135,7 +135,7 @@ def settle_board(db, board, timestamp):
             'timestamp': datetime.fromtimestamp(timestamp, MADRID).strftime('%Y-%m-%d %H:%M:%S'),
             'week': board['week'], 'target': team['teamName'], 'teamId': team['id'],
             'clipId': winner['id'], 'shells': WEEKLY_REWARD_SHELLS,
-            'message': f"🏆 {team['teamName']} gana {WEEKLY_REWARD_SHELLS} pepazos por el clip más votado de la semana: {winner['title']} ({award['votes']} likes)."})
+            'message': f"🏆 {team['teamName']} gana {WEEKLY_REWARD_SHELLS} {'pepazo' if WEEKLY_REWARD_SHELLS == 1 else 'pepazos'} por el clip más votado de la semana: {winner['title']} ({award['votes']} likes)."})
     ledger[board['week']] = award
     board['weeklyAward'] = copy.deepcopy(award)
     return True
