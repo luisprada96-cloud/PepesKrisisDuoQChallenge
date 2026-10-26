@@ -38,7 +38,7 @@ const CHAMPION_DISPLAY_NAMES = Object.freeze({
   AurelionSol: 'Aurelion Sol', Bard: 'Bardo', Belveth: "Bel'Veth",
   Chogath: "Cho'Gath", DrMundo: 'Dr. Mundo', JarvanIV: 'Jarvan IV',
   KSante: "K'Sante", Kaisa: "Kai'Sa", Khazix: "Kha'Zix", KogMaw: "Kog'Maw",
-  Leblanc: 'LeBlanc', LeeSin: 'Lee Sin', Locke: 'Vex', MasterYi: 'Maestro Yi',
+  Leblanc: 'LeBlanc', LeeSin: 'Lee Sin', MasterYi: 'Maestro Yi',
   MissFortune: 'Miss Fortune', MonkeyKing: 'Wukong', Nunu: 'Nunu y Willump',
   RekSai: "Rek'Sai", Renata: 'Renata Glasc', TahmKench: 'Tahm Kench',
   TwistedFate: 'Twisted Fate', Velkoz: "Vel'Koz", XinZhao: 'Xin Zhao'
@@ -114,17 +114,25 @@ function penaltyAssignmentText(instance, duo = {}) {
     const positions = {TOP:'Top', JUNGLE:'Jungla', MIDDLE:'Mid', BOTTOM:'ADC', UTILITY:'Support'};
     return positions[req.randomPositions?.[key]] ? `Posición: ${positions[req.randomPositions[key]]}` : 'Posición pendiente: falta conocer el rol principal';
   };
+  const championPoolInstruction = req.randomChampionPool === 'unplayed' ? 'Campeones pendientes del álbum' :
+    req.randomChampionPool === 'all' ? 'Álbum completado: catálogo completo' :
+    req.randomChampionPool === 'last_unplayed' ? 'Último pendiente del álbum y otro campeón distinto del catálogo completo' : '';
+  const assignedChampionName = key => {
+    const name = championDisplayName(req.randomChampions?.[key]);
+    if (req.randomChampionPool !== 'last_unplayed') return name;
+    return name + (req.randomChampionPoolByPlayer?.[key] === 'unplayed' ? ' (último pendiente)' : ' (catálogo completo)');
+  };
   if (scope === 'ONE') {
     const key = req.assignedPlayer;
     if (key !== 'player1' && key !== 'player2') return req.assignmentVersion >= 2 ? 'Asignación pendiente' : 'Puede cumplirlo cualquiera de los dos (castigo anterior).';
-    return `Debe cumplirlo: ${label(key, req.assignedAccount)}${req.randomChampions?.[key] ? ` · Campeón: ${championDisplayName(req.randomChampions[key])}` : ''}${positionInstruction(key) ? ` · ${positionInstruction(key)}` : ''}${flashInstruction(key) ? ` · ${flashInstruction(key)}` : ''}`;
+    return `Debe cumplirlo: ${label(key, req.assignedAccount)}${req.randomChampions?.[key] ? ` · Campeón: ${assignedChampionName(key)}` : ''}${championPoolInstruction ? ` · ${championPoolInstruction}` : ''}${positionInstruction(key) ? ` · ${positionInstruction(key)}` : ''}${flashInstruction(key) ? ` · ${flashInstruction(key)}` : ''}`;
   }
   if (scope === 'BOTH') {
     const champions = ['player1', 'player2'].filter(key => req.randomChampions?.[key])
-      .map(key => `${label(key)}: ${championDisplayName(req.randomChampions[key])}`);
+      .map(key => `${label(key)}: ${assignedChampionName(key)}`);
     const flash = instance?.penalty?.baseId === 'swap_flash' ? ['player1','player2'].map(key => `${label(key, req.flashAccounts?.[key])}: ${flashInstruction(key)}`) : [];
     const positions = Object.prototype.hasOwnProperty.call(req, 'randomPositions') ? ['player1','player2'].map(key => `${label(key)} · ${positionInstruction(key)}`) : [];
-    return `Lo cumplen ambos integrantes.${champions.length ? ' ' + champions.join(' · ') : ''}${positions.length ? ' ' + positions.join(' · ') : ''}${flash.length ? ' ' + flash.join(' · ') : ''}`;
+    return `Lo cumplen ambos integrantes.${champions.length ? ' ' + champions.join(' · ') : ''}${championPoolInstruction ? ' · ' + championPoolInstruction : ''}${positions.length ? ' ' + positions.join(' · ') : ''}${flash.length ? ' ' + flash.join(' · ') : ''}`;
   }
   return '';
 }

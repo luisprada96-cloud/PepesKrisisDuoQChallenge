@@ -32,6 +32,18 @@ def rich_info():
 
 
 class MatchDetailsTests(unittest.TestCase):
+    def test_locke_and_vex_keep_their_riot_names_and_ids(self):
+        for actual in ('Locke','Vex'):
+            match={'matchId':'ambiguous','matchDetailsVersion':1,'player1Stats':{'championName':'Vex'}}
+            self.assertFalse(needs_match_details(match))
+            info=rich_info()
+            info['participants'][0].update(championName=actual,championId=9001)
+            server.enrich_match_record(match,info,'p1','p2')
+            self.assertEqual(match['player1Stats']['championName'],actual)
+            self.assertEqual(match['championP1'],actual)
+            self.assertEqual(match['player1Stats']['championId'],9001)
+            self.assertFalse(needs_match_details(match))
+
     def test_keeps_both_players_and_only_their_own_team_totals(self):
         info = rich_info()
         before = copy.deepcopy(info)

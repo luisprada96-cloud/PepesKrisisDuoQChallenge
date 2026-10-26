@@ -32,6 +32,7 @@ import betting_service
 import shop_service
 import pickem_service
 import champions_service
+import champion_corrections
 import stat_progression
 import player_accounts
 import participant_roles
@@ -92,8 +93,8 @@ SECRET_HASH_PREFIX = "pbkdf2_sha256"
 PENALTY_CATALOG = [
     {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido por la ruleta (50/50) debe jugar en la posición sorteada entre las cuatro distintas de su rol principal.", "defaultWeight": 12},
     {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Cada integrante debe jugar en su posición sorteada entre las cuatro distintas de su rol principal.", "defaultWeight": 5},
-    {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido por la ruleta (50/50) debe jugar su campeón aleatorio asignado.", "defaultWeight": 28},
-    {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón aleatorio asignado.", "defaultWeight": 12},
+    {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido debe jugar el campeón sorteado entre los pendientes del álbum del torneo. Cuando se hayan jugado todos, entra el catálogo completo.", "defaultWeight": 28},
+    {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón sorteado entre los pendientes del álbum del torneo. Cuando se hayan jugado todos, entra el catálogo completo.", "defaultWeight": 12},
     {"id": "no_flash_one", "baseId": "no_flash", "scope": "ONE", "name": "Sin Flash · UNO", "icon": "⚡", "desc": "El integrante elegido por la ruleta (50/50) debe jugar sin Flash.", "defaultWeight": 14},
     {"id": "no_flash_both", "baseId": "no_flash", "scope": "BOTH", "name": "Sin Flash · AMBOS", "icon": "⚡", "desc": "Los dos deben jugar sin Flash.", "defaultWeight": 6},
     {"id": "swap_flash_one", "baseId": "swap_flash", "scope": "ONE", "name": "Flash al otro lado · UNO", "icon": "🔄", "desc": "El integrante elegido por la ruleta (50/50) debe llevar Flash en la posición contraria a la registrada en su primera partida con Flash. El otro hechizo es libre.", "defaultWeight": 12},
@@ -104,7 +105,6 @@ PENALTY_CATALOG = [
 player_sessions = {}
 shell_notifications = threading.Condition()
 shell_notification_revision = 0
-ddragon_champion_cache = []
 
 def hash_secret(value):
     value = str(value or "")
@@ -488,29 +488,8 @@ def fill_pending_penalty_roles(duo):
 
 
 def champion_pool(duos):
-    global ddragon_champion_cache
-    if ddragon_champion_cache:
-        return list(ddragon_champion_cache)
-    try:
-        with urllib.request.urlopen("https://ddragon.leagueoflegends.com/api/versions.json", timeout=5) as response:
-            version = json.loads(response.read().decode("utf-8"))[0]
-        url = f"https://ddragon.leagueoflegends.com/cdn/{version}/data/es_ES/champion.json"
-        with urllib.request.urlopen(url, timeout=5) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        ddragon_champion_cache = sorted(payload.get("data", {}).keys())
-        if ddragon_champion_cache:
-            return list(ddragon_champion_cache)
-    except Exception as error:
-        safe_print(f"[Data Dragon] No se pudo cargar el catálogo completo: {error}")
-    champions = set()
-    for duo in duos:
-        for match in duo.get("history", []):
-            for stats_key in ("player1Stats", "player2Stats"):
-                name = (match.get(stats_key) or {}).get("championName")
-                if name and name != "Unknown":
-                    champions.add(name)
-    fallback = {"Ahri", "Ashe", "Caitlyn", "Darius", "Ezreal", "Garen", "Jinx", "LeeSin", "Lux", "Morgana", "Nami", "Orianna", "Thresh", "Vi", "Yasuo"}
-    return sorted(champions | fallback)
+    """Use the album's complete catalog, including when Data Dragon is offline."""
+    return sorted(row['id'] for row in champions_service.OPTIONS)
 
 def flash_account(player):
     return {field: player.get(field, "") for field in ("name", "tag", "puuid", "displayName")}
@@ -572,7 +551,7 @@ def fill_pending_flash_baselines(duo):
     return changed
 
 
-def penalty_requirements(duo, penalty, duos, assign_positions=True):
+def penalty_requirements(duo, penalty, duos, assign_positions=True, config=None, prefer_unplayed=True):
     requirements = {
         "mainRoles": {key: participant_roles.role_summary(duo, key, time.time()*1000)['position'] for key in ("player1", "player2")},
         "favoriteChampions": favorite_snapshot(duo)
@@ -590,9 +569,31 @@ def penalty_requirements(duo, penalty, duos, assign_positions=True):
                              "displayName": player.get("displayName") or player.get("name", ""),
                              "puuid": player.get("puuid", "")})
     if penalty.get("baseId") == "random_champion":
-        pool = champion_pool(duos)
+        catalog = champion_pool(duos)
+        pool = list(catalog)
+        if prefer_unplayed:
+            album = champions_service.build_album({'config': {**DEFAULT_CONFIG, **(config or {})}, 'duos': duos}, MIN_RIOT_MATCH_DURATION_SECONDS)
+            played = {row['id'] for row in album['champions'] if row['played']}
+            remaining = [champion for champion in pool if champion not in played]
+            pool = remaining or pool
+            requirements['randomChampionPool'] = 'unplayed' if remaining else 'all'
         keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
-        requirements["randomChampions"] = {key: secrets.choice(pool) for key in keys}
+        if len(keys) == 2 and requirements.get('randomChampionPool') == 'unplayed' and len(pool) == 1:
+            first = secrets.choice(('player1', 'player2'))
+            keys = (first, 'player2' if first == 'player1' else 'player1')
+            requirements['randomChampionPool'] = 'last_unplayed'
+        assigned, sources = {}, {}
+        for key in keys:
+            candidates = [name for name in pool if name not in assigned.values()]
+            source = 'unplayed' if requirements.get('randomChampionPool') in ('unplayed','last_unplayed') else 'all'
+            if not candidates:
+                candidates = [name for name in catalog if name not in assigned.values()]
+                source = 'all'
+            assigned[key] = secrets.choice(candidates)
+            sources[key] = source
+        requirements["randomChampions"] = assigned
+        if requirements.get('randomChampionPool') == 'last_unplayed':
+            requirements['randomChampionPoolByPlayer'] = sources
     if penalty.get("baseId") == "autofill" and assign_positions:
         keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
         requirements["randomPositions"] = {
@@ -658,7 +659,7 @@ def migrate_legacy_penalties(db):
                 changed = True
             if "requirements" not in debuff:
                 # Already-open penalties keep their original scope and player assignment.
-                legacy_requirements = penalty_requirements(duo, {**debuff.get("penalty", {}), "scope": "BOTH"}, db.get("duos", []), assign_positions=False)
+                legacy_requirements = penalty_requirements(duo, {**debuff.get("penalty", {}), "scope": "BOTH"}, db.get("duos", []), assign_positions=False, prefer_unplayed=False)
                 if (debuff.get("scope") or debuff.get("penalty", {}).get("scope")) == "ONE" and debuff.get("penalty", {}).get("baseId") == "random_champion":
                     key = secrets.choice(("player1", "player2"))
                     legacy_requirements["assignedPlayer"] = key
@@ -733,7 +734,12 @@ def load_db():
             data["shellRewardsVersion"] = 1
         elo_migrated = False
         roles_changed = False
+        champions_corrected = False
         for duo in data.get("duos", []):
+            if champion_corrections.repair_confirmed_locke(duo):
+                calculate_player_insights(duo)
+                calculate_duo_best_match(duo)
+                champions_corrected = True
             roles_changed = participant_roles.update_roles(duo) or roles_changed
             player = duo.get("player1") or {}
             account = player_accounts.elo_identity(player)
@@ -755,7 +761,7 @@ def load_db():
         pickem_awarded = pickem_service.maintain(data)
         predictions_settled = final_predictions.maintain(data)
         betting_changed = betting_service.maintain(data)
-        if migrate_credentials(data) or rewards_migrated or elo_migrated or roles_changed or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled or betting_changed:
+        if migrate_credentials(data) or rewards_migrated or elo_migrated or roles_changed or champions_corrected or penalties_retired or flash_weights_migrated or clips_awarded or weekly_archived or pickem_awarded or predictions_settled or betting_changed:
             save_db(data)
         return data
 
@@ -1139,8 +1145,7 @@ def update_duo_current_streak(duo):
     duo["currentStreakCount"] = count
 
 def normalize_champion_name(value):
-    champion = str(value or "Unknown")
-    return "Vex" if champion == "Locke" else champion
+    return str(value or "Unknown")
 
 def normalize_position(participant):
     position = str(participant.get("teamPosition") or participant.get("individualPosition") or "UNKNOWN").upper()
@@ -3040,7 +3045,7 @@ class CustomHandler(BaseHTTPRequestHandler):
                     "assignedAt": now_iso,
                     "assignedAtEpochMs": int(time.time() * 1000),
                     "timestamp": time.strftime("%d/%m/%Y %H:%M"),
-                    "requirements": penalty_requirements(target, selected_penalty, db.get("duos", [])),
+                    "requirements": penalty_requirements(target, selected_penalty, db.get("duos", []), config=db.get("config")),
                     "resolved": False
                 }
                 attack["requirements"] = copy.deepcopy(penalty_instance["requirements"])
