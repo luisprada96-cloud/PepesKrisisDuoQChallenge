@@ -256,7 +256,7 @@ def submit(db, team_id, visitor, category_id, option_id, author='', now=None):
 
 def champion_key(value):
     name = re.sub(r'[^a-z0-9]', '', str(value or '').casefold())
-    return {'wukong':'monkeyking', 'nunuandwillump':'nunu', 'nunuywillump':'nunu', 'locke':'vex'}.get(name, name)
+    return {'wukong':'monkeyking', 'nunuandwillump':'nunu', 'nunuywillump':'nunu'}.get(name, name)
 
 
 def champion_count(db, board):

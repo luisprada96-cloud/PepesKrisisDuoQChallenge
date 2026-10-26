@@ -20,6 +20,7 @@ def participant_details(participant, participants):
     lane_cs = optional_int(participant.get("totalMinionsKilled"))
     jungle_cs = optional_int(participant.get("neutralMinionsKilled"))
     return {
+        "championId": optional_int(participant.get("championId")),
         "riotIdGameName": str(participant.get("riotIdGameName") or ""),
         "riotIdTagline": str(participant.get("riotIdTagline") or ""),
         "champLevel": optional_int(participant.get("champLevel")),

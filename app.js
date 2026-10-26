@@ -452,8 +452,8 @@ function renderBestMatchesTable() {
         <td><strong class="best-match-team">${escapeHtml(duo.teamName)}</strong><span class="best-match-date">${escapeHtml(match.date || '')}</span></td>
         <td>
           <div class="best-champions">
-            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p1Champion}.png" alt="${p1Name}"> ${p1Name}</span>
-            <span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${p2Champion}.png" alt="${p2Name}"> ${p2Name}</span>
+            <span><img src="https://ddragon.leagueoflegends.com/cdn/16.20.1/img/champion/${p1Champion}.png" alt="${p1Name}"> ${p1Name}</span>
+            <span><img src="https://ddragon.leagueoflegends.com/cdn/16.20.1/img/champion/${p2Champion}.png" alt="${p2Name}"> ${p2Name}</span>
           </div>
         </td>
         <td><span class="best-lines">${p1Position} <i class="fa-solid fa-plus"></i> ${p2Position}</span></td>
@@ -487,7 +487,7 @@ function renderBestSoloMatches(tbody) {
     return `<tr>
       <td><span class="best-match-position">${index + 1}</span></td>
       <td>${identity}<span class="best-match-date">${escapeHtml(match.date || '')}</span></td>
-      <td><div class="best-champions"><span><img src="https://ddragon.leagueoflegends.com/cdn/15.3.1/img/champion/${champion}.png" alt="${championName}"> ${championName}</span></div></td>
+      <td><div class="best-champions"><span><img src="https://ddragon.leagueoflegends.com/cdn/16.20.1/img/champion/${champion}.png" alt="${championName}"> ${championName}</span></div></td>
       <td><span class="best-lines">${POSITION_LABELS[match.position] || 'Sin datos'}</span></td>
       <td><strong class="combined-kda">${Number(match.kda).toFixed(2)}</strong></td>
       <td><strong>${match.kills}/${match.deaths}/${match.assists}</strong></td>

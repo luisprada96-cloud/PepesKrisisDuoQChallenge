@@ -51,7 +51,7 @@
       return [champion.id, score];
     }));
     rows.sort((a,b) => {
-      if (order === 'winrate' && (a.games >= 3) !== (b.games >= 3)) return a.games >= 3 ? -1 : 1;
+      if ((order === 'winrate' || order === 'kda') && (a.games >= 3) !== (b.games >= 3)) return a.games >= 3 ? -1 : 1;
       const first = scores.get(a.id), second = scores.get(b.id);
       if (first === null && second !== null) return 1;
       if (second === null && first !== null) return -1;
