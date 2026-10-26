@@ -15,6 +15,28 @@ WEBM = b'\x1aE\xdf\xa3' + b'\x00webm' + b'\x00' * 64
 
 
 class EffectLogicTests(unittest.TestCase):
+    def test_bulo_timing_is_in_snapshot_without_mutating_storage(self):
+        db = {'overlayEffects': [{**effects.BUILTIN, 'kind':'video', 'id':effects.BULO_VIDEO_ID}]}
+        selected = effects.choose(db)
+        self.assertEqual(selected['senderRevealMs'], 6500)
+        self.assertNotIn('senderRevealMs', db['overlayEffects'][0])
+
+    def test_removal_is_reversible_without_changing_old_attack_snapshot(self):
+        db = {}
+        video = effects.validate_upload('Incorrecta',1200,WEBM)
+        effects.add(db,video)
+        attack = effects.snapshot(video)
+        effects.remove(db,video['id'])
+        self.assertEqual(len(effects.library(db)),1)
+        self.assertFalse(effects.removed(db)[0]['active'])
+        self.assertEqual(attack['id'],video['id'])
+        effects.restore(db,video['id'])
+        self.assertEqual(len(effects.library(db)),2)
+        self.assertEqual(effects.removed(db),[])
+        effects.set_active(db,video['id'],True)
+        effects.set_active(db,effects.BUILTIN['id'],False)
+        with self.assertRaises(ValueError): effects.remove(db,video['id'])
+
     def test_default_is_non_mutating_and_selection_is_snapshotted(self):
         db = {}
         self.assertEqual(effects.choose(db)['id'], effects.BUILTIN['id'])
@@ -61,6 +83,15 @@ class EffectEndpointTests(unittest.TestCase):
 
     def get(self,path,headers=None):
         return urllib.request.urlopen(urllib.request.Request(self.base+path,headers=headers or {}),timeout=5)
+
+    def test_admin_remove_restore_keeps_bytes_available(self):
+        with self.upload() as response: video = json.load(response)['effects'][-1]
+        result = self.post('/api/admin/overlay',{'authPin':'9999','action':'remove','id':video['id']})
+        self.assertEqual(len(result['effects']),1)
+        self.assertEqual(result['removedEffects'][0]['id'],video['id'])
+        with self.get(video['url']) as response: self.assertEqual(response.read(),WEBM)
+        result = self.post('/api/admin/overlay',{'authPin':'9999','action':'restore','id':video['id']})
+        self.assertFalse(result['effects'][-1]['active'])
 
     def test_upload_auth_persistence_ranges_and_snapshot_for_both_receivers(self):
         with self.assertRaises(urllib.error.HTTPError) as error: self.upload(pin='wrong')

@@ -103,9 +103,9 @@
   }
   function clearVideo() {
     const video = $('effect-video');
-    video.onended = video.onerror = video.onplaying = null;
+    video.onended = video.onerror = video.onplaying = video.ontimeupdate = video.onseeked = null;
     video.pause(); video.removeAttribute('src'); video.load(); video.hidden = true;
-    $('alert').classList.remove('video-effect', 'video-hold');
+    $('alert').classList.remove('video-effect', 'video-hold', 'video-sender');
   }
   function playNext() {
     if (playing || !queue.length) return;
@@ -136,6 +136,13 @@
     stopSound(); flightAnimation?.cancel();
     $('alert').classList.add('video-effect');
     const video = $('effect-video'); video.hidden = false; video.volume = volume;
+    const revealMs = Number(effect.senderRevealMs);
+    const revealDuringVideo = Number.isFinite(revealMs) && revealMs >= 0 && revealMs < Number(effect.durationMs);
+    const syncSender = () => {
+      if (run !== playbackGeneration || !revealDuringVideo) return;
+      $('alert').classList.toggle('video-sender', video.currentTime * 1000 >= revealMs);
+    };
+    video.ontimeupdate = video.onseeked = syncSender;
     let began = false, ended = false;
     const holdSender = () => {
       if (run !== playbackGeneration || ended) return;
@@ -143,7 +150,7 @@
       $('alert').classList.add('video-hold');
       animationTimer = setTimeout(finish, 3500);
     };
-    video.onended = holdSender;
+    video.onended = revealDuringVideo ? finish : holdSender;
     video.onerror = builtin; // A failed asset uses the fixed fallback, never another draw.
     video.onplaying = () => {
       if (run !== playbackGeneration || began) return;

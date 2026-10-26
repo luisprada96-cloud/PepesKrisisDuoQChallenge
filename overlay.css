@@ -37,3 +37,4 @@ h1{font-size:36px;margin:12px 0}#settings p,small{color:#bfcee4;line-height:1.5}
 #alert.video-effect .rocket-path,#alert.video-effect .flight-label,#alert.video-effect .explosion{display:none}
 #alert.video-effect .message{animation:none;opacity:0;top:50%;transform:translateY(-50%)}
 #alert.video-effect.video-hold .message{opacity:1}
+#alert.video-effect.video-sender .message{opacity:1;top:60%;transform:none}
