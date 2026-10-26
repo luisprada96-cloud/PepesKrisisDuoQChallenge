@@ -4,7 +4,7 @@ async function refreshOverlayLibrary() {
   document.getElementById('admin-overlay-effects').hidden = false;
   try {
     const result = await overlayAdminRequest('/api/admin/overlay', {authPin:adminSessionPin});
-    renderOverlayLibrary(result.effects);
+    renderOverlayLibrary(result.effects, result.removedEffects);
   } catch (error) { document.getElementById('overlay-library-status').textContent = error.message; }
 }
 
@@ -18,7 +18,7 @@ async function overlayAdminRequest(url, body, headers) {
   return result;
 }
 
-function renderOverlayLibrary(effects = []) {
+function renderOverlayLibrary(effects = [], removedEffects = []) {
   const list = document.getElementById('overlay-library-list'); list.replaceChildren();
   const active = effects.filter(effect => effect.active).length;
   document.getElementById('overlay-library-status').textContent = `${active} animaciones activas · misma probabilidad: ${active ? (100/active).toLocaleString('es-ES',{maximumFractionDigits:1}) : 0} % cada una`;
@@ -26,7 +26,7 @@ function renderOverlayLibrary(effects = []) {
     const card = document.createElement('article'); card.className = 'overlay-library-card';
     const title = document.createElement('h3'); title.textContent = effect.name;
     const description = document.createElement('p');
-    description.textContent = effect.kind === 'builtin' ? 'Misil Pepo con alarma nuclear · 10 segundos' : `Vídeo de ${(effect.durationMs/1000).toLocaleString('es-ES')} s + 3,5 s para mostrar el atacante`;
+    description.textContent = effect.kind === 'builtin' ? 'Misil Pepo con alarma nuclear · 10 segundos' : effect.senderRevealMs != null ? `Vídeo de ${(effect.durationMs/1000).toLocaleString('es-ES')} s · nombres reales durante la explosión` : `Vídeo de ${(effect.durationMs/1000).toLocaleString('es-ES')} s + 3,5 s para mostrar el atacante`;
     card.append(title, description);
     if (effect.kind === 'video' && /^\/api\/overlay\/media\/[a-f0-9]{64}$/.test(effect.url)) {
       const video = document.createElement('video'); video.controls = true; video.preload = 'none'; video.src = effect.url;
@@ -37,10 +37,34 @@ function renderOverlayLibrary(effects = []) {
     button.disabled = effect.active && active === 1;
     button.addEventListener('click', async () => {
       button.disabled = true;
-      try { renderOverlayLibrary((await overlayAdminRequest('/api/admin/overlay',{authPin:adminSessionPin,action:'toggle',id:effect.id,active:!effect.active})).effects); }
+      try { const result = await overlayAdminRequest('/api/admin/overlay',{authPin:adminSessionPin,action:'toggle',id:effect.id,active:!effect.active}); renderOverlayLibrary(result.effects, result.removedEffects); }
       catch (error) { document.getElementById('overlay-library-status').textContent = error.message; button.disabled = false; }
     });
-    card.append(button); list.append(card);
+    card.append(button);
+    if (effect.kind === 'video') {
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn-refresh';
+      remove.textContent = 'Eliminar'; remove.disabled = effect.active && active === 1;
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try { const result = await overlayAdminRequest('/api/admin/overlay',{authPin:adminSessionPin,action:'remove',id:effect.id}); renderOverlayLibrary(result.effects, result.removedEffects); }
+        catch (error) { document.getElementById('overlay-library-status').textContent = error.message; remove.disabled = false; }
+      });
+      card.append(remove);
+    }
+    list.append(card);
+  }
+  let trash = document.getElementById('overlay-removed-effects');
+  if (!trash) { trash = document.createElement('details'); trash.id = 'overlay-removed-effects'; list.after(trash); }
+  trash.replaceChildren(); trash.hidden = !removedEffects.length;
+  const summary = document.createElement('summary'); summary.textContent = 'Animaciones eliminadas · recuperar'; trash.append(summary);
+  for (const effect of removedEffects) {
+    const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = `Recuperar ${effect.name}`;
+    restore.addEventListener('click', async () => {
+      restore.disabled = true;
+      try { const result = await overlayAdminRequest('/api/admin/overlay',{authPin:adminSessionPin,action:'restore',id:effect.id}); renderOverlayLibrary(result.effects, result.removedEffects); }
+      catch (error) { document.getElementById('overlay-library-status').textContent = error.message; restore.disabled = false; }
+    });
+    trash.append(restore);
   }
 }
 

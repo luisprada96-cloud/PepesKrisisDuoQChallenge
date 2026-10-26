@@ -2180,7 +2180,9 @@ class CustomHandler(BaseHTTPRequestHandler):
         if path.startswith('/api/overlay/media/'):
             digest = path.removeprefix('/api/overlay/media/')
             with db_lock:
-                exists = any(effect['id'] == digest and effect['kind'] == 'video' for effect in overlay_effects.library(load_db()))
+                db = load_db()
+                known = overlay_effects.library(db) + overlay_effects.removed(db)
+                exists = any(effect['id'] == digest and effect['kind'] == 'video' for effect in known)
             if not exists:
                 self._send_json({'error': 'Vídeo no encontrado'}, 404)
                 return
@@ -2537,10 +2539,19 @@ class CustomHandler(BaseHTTPRequestHandler):
                     self._send_json({'error': str(error)}, 400)
                     return
                 save_db(db)
+            elif data.get('action') in ('remove', 'restore'):
+                try:
+                    operation = overlay_effects.remove if data['action'] == 'remove' else overlay_effects.restore
+                    operation(db, data.get('id'))
+                except ValueError as error:
+                    self._send_json({'error': str(error)}, 400)
+                    return
+                save_db(db)
             elif data.get('action', 'list') != 'list':
                 self._send_json({'error': 'Acción inválida'}, 400)
                 return
-            self._send_json({'success': True, 'effects': overlay_effects.library(db)})
+            self._send_json({'success': True, 'effects': overlay_effects.library(db),
+                             'removedEffects': overlay_effects.removed(db)})
             return
 
         if parsed.path == '/api/admin/pickem':

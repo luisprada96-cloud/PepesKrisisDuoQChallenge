@@ -13,12 +13,44 @@ from storage import StorageError
 MAX_BYTES = 12 * 1024 * 1024
 MAX_LIBRARY_BYTES = 100 * 1024 * 1024
 MAX_EFFECTS = 30
+# Immutable uploaded Bulo asset: names are rendered by OBS, never burned into it.
+BULO_VIDEO_ID = 'f11b638d2d42fbf4914d8cd041b6cad8181fe3d33cc8bfced3e9649b3d76dad4'
 BUILTIN = {'id': 'pepo-nuclear-v1', 'name': 'Misil Pepo · alarma nuclear',
            'kind': 'builtin', 'durationMs': 10000, 'active': True}
 
 
 def library(db):
-    return copy.deepcopy(db.get('overlayEffects', [BUILTIN]))
+    items = copy.deepcopy(db.get('overlayEffects', [BUILTIN]))
+    for item in items:
+        if item.get('id') == BULO_VIDEO_ID:
+            item['senderRevealMs'] = 6500
+    return items
+
+
+def removed(db):
+    return copy.deepcopy(db.get('removedOverlayEffects', []))
+
+
+def remove(db, effect_id):
+    items = library(db)
+    target = next((item for item in items if item['id'] == effect_id), None)
+    if not target or target.get('kind') != 'video':
+        raise ValueError('Solo se pueden retirar vídeos de la biblioteca.')
+    remaining = [item for item in items if item['id'] != effect_id]
+    if not any(item.get('active') for item in remaining):
+        raise ValueError('Debe quedar al menos una animación activa.')
+    # Keep immutable bytes and attack snapshots intact; this action is reversible.
+    db['removedOverlayEffects'] = removed(db) + [{**target, 'active': False}]
+    db['overlayEffects'] = remaining
+
+
+def restore(db, effect_id):
+    items = removed(db)
+    target = next((item for item in items if item['id'] == effect_id), None)
+    if not target:
+        raise ValueError('La animación retirada no existe.')
+    add(db, {**target, 'active': False})
+    db['removedOverlayEffects'] = [item for item in items if item['id'] != effect_id]
 
 
 def snapshot(effect):
