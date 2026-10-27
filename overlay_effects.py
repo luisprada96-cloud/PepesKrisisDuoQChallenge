@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import secrets
 import tempfile
+import threading
 
 from storage import StorageError
 
@@ -15,6 +16,7 @@ MAX_LIBRARY_BYTES = 100 * 1024 * 1024
 MAX_EFFECTS = 30
 # Immutable uploaded Bulo asset: names are rendered by OBS, never burned into it.
 BULO_VIDEO_ID = 'f11b638d2d42fbf4914d8cd041b6cad8181fe3d33cc8bfced3e9649b3d76dad4'
+_media_cache_lock = threading.Lock()
 BUILTIN = {'id': 'pepo-nuclear-v1', 'name': 'Misil Pepo · alarma nuclear',
            'kind': 'builtin', 'durationMs': 10000, 'active': True}
 
@@ -104,35 +106,65 @@ def set_active(db, effect_id, active):
     db['overlayEffects'] = effects
 
 
+def _write_media_file(target, blob):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as handle:
+            temporary = handle.name
+            handle.write(blob); handle.flush(); os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        temporary = None
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _cached_media(target, digest):
+    try:
+        if not target.is_file() or target.stat().st_size > MAX_BYTES:
+            return None
+        payload = target.read_bytes()
+        return payload if hashlib.sha256(payload).hexdigest() == digest else None
+    except OSError:
+        return None
+
+
 def media_bytes(digest, db_file, backend, blob=None):
-    """Videos live outside the tournament JSON: files locally, BYTEA in Neon."""
+    """Neon remains authoritative; immutable videos have a disposable file cache."""
     if not re.fullmatch(r'[a-f0-9]{64}', digest):
         raise ValueError('Identificador de vídeo inválido.')
     try:
         if backend is not None:
-            with backend.connect() as conn:
-                with conn.cursor() as cursor:
-                    if blob is not None:
-                        cursor.execute('CREATE TABLE IF NOT EXISTS overlay_media (sha256 text PRIMARY KEY, payload bytea NOT NULL)')
-                        cursor.execute('INSERT INTO overlay_media (sha256, payload) VALUES (%s, %s) ON CONFLICT (sha256) DO NOTHING', (digest, blob))
-                        return
-                    cursor.execute('SELECT payload FROM overlay_media WHERE sha256 = %s', (digest,))
-                    row = cursor.fetchone()
-                    return bytes(row[0]) if row else None
-        folder = Path(db_file).parent / 'overlay-media'
-        target = folder / (digest + '.webm')
+            target = Path(db_file).parent / 'overlay-media-cache' / (digest + '.webm')
+            # Concurrent Range requests/OBS clients must not all download the
+            # same complete video from Neon on a cold cache.
+            with _media_cache_lock:
+                if blob is None:
+                    cached = _cached_media(target, digest)
+                    if cached is not None:
+                        return cached
+                with backend.connect() as conn:
+                    with conn.cursor() as cursor:
+                        if blob is not None:
+                            cursor.execute('CREATE TABLE IF NOT EXISTS overlay_media (sha256 text PRIMARY KEY, payload bytea NOT NULL)')
+                            cursor.execute('INSERT INTO overlay_media (sha256, payload) VALUES (%s, %s) ON CONFLICT (sha256) DO NOTHING', (digest, blob))
+                            payload = blob
+                        else:
+                            cursor.execute('SELECT payload FROM overlay_media WHERE sha256 = %s', (digest,))
+                            row = cursor.fetchone()
+                            payload = bytes(row[0]) if row else None
+                if payload is not None:
+                    if hashlib.sha256(payload).hexdigest() != digest:
+                        raise StorageError('El vídeo no coincide con su identificador.')
+                    try:
+                        _write_media_file(target, payload)
+                    except OSError:
+                        pass  # Cache failure must not fail an acknowledged read/upload.
+                return payload if blob is None else None
+        target = Path(db_file).parent / 'overlay-media' / (digest + '.webm')
         if blob is None:
             return target.read_bytes() if target.is_file() else None
-        folder.mkdir(parents=True, exist_ok=True)
-        temporary = None
-        try:
-            with tempfile.NamedTemporaryFile(dir=folder, delete=False) as handle:
-                temporary = handle.name
-                handle.write(blob); handle.flush(); os.fsync(handle.fileno())
-            os.replace(temporary, target)
-            temporary = None
-        finally:
-            if temporary and os.path.exists(temporary):
-                os.unlink(temporary)
+        _write_media_file(target, blob)
     except Exception as error:
         raise StorageError('No se pudo guardar o leer el vídeo del overlay. Se conservan los datos del torneo.') from error

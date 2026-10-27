@@ -173,6 +173,46 @@ class IncrementalSyncTests(unittest.TestCase):
         with patch.object(server, "get_riot_api_key", return_value="fake"), patch.object(server, "riot_open", side_effect=self.responses(ids, calls, **kwargs)), patch.object(server.time, "sleep"):
             return server.sync_riot_data()
 
+    def test_complete_sync_and_pickem_checkpoint_share_one_save(self):
+        self.prepare()
+        db = server.load_db()
+        db['config'].update(startDate='2026-10-15T18:00:00+02:00', endDate='2026-11-15T23:59:00+01:00')
+        server.pickem_service.ensure_week(db)
+        server.save_db(db)
+        server.load_db()  # Settle first-time calendar migrations before counting writes.
+        with patch.object(server, 'save_db', wraps=server.save_db) as save:
+            self.assertTrue(self.sync([], [])['success'])
+            self.assertEqual(save.call_count, 1)
+            snapshot = save.call_args.args[0]
+            self.assertIn('lastRiotApiSuccessAt', snapshot)
+            self.assertIn('lastCompleteSync', snapshot['pickem'])
+            self.assertEqual(snapshot['duos'][0]['player1']['rank']['lp'], 10)
+        loaded = server.load_db()
+        self.assertIn('lastCompleteSync', loaded['pickem'])
+        self.assertEqual(loaded['pickem']['lastCompleteSync']['roster'], server.pickem_service.roster_key(loaded))
+
+    def test_pending_details_do_not_certify_a_complete_sync(self):
+        self.prepare()
+        db = server.load_db()
+        db['config'].update(startDate='2026-10-15T18:00:00+02:00', endDate='2026-11-15T23:59:00+01:00')
+        server.pickem_service.ensure_week(db)
+        server.save_db(db)
+        with patch.object(server, 'RIOT_MATCH_DETAIL_BATCH_PER_DUO', 1):
+            result = self.sync(['EUW1_FIRST', 'EUW1_SECOND'], [])
+        self.assertTrue(result['success'])
+        self.assertGreater(result['pending'], 0)
+        self.assertNotIn('lastCompleteSync', server.load_db()['pickem'])
+
+    def test_failed_calls_do_not_certify_a_complete_sync(self):
+        self.prepare()
+        db = server.load_db()
+        db['config'].update(startDate='2026-10-15T18:00:00+02:00', endDate='2026-11-15T23:59:00+01:00')
+        server.pickem_service.ensure_week(db)
+        server.save_db(db)
+        result = self.sync(['EUW1_FAILURE'], [], fail_once={'EUW1_FAILURE'})
+        self.assertFalse(result['success'])
+        self.assertNotIn('lastCompleteSync', server.load_db()['pickem'])
+
     def test_short_matches_are_excluded_once_and_ten_minutes_is_allowed(self):
         self.prepare()
         before = server.load_db()['duos'][0]['blueShells']

@@ -1,6 +1,8 @@
 import copy
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
@@ -62,12 +64,72 @@ class EffectLogicTests(unittest.TestCase):
         backend = MagicMock()
         cursor = backend.connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         effect = effects.validate_upload('Video',1000,WEBM)
-        effects.media_bytes(effect['id'], 'unused', backend, WEBM)
-        self.assertEqual(cursor.execute.call_args.args[1], (effect['id'],WEBM))
+        with tempfile.TemporaryDirectory() as folder:
+            db_file = str(Path(folder)/'db.json')
+            effects.media_bytes(effect['id'], db_file, backend, WEBM)
+            self.assertEqual(cursor.execute.call_args.args[1], (effect['id'],WEBM))
+            self.assertEqual(backend.connect.call_count, 1)
+            self.assertEqual(effects.media_bytes(effect['id'],db_file,backend),WEBM)
+            self.assertEqual(backend.connect.call_count, 1, 'a confirmed upload already seeds the immutable cache')
+            backend.connect.side_effect = OSError('unavailable')
+            self.assertEqual(effects.media_bytes(effect['id'],db_file,backend),WEBM)
+            with self.assertRaises(StorageError): effects.media_bytes('f'*64,db_file,backend)
+
+    def test_cold_neon_media_is_downloaded_once_for_concurrent_obs_range_requests(self):
+        backend = MagicMock()
+        cursor = backend.connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
         cursor.fetchone.return_value = (memoryview(WEBM),)
-        self.assertEqual(effects.media_bytes(effect['id'],'unused',backend),WEBM)
-        backend.connect.side_effect = OSError('unavailable')
-        with self.assertRaises(StorageError): effects.media_bytes(effect['id'],'unused',backend)
+        effect = effects.validate_upload('Video',1000,WEBM)
+        with tempfile.TemporaryDirectory() as folder:
+            db_file = str(Path(folder)/'db.json')
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(lambda _: effects.media_bytes(effect['id'],db_file,backend), range(24)))
+            self.assertTrue(all(result == WEBM for result in results))
+            self.assertEqual(backend.connect.call_count, 1)
+            cursor.execute.assert_called_once_with('SELECT payload FROM overlay_media WHERE sha256 = %s', (effect['id'],))
+            self.assertEqual((Path(folder)/'overlay-media-cache'/(effect['id']+'.webm')).read_bytes(), WEBM)
+
+    def test_corrupt_media_cache_is_refetched_and_wrong_database_bytes_are_rejected(self):
+        backend = MagicMock()
+        cursor = backend.connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (memoryview(WEBM),)
+        effect = effects.validate_upload('Video',1000,WEBM)
+        with tempfile.TemporaryDirectory() as folder:
+            db_file = str(Path(folder)/'db.json')
+            target = Path(folder)/'overlay-media-cache'/(effect['id']+'.webm')
+            effects._write_media_file(target, b'corrupted')
+            self.assertEqual(effects.media_bytes(effect['id'],db_file,backend),WEBM)
+            self.assertEqual(backend.connect.call_count, 1)
+            self.assertEqual(target.read_bytes(), WEBM)
+            cursor.fetchone.return_value = (b'wrong database bytes',)
+            with self.assertRaises(StorageError): effects.media_bytes('f'*64,db_file,backend)
+            self.assertFalse((target.parent/('f'*64+'.webm')).exists())
+
+    def test_cache_write_failure_does_not_fail_confirmed_media_read_or_upload(self):
+        backend = MagicMock()
+        cursor = backend.connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (memoryview(WEBM),)
+        effect = effects.validate_upload('Video',1000,WEBM)
+        with tempfile.TemporaryDirectory() as folder, patch.object(effects, '_write_media_file', side_effect=OSError('disk full')):
+            db_file = str(Path(folder)/'db.json')
+            self.assertEqual(effects.media_bytes(effect['id'],db_file,backend),WEBM)
+            self.assertIsNone(effects.media_bytes(effect['id'],db_file,backend,WEBM))
+            self.assertEqual(backend.connect.call_count, 2)
+
+    def test_failed_media_commit_does_not_seed_cache_and_missing_media_is_not_cached(self):
+        backend = MagicMock()
+        cursor = backend.connect.return_value.__enter__.return_value.cursor.return_value.__enter__.return_value
+        effect = effects.validate_upload('Video',1000,WEBM)
+        with tempfile.TemporaryDirectory() as folder:
+            db_file = str(Path(folder)/'db.json')
+            backend.connect.return_value.__exit__.side_effect = OSError('commit failed')
+            with self.assertRaises(StorageError): effects.media_bytes(effect['id'],db_file,backend,WEBM)
+            self.assertFalse((Path(folder)/'overlay-media-cache').exists())
+            backend.connect.return_value.__exit__.side_effect = None
+            cursor.fetchone.return_value = None
+            self.assertIsNone(effects.media_bytes(effect['id'],db_file,backend))
+            cursor.fetchone.return_value = (WEBM,)
+            self.assertEqual(effects.media_bytes(effect['id'],db_file,backend),WEBM)
 
 
 class EffectEndpointTests(unittest.TestCase):

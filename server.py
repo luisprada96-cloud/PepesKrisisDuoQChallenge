@@ -772,15 +772,18 @@ def save_db(data):
             participant_roles.update_roles(duo)
         betting_service.maintain(data)
         if remote_backend is not None:
+            changed = remote_backend.save(data)
+            if changed is False:
+                return False
             summary_cache["key"] = None
-            remote_backend.save(data)
             # Neon is authoritative; local writes are only a disposable cache.
             try:
                 write_json(DB_FILE, data)
             except StorageError:
                 safe_print("[Neon] Guardado confirmado; no se pudo actualizar la copia local.")
+            return True
         else:
-            write_json(DB_FILE, data)
+            return write_json(DB_FILE, data)
 
 
 def load_secrets():
@@ -1480,7 +1483,7 @@ def update_duo_shells(duo):
                 duo["blueShells"] = duo.get("blueShells", 0) + 1
 
 
-def merge_riot_result(original, scanned):
+def merge_riot_result(original, scanned, complete_scan_started_at=None):
     """Merge only Riot-owned fields; inventory and penalties use the latest state."""
     with db_lock:
         current = load_db()
@@ -1566,9 +1569,14 @@ def merge_riot_result(original, scanned):
             update_match_details_backfill(duo)
         pickem_service.capture_rankings(current)
         weekly_summary.maintain(current, refresh=True)
+        pending = sum(int(m.get("statsVersion", 0) or 0) < 2 or needs_match_details(m) or riot_match_policy.needs_pair_validation(d, m)
+                      for d in current.get("duos", []) for m in d.get("history", []) if not m.get("isTest"))
+        if complete_scan_started_at is not None and not pending:
+            # Persist Riot observations and Pick'em's completion proof together,
+            # rather than rewriting the whole tournament in a second commit.
+            pickem_service.record_complete_sync(current, original, complete_scan_started_at)
         save_db(current)
-        return sum(int(m.get("statsVersion", 0) or 0) < 2 or needs_match_details(m) or riot_match_policy.needs_pair_validation(d, m)
-                   for d in current.get("duos", []) for m in d.get("history", []) if not m.get("isTest"))
+        return pending
 
 
 def riot_open(request, timeout=8):
@@ -1947,9 +1955,11 @@ def sync_riot_data():
             safe_print(f"[Riot API Sync Error] {e}")
 
     confirmed_api_call = db.get("lastRiotApiSuccessAt") != original.get("lastRiotApiSuccessAt")
-    pending = merge_riot_result(original, db) if updated or confirmed_api_call else 0
+    merged = updated or confirmed_api_call
+    complete_scan = scan_started if not failures and not pending_imports else None
+    pending = merge_riot_result(original, db, complete_scan_started_at=complete_scan) if merged else 0
     pending += pending_imports
-    if not failures and not pending:
+    if not merged and not failures and not pending:
         with db_lock:
             current = load_db()
             if pickem_service.record_complete_sync(current, original, scan_started):
