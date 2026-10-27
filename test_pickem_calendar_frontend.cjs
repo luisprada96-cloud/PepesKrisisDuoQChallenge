@@ -47,7 +47,9 @@ const path = require('node:path');
       if(url.pathname.startsWith('/api/'))return route.fulfill({contentType:'application/json',body:JSON.stringify(url.pathname==='/api/duos'?[]:{})});
       const file=url.pathname.slice(1);
       if(!['pickem.html','pickem.js','pickem.css','data.js','styles.css','alerts.js','admin.html','admin.js','app.js','navigation.js','match-history.js'].includes(file))return route.fulfill({status:404,body:''});
-      return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html',body:fs.readFileSync(path.join(__dirname,file))});
+      // Exercise the preserved feature while its public entry is temporarily paused.
+      const body=fs.readFileSync(path.join(__dirname,file),'utf8').replace(' data-pickem-paused','');
+      return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html',body});
     });
     const page=await context.newPage();
     await page.clock.install({time:new Date((close-2)*1000)});

@@ -21,10 +21,10 @@ const path = require('node:path');
         return route.fulfill({contentType:'application/json',body:JSON.stringify(data)});
       }
       const file=url.pathname.slice(1);
-      if(![...pages,'navigation.js','data.js','torneo.js','premios.js','styles.css','clips.css','tierlist.css','porra.css','pickem.css','resumen.css','campeones.css','tienda.css'].includes(file))return route.fulfill({status:404,body:''});
+      if(![...pages,'navigation.js','pickem.js','data.js','torneo.js','premios.js','styles.css','clips.css','tierlist.css','porra.css','pickem.css','resumen.css','campeones.css','tienda.css'].includes(file))return route.fulfill({status:404,body:''});
       let body=fs.readFileSync(path.join(__dirname,file));
       // Other feature behavior has its own suites; preserve only the scripts under test.
-      if(file.endsWith('.html'))body=body.toString().replace(/<script\b[^>]*src="([^"]+)"[^>]*>\s*<\/script>/g,(tag,src)=>['navigation.js','data.js','torneo.js','premios.js'].includes(src)?tag:'');
+      if(file.endsWith('.html'))body=body.toString().replace(/<script\b[^>]*src="([^"]+)"[^>]*>\s*<\/script>/g,(tag,src)=>['navigation.js','pickem.js','data.js','torneo.js','premios.js'].includes(src)?tag:'');
       return route.fulfill({contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html',body});
     });
     const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
@@ -32,7 +32,19 @@ const path = require('node:path');
       await page.setViewportSize({width:1440,height:1000});
       await page.goto('http://pepes.test/'+file);
       const header=page.locator('.site-header');
-      assert.equal(await header.locator('#primary-navigation a').count(),11);
+      assert.equal(await header.locator('#primary-navigation a').count(),10);
+      const pickem = header.locator('.nav-link-disabled');
+      assert.equal(await pickem.count(),1);
+      assert.equal(await pickem.getAttribute('aria-disabled'),'true');
+      assert.equal(await pickem.getAttribute('href'),null);
+      assert.equal(await pickem.getAttribute('title'),'Vuelve pronto');
+      if(file!=='admin.html') await pickem.hover(); // The admin login dialog covers its header.
+      assert.equal(await pickem.evaluate(el=>getComputedStyle(el).cursor),'not-allowed');
+      const currentUrl = page.url();
+      await pickem.dispatchEvent('click');
+      await pickem.focus();
+      await page.keyboard.press('Enter');
+      assert.equal(page.url(),currentUrl,'Pick’em cannot navigate by click or keyboard');
       assert.equal(await header.getByRole('link',{name:'Tienda',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Campeones',exact:true}).count(),1);
       assert.equal(await header.getByRole('link',{name:'Torneo',exact:true}).count(),1);
@@ -40,7 +52,12 @@ const path = require('node:path');
       const links=await header.locator('#primary-navigation a').evaluateAll(a=>a.map(l=>l.getAttribute('href')));
       assert.equal(links[links.indexOf('tierlist.html')+1],'porra.html');
       assert.equal(await header.locator('[aria-current="page"]').count(),1,'exactly one current section');
-      assert.equal(await header.locator('[aria-current="page"]').getAttribute('href'),file);
+      assert.equal(await header.locator('[aria-current="page"]').getAttribute('href'),file==='pickem.html'?null:file);
+      if(file==='pickem.html') {
+        assert.equal(await page.getByRole('heading',{name:'Vuelve pronto',exact:true}).isVisible(),true);
+        assert.equal(await page.locator('.pickem-page').isVisible(),false);
+        assert.ok(!requests.some(url=>url.startsWith('/api/pickem')),'paused page does not load predictions');
+      }
       assert.equal(await page.locator('#nav-menu-toggle').isVisible(),false);
       assert.equal(await page.locator('#primary-navigation').isVisible(),true);
       for(const width of [768,390,320]) {

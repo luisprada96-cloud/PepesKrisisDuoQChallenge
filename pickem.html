@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="pickem.css">
   <script src="navigation.js" defer></script>
 </head>
-<body>
+<body data-pickem-paused>
   <header class="site-header">
     <nav class="navbar" aria-label="Navegación principal">
       <div class="container nav-container">
@@ -29,7 +29,7 @@
           <li><a href="clips.html" class="nav-link"><i class="fa-solid fa-clapperboard" aria-hidden="true"></i> Clips</a></li>
           <li><a href="apuestas.html" class="nav-link"><i class="fa-solid fa-coins" aria-hidden="true"></i> Apuestas</a></li>
           <li><a href="tienda.html" class="nav-link"><i class="fa-solid fa-store" aria-hidden="true"></i> Tienda</a></li>
-          <li><a href="pickem.html" class="nav-link active" aria-current="page"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</a></li>
+          <li><span class="nav-link nav-link-disabled" role="link" aria-disabled="true" aria-current="page" tabindex="0" title="Vuelve pronto" aria-label="Pick’em: Vuelve pronto"><i class="fa-solid fa-ticket" aria-hidden="true"></i> Pick’em</span></li>
           <li><a href="campeones.html" class="nav-link"><i class="fa-solid fa-chess-knight" aria-hidden="true"></i> Campeones</a></li>
           <li><a href="resumen.html" class="nav-link"><i class="fa-solid fa-calendar-week" aria-hidden="true"></i> Resumen semanal</a></li>
           <li><a href="tierlist.html" class="nav-link"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Tierlist</a></li>
@@ -38,7 +38,14 @@
       </div>
     </nav>
   </header>
-  <main class="container pickem-page">
+  <main class="container">
+  <section class="pickem-unavailable" aria-labelledby="pickem-unavailable-title">
+    <i class="fa-solid fa-ticket" aria-hidden="true"></i>
+    <h1 id="pickem-unavailable-title" class="text-gradient-cyan">Vuelve pronto</h1>
+    <p>Pick’em estará disponible de nuevo próximamente.</p>
+    <a href="index.html" class="nav-link">Volver a la clasificación</a>
+  </section>
+  <section class="pickem-page" inert hidden>
     <div class="pickem-heading"><div><span class="section-eyebrow">Tus pronósticos tienen premio</span><h1 class="text-gradient-cyan">Pick’em del challenge</h1><p>3 aciertos: 1 pepazo. Con 5 o más: 2 pepazos por quiniela.</p></div><div class="pickem-week-control"><label for="pickem-week">Semana</label><select id="pickem-week" class="form-control" aria-label="Semana del Pick’em"></select></div></div>
     <div class="pickem-week-banner"><span><i class="fa-regular fa-clock" aria-hidden="true"></i> <span id="pickem-closing">Cargando la semana…</span></span><span id="pickem-entries"></span></div>
     <p id="pickem-feedback" class="pickem-feedback" aria-live="polite"></p>
@@ -78,6 +85,7 @@
       <p id="pickem-form-error" class="pickem-error" role="alert" hidden></p>
       <div class="pickem-dialog-actions"><span>Al enviar la predicción no podrás cambiarla.</span><button type="submit" id="pickem-submit" class="pickem-primary" disabled>Guardar predicción</button></div>
     </form></dialog>
+  </section>
   </main>
   <footer class="footer"><div class="container"><p><strong>Pepes Krisis Duo Q Challenge</strong> &copy; 2026.</p></div></footer>
   <script src="data.js"></script><script src="alerts.js"></script><script src="pickem.js"></script>

@@ -1,5 +1,10 @@
 /* Weekly Pick'em. Answers, browser quotas and rewards are always server-owned. */
 (() => {
+  // Pause the public page without removing predictions or settlement logic.
+  if (document.body.hasAttribute('data-pickem-paused')) return;
+  const page = document.querySelector('.pickem-page');
+  page.hidden = false;
+  page.inert = false;
   const $=id=>document.getElementById(id);
   const escape=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
   let state=null, week='', currentCategory='', busy=false, version=0;

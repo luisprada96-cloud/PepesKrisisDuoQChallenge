@@ -2012,6 +2012,14 @@ body {
 .site-header .nav-links .nav-link { border-radius: 8px; padding: .5rem .85rem; font-size: .84rem; white-space: nowrap; gap: .5rem; }
 .site-header .nav-links .nav-link:hover { background: rgba(255,255,255,.035); }
 .site-header .nav-links .nav-link.active { color: var(--cyan-primary); background: rgba(0,240,255,.09); box-shadow: inset 0 -2px var(--cyan-primary); text-shadow: none; }
+.site-header .nav-links .nav-link-disabled,
+.site-header .nav-links .nav-link-disabled:hover { color: #7b8494; background: none; text-shadow: none; box-shadow: none; cursor: not-allowed; }
+.site-header .nav-link-disabled:focus-visible { outline: 2px solid var(--text-muted); outline-offset: -2px; }
+.pickem-unavailable { display: none; }
+body[data-pickem-paused] .pickem-page { display: none; }
+body[data-pickem-paused] .pickem-unavailable { display: flex; min-height: 50vh; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; text-align: center; padding-block: 4rem; }
+.pickem-unavailable > i { font-size: 2.5rem; color: var(--text-muted); }
+.pickem-unavailable p { color: var(--text-muted); }
 .nav-toggle { display: none; align-items: center; justify-content: center; gap: .5rem; border: 1px solid #335060; background: #10222f; border-radius: 7px; color: var(--cyan-primary); cursor: pointer; font: 600 .85rem var(--font-body); min-height: 40px; padding: .45rem .75rem; }
 .site-header a:focus-visible, .nav-toggle:focus-visible { outline: 2px solid var(--cyan-primary); outline-offset: 3px; }
 @media(max-width:900px) {
