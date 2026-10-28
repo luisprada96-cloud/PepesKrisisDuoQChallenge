@@ -112,6 +112,11 @@ function penaltyAssignmentText(instance, duo = {}) {
   const positionInstruction = key => {
     if (!Object.prototype.hasOwnProperty.call(req, 'randomPositions')) return '';
     const positions = {TOP:'Top', JUNGLE:'Jungla', MIDDLE:'Mid', BOTTOM:'ADC', UTILITY:'Support'};
+    if (req.roleSelectionVersion === 2) {
+      const first = positions[req.randomPositions?.[key]];
+      const second = positions[req.randomSecondaryPositions?.[key]];
+      return first && second ? `Primer rol: ${first} · Segundo rol: ${second}` : 'Roles pendientes: falta conocer el rol principal de ambos integrantes';
+    }
     return positions[req.randomPositions?.[key]] ? `Posición: ${positions[req.randomPositions[key]]}` : 'Posición pendiente: falta conocer el rol principal';
   };
   const championPoolInstruction = req.randomChampionPool === 'unplayed' ? 'Campeones pendientes del álbum' :

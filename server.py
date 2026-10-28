@@ -91,8 +91,8 @@ SECRET_HASH_ITERATIONS = 260000
 SECRET_HASH_PREFIX = "pbkdf2_sha256"
 
 PENALTY_CATALOG = [
-    {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido por la ruleta (50/50) debe jugar en la posición sorteada entre las cuatro distintas de su rol principal.", "defaultWeight": 12},
-    {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Cada integrante debe jugar en su posición sorteada entre las cuatro distintas de su rol principal.", "defaultWeight": 5},
+    {"id": "autofill_one", "baseId": "autofill", "scope": "ONE", "name": "Polivalente · UNO", "icon": "🎲", "desc": "El integrante elegido debe seleccionar el primer y segundo rol sorteados, sin coincidir con el principal de ninguno de los dos integrantes. Se cumple jugando cualquiera de esos dos roles.", "defaultWeight": 12},
+    {"id": "autofill_both", "baseId": "autofill", "scope": "BOTH", "name": "Polivalente · AMBOS", "icon": "🎲", "desc": "Cada integrante debe seleccionar su primer y segundo rol sorteados, sin coincidir con el principal de ninguno de los dos. Cada uno cumple jugando cualquiera de sus dos roles.", "defaultWeight": 5},
     {"id": "random_champion_one", "baseId": "random_champion", "scope": "ONE", "name": "Campeón aleatorio · UNO", "icon": "🎯", "desc": "El integrante elegido debe jugar el campeón sorteado entre los pendientes del álbum del torneo. Cuando se hayan jugado todos, entra el catálogo completo.", "defaultWeight": 28},
     {"id": "random_champion_both", "baseId": "random_champion", "scope": "BOTH", "name": "Campeón aleatorio · AMBOS", "icon": "🎯", "desc": "Cada integrante debe jugar su campeón sorteado entre los pendientes del álbum del torneo. Cuando se hayan jugado todos, entra el catálogo completo.", "defaultWeight": 12},
     {"id": "no_flash_one", "baseId": "no_flash", "scope": "ONE", "name": "Sin Flash · UNO", "icon": "⚡", "desc": "El integrante elegido por la ruleta (50/50) debe jugar sin Flash.", "defaultWeight": 14},
@@ -462,6 +462,25 @@ def fill_pending_penalty_favorites(duo):
     return changed
 
 
+def assign_polivalente_role_pairs(req, keys):
+    """Freeze two queue choices once both participants' main roles are known."""
+    roles = req.get('mainRoles', {})
+    if any(roles.get(key) not in VALID_MAIN_ROLES for key in ('player1', 'player2')):
+        return False
+    pool = tuple(role for role in participant_roles.POSITIONS if role not in roles.values())
+    updated = False
+    for key in keys:
+        if not req['randomPositions'].get(key):
+            other = 'player2' if key == 'player1' else 'player1'
+            candidates = tuple(role for role in pool if role != req['randomPositions'].get(other)) if other in keys else pool
+            req['randomPositions'][key] = secrets.choice(candidates)
+            updated = True
+        if not req['randomSecondaryPositions'].get(key):
+            req['randomSecondaryPositions'][key] = secrets.choice(tuple(role for role in pool if role != req['randomPositions'][key]))
+            updated = True
+    return updated
+
+
 def fill_pending_penalty_roles(duo):
     """Resolve empty automatic references once; published legacy roles stay fixed."""
     changed = []
@@ -473,15 +492,18 @@ def fill_pending_penalty_roles(duo):
         assigned = req.get('assignedPlayer')
         keys = (assigned,) if scope == 'ONE' and assigned in ('player1','player2') else ('player1','player2')
         roles, updated = req.setdefault('mainRoles', {}), False
-        for key in keys:
+        reference_keys = ('player1','player2') if req.get('roleSelectionVersion') == 2 else keys
+        for key in reference_keys:
             if roles.get(key) not in VALID_MAIN_ROLES:
                 position = participant_roles.role_summary(duo, key)['position']
                 if position:
                     roles[key] = position
                     updated = True
-            if 'randomPositions' in req and roles.get(key) in VALID_MAIN_ROLES and not req['randomPositions'].get(key):
+            if req.get('roleSelectionVersion') != 2 and 'randomPositions' in req and roles.get(key) in VALID_MAIN_ROLES and not req['randomPositions'].get(key):
                 req['randomPositions'][key] = secrets.choice(tuple(role for role in participant_roles.POSITIONS if role != roles[key]))
                 updated = True
+        if req.get('roleSelectionVersion') == 2:
+            updated = assign_polivalente_role_pairs(req, keys) or updated
         if updated:
             changed.append(debuff)
     return changed
@@ -596,10 +618,8 @@ def penalty_requirements(duo, penalty, duos, assign_positions=True, config=None,
             requirements['randomChampionPoolByPlayer'] = sources
     if penalty.get("baseId") == "autofill" and assign_positions:
         keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
-        requirements["randomPositions"] = {
-            key: secrets.choice(tuple(role for role in participant_roles.POSITIONS if role != requirements["mainRoles"][key]))
-            for key in keys if requirements["mainRoles"].get(key) in VALID_MAIN_ROLES
-        }
+        requirements.update(roleSelectionVersion=2, randomPositions={}, randomSecondaryPositions={})
+        assign_polivalente_role_pairs(requirements, keys)
     if penalty.get("baseId") == "swap_flash":
         keys = (requirements["assignedPlayer"],) if penalty.get("scope") == "ONE" else ("player1", "player2")
         requirements["flashAccounts"] = {key: flash_account(duo.get(key) or {}) for key in keys}
@@ -1223,7 +1243,15 @@ def evaluate_active_penalties(duo, match):
             if base_id == "autofill":
                 actual, primary = stats.get("position"), req.get("mainRoles", {}).get(player_key)
                 results[player_key] = actual in VALID_MAIN_ROLES and primary in VALID_MAIN_ROLES and actual != primary
-                if "randomPositions" in req:
+                if req.get('roleSelectionVersion') == 2:
+                    first = req.get('randomPositions', {}).get(player_key)
+                    second = req.get('randomSecondaryPositions', {}).get(player_key)
+                    forbidden = set(req.get('mainRoles', {}).values())
+                    results[player_key] = (first in VALID_MAIN_ROLES and second in VALID_MAIN_ROLES
+                        and first != second and first not in forbidden and second not in forbidden
+                        and all(req.get('mainRoles', {}).get(key) in VALID_MAIN_ROLES for key in ('player1','player2'))
+                        and actual in (first, second))
+                elif "randomPositions" in req:
                     results[player_key] = results[player_key] and actual == req["randomPositions"].get(player_key)
             elif base_id == "no_main_champion":
                 forbidden = req.get("favoriteChampions", {}).get(player_key, [])
@@ -1268,6 +1296,8 @@ def evaluate_active_penalties(duo, match):
                                   "assignedAccount": copy.deepcopy(req.get("assignedAccount"))}
             if base_id == "autofill" and "randomPositions" in req:
                 debuff["evidence"]["randomPositions"] = copy.deepcopy(req["randomPositions"])
+                if req.get('roleSelectionVersion') == 2:
+                    debuff['evidence']['randomSecondaryPositions'] = copy.deepcopy(req['randomSecondaryPositions'])
             if base_id == "swap_flash":
                 debuff["evidence"]["flashBaselines"] = {key: value for key, value in flash_evidence.items() if key in req.get("flashAccounts", req.get("flashBaselines", {}))}
                 debuff["evidence"]["summonerSpellIds"] = {key: list((match.get(f"{key}Stats") or {}).get("summonerSpellIds") or []) for key in req.get("flashBaselines", {})}
