@@ -38,12 +38,16 @@ def _replace_bytes(path, payload):
 
 
 def write_json(path, value):
-    """Preserve the last valid version, then atomically replace the live file."""
+    """Replace changed data atomically; identical data must not rotate the backup."""
     try:
         payload = json.dumps(value, ensure_ascii=False, indent=2).encode("utf-8")
         if os.path.exists(path):
-            read_json(path)  # Never overwrite a corrupt file or its recovery copy.
-            _replace_bytes(str(path) + ".previous.bak", Path(path).read_bytes())
+            read_json(path)  # Never overwrite a corrupt recovery source.
+            previous = Path(path).read_bytes()
+            if previous == payload:
+                return False
+            _replace_bytes(str(path) + ".previous.bak", previous)
         _replace_bytes(path, payload)
+        return True
     except (OSError, ValueError, TypeError) as error:
         raise StorageError("No se pudieron guardar los cambios. Reintenta cuando el almacenamiento esté disponible.") from error

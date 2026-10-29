@@ -41,14 +41,30 @@ class PostgresStorage:
 
     def fetch(self):
         try:
+            # One atomic query: an unchanged revision returns metadata, not the
+            # potentially large histories, clips, ledgers and weekly archives.
+            known_revision = self.revision if self.cached is not None else None
             with self.connect() as conn:
-                row = conn.execute("SELECT payload, revision, last_write_id FROM tournament_state WHERE id = 1").fetchone()
+                row = conn.execute("""
+                    SELECT CASE WHEN revision = %s THEN NULL ELSE payload END,
+                           revision, last_write_id
+                    FROM tournament_state WHERE id = 1
+                """, (known_revision,)).fetchone()
             if row is None:
                 raise StorageError("Neon está vacío. Importa la copia validada del torneo antes de activar el servicio.")
-            validate(row[0])
-            self.cached, self.revision = copy.deepcopy(row[0]), row[1]
+            payload, revision, write_id = row
+            if payload is None:
+                if self.cached is None or revision != known_revision:
+                    raise StorageError("No se pudo validar la revisión del torneo de Neon.")
+                # Preserve fetch()'s complete, detached snapshot for maintenance
+                # callers, even though no document crossed the network.
+                payload = copy.deepcopy(self.cached)
+            else:
+                validate(payload)
+                self.cached = copy.deepcopy(payload)
+            self.revision = revision
             self.checked_at = time.monotonic()
-            return row
+            return payload, revision, write_id
         except StorageError:
             raise
         except Exception:
@@ -78,6 +94,7 @@ class PostgresStorage:
         return row[0] if row else None
 
     def save(self, data):
+        """Return whether a write was confirmed; identical snapshots do no I/O."""
         validate(data)
         if self.pending is not None:
             raise StorageError("Hay un guardado pendiente de comprobar. Actualiza antes de repetir la operación.")
@@ -88,7 +105,7 @@ class PostgresStorage:
         clean = copy.deepcopy(data)
         clean.pop("_storageRevision", None)
         if clean == self.cached:
-            return
+            return False
         write_id = str(uuid.uuid4())
         self.pending = write_id
         try:
@@ -99,6 +116,7 @@ class PostgresStorage:
             self.cached, self.revision = clean, revision
             self.checked_at = time.monotonic()
             data["_storageRevision"] = revision
+            return True
         except Exception:
             self.cached = None
             try:
@@ -107,7 +125,7 @@ class PostgresStorage:
                 raise StorageError("No se pudo confirmar el guardado en Neon. Actualiza antes de repetir la operación.") from None
             if row[2] == write_id:
                 data["_storageRevision"] = row[1]
-                return
+                return True
             raise StorageError("No se guardó esta versión. Actualiza el panel: puede haber cambios de otra operación.") from None
         finally:
             if self.cached is not None:

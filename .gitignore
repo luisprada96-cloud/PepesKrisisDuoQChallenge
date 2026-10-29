@@ -30,3 +30,4 @@ neon_backup_*.json
 
 # Runtime overlay media (stored outside source control)
 overlay-media/
+overlay-media-cache/
